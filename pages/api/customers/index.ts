@@ -1,12 +1,8 @@
-// src/pages/api/customers/index.ts
-// GET hämtar lista över alla kunder, POST skapar ny kund - för den aktuella butiken
-
-// src/pages/api/customers/index.ts
-
+// pages/api/customers/index.ts
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { PrismaClient } from '@prisma/client';
 import { getServerSession } from 'next-auth/next';
-import { authOptions } from '../auth/authOptions'; // Justera sökvägen om nödvändigt
+import { authOptions } from '../auth/authOptions';
 import { createCustomerSchema } from '@/utils/validation';
 import rateLimiter from '@/lib/rateLimiterApi';
 
@@ -14,10 +10,10 @@ const prisma = new PrismaClient();
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   try {
-    // Rate Limiting: Begränsa antalet förfrågningar per användare/IP
+    // Rate Limiting
     await rateLimiter.consume(req.socket.remoteAddress || 'unknown');
 
-    // Autentisering: Kontrollera om användaren är inloggad
+    // Autentisering
     const session = await getServerSession(req, res, authOptions);
 
     if (!session) {
@@ -29,6 +25,24 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     switch (method) {
       case 'GET':
         try {
+          // Hantera sökning om search-parameter skickats med
+          const { search } = req.query;
+          
+          if (search && typeof search === 'string') {
+            const customers = await prisma.customer.findMany({
+              where: {
+                storeId: session.user.storeId,
+                OR: [
+                  { firstName: { contains: search, mode: 'insensitive' } },
+                  { lastName: { contains: search, mode: 'insensitive' } },
+                  { email: { contains: search, mode: 'insensitive' } },
+                ],
+              },
+            });
+            return res.status(200).json(customers);
+          }
+          
+          // Annars, hämta alla kunder för denna butik
           const customers = await prisma.customer.findMany({
             where: { storeId: session.user.storeId },
           });
@@ -53,7 +67,21 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             return res.status(400).json({ message: 'Valideringsfel', errors });
           }
 
-          const { name, email, phoneNumber } = parseResult.data;
+          // Extrahera alla fält från validerad data
+          const { 
+            firstName, 
+            lastName, 
+            email, 
+            phoneNumber, 
+            address, 
+            postalCode, 
+            city, 
+            country, 
+            dateOfBirth, 
+            newsletter, 
+            loyal, 
+            dynamicFields 
+          } = parseResult.data;
 
           // Kontrollera om kunden redan finns inom butiken
           const existingCustomer = await prisma.customer.findFirst({
@@ -67,12 +95,21 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             return res.status(400).json({ message: 'Kund med denna email finns redan.' });
           }
 
-          // Skapa ny kund
+          // Skapa ny kund - säkerställ att varje fält hamnar i rätt kolumn i databasen
           const newCustomer = await prisma.customer.create({
             data: {
-              name,
+              firstName,
+              lastName,
               email,
               phoneNumber,
+              address,
+              postalCode,
+              city,
+              country,
+              dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : null,
+              newsletter: newsletter || false,
+              loyal: loyal || false,
+              dynamicFields: dynamicFields || {},
               storeId: session.user.storeId,
             },
           });
@@ -103,4 +140,3 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     await prisma.$disconnect();
   }
 }
-

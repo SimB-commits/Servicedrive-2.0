@@ -194,15 +194,13 @@ export default function DocsPage() {
   // Uppdaterad funktion för att hantera kund som valts från söklistan
   const handleSelectCustomer = (customer: any) => {
     // Gör en mer omfattande uppdatering av formuläret
-    const formValues: Record<string, string> = {
-      name: customer.name || ''
-    };
+    const formValues: Record<string, string> = {};
     
     // Lägg till standardfälten från kunden
-    if (customer.email) formValues.email = customer.email;
-    if (customer.phoneNumber) formValues.phoneNumber = customer.phoneNumber;
     if (customer.firstName) formValues.firstName = customer.firstName;
     if (customer.lastName) formValues.lastName = customer.lastName;
+    if (customer.email) formValues.email = customer.email;
+    if (customer.phoneNumber) formValues.phoneNumber = customer.phoneNumber;
     if (customer.address) formValues.address = customer.address;
     if (customer.postalCode) formValues.postalCode = customer.postalCode;
     if (customer.city) formValues.city = customer.city;
@@ -214,11 +212,32 @@ export default function DocsPage() {
         formValues[key] = value as string;
       });
     }
+
+    formValues.name = getCustomerDisplayName(customer);
     
-    setCustomerFormValues(formValues as any);
+    setCustomerFormValues(formValues);
     setSelectedCustomer(customer);
     setCustomerSuggestions([]);
   };
+
+  // Hjälpfunktion för att formatera kundnamn för visning
+const getCustomerDisplayName = (customer: any): string => {
+  if (!customer) return '';
+  
+  if (customer.name) {
+    return customer.name;
+  }
+  
+  if (customer.firstName || customer.lastName) {
+    return `${customer.firstName || ''} ${customer.lastName || ''}`.trim();
+  }
+  
+  if (customer.email) {
+    return customer.email;
+  }
+  
+  return `Kund #${customer.id}`;
+};
 
   // Debounce för kundförslag
   useEffect(() => {
@@ -283,13 +302,43 @@ export default function DocsPage() {
     try {
       let customerData: any;
       if (selectedCustomer) {
+        // Om vi har en befintlig kund, använd den direkt
         customerData = selectedCustomer;
       } else {
+        // Separera standardfält från dynamiska fält
+        const {
+          name, // name används bara för sökning, behöver inte skickas till API:et
+          firstName, 
+          lastName,
+          email,
+          phoneNumber,
+          address,
+          postalCode,
+          city,
+          country,
+          ...otherFields // Övriga fält hamnar i dynamicFields
+        } = customerFormValues;
+  
+        // Skapa ett kundobjekt som ska skickas till API:et
+        const customerInput = {
+          firstName,
+          lastName,
+          email,
+          phoneNumber,
+          address,
+          postalCode,
+          city,
+          country,
+          // Samla alla andra fält i dynamicFields
+          dynamicFields: otherFields 
+        };
+  
         const customerResponse = await fetch('/api/customers', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(customerFormValues),
+          body: JSON.stringify(customerInput),
         });
+  
         if (!customerResponse.ok) {
           const errData = await customerResponse.json();
           throw new Error(errData.message || 'Kunde inte skapa kund.');
@@ -457,23 +506,25 @@ export default function DocsPage() {
                 {/* Visa endast valda mallens fält */}
                 {selectedTemplate && selectedTemplate.dynamicFields && (
                   <>
-                    {/* Vi använder Object.entries och index för att garantera att fälten
-                        visas i exakt samma ordning som de definierades i mallen */}
+                    {/* Vi använder Object.entries och sorterar baserat på order-egenskapen */}
                     {Object.entries(selectedTemplate.dynamicFields)
-                      // Preservera ordningen som fälten är definierade i mallen
-                      .map(([key, value], index) => {
+                      .map(([key, value]) => {
                         try {
                           const fieldData = typeof value === 'string' ? JSON.parse(value) : value;
-                          // Lagra både nyckeln, index och fieldData för sortering
-                          return { key, index, fieldData };
+                          return {
+                            key,
+                            fieldData,
+                            // Använd order-egenskapen för sortering om den finns, annars använd högsta värdet
+                            order: fieldData.order !== undefined ? fieldData.order : 9999
+                          };
                         } catch (e) {
                           console.error('Error parsing field data:', e);
                           return null;
                         }
                       })
                       .filter(Boolean)
-                      // Sortera baserat på indexet i mallen för att säkerställa ordningen
-                      .sort((a, b) => a.index - b.index)
+                      // Sortera explicit baserat på order-egenskapen för att garantera ordningen
+                      .sort((a, b) => (a.order || 0) - (b.order || 0))
                       .map(field => {
                         if (!field) return null;
                         const { key, fieldData } = field;
@@ -594,3 +645,5 @@ function zonedToString(value: ZonedDateTime): string {
 function setExpandedCustomerForm(arg0: boolean) {
   throw new Error('Function not implemented.');
 }
+
+

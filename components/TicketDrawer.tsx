@@ -13,9 +13,17 @@ type Ticket = {
   status: string;
   createdAt: string;
   customer?: {
-    name: string;
+    id?: number;
+    firstName?: string;
+    lastName?: string;
+    name?: string;
     email?: string;
     phoneNumber?: string;
+    address?: string;
+    postalCode?: string;
+    city?: string;
+    country?: string;
+    dynamicFields?: { [key: string]: any };
   };
   ticketType?: {
     name: string;
@@ -48,6 +56,31 @@ const TicketDrawer: React.FC<TicketDrawerProps> = ({ isOpen, onClose, ticket }) 
     return ticket.status;
   };
 
+  // Funktion för att sammanställa kundnamn baserat på tillgängliga fält
+  const getCustomerName = () => {
+    if (!ticket.customer) return "-";
+    
+    // Prioritera att visa namn i följande ordning:
+    // 1. Om det finns name-fält (äldre version av kundmodellen)
+    if (ticket.customer.name) {
+      return ticket.customer.name;
+    }
+
+    // 2. Om det finns firstName och/eller lastName, kombinera dem
+    if (ticket.customer.firstName || ticket.customer.lastName) {
+      const fullName = `${ticket.customer.firstName || ''} ${ticket.customer.lastName || ''}`.trim();
+      if (fullName) return fullName;
+    }
+
+    // 3. Visa "Kund #[ID]" om ID finns
+    if (ticket.customer.id) {
+      return `Kund #${ticket.customer.id}`;
+    }
+
+    // 4. Sista utvägen - om inget annat finns, visa "Okänd kund"
+    return "Okänd kund";
+  };
+
   return (
     <Drawer isOpen={isOpen} onOpenChange={onClose} placement="right" size="md">
       <DrawerContent>
@@ -57,16 +90,54 @@ const TicketDrawer: React.FC<TicketDrawerProps> = ({ isOpen, onClose, ticket }) 
         <DrawerBody>
           <div className="space-y-2">
             <p>
-              <strong>Kundnamn:</strong> {ticket.customer ? ticket.customer.name : "-"}
+              <strong>Kundnamn:</strong> {getCustomerName()}
             </p>
             {ticket.customer && (
               <>
-                <p>
-                  <strong>Email:</strong> {ticket.customer.email || "-"}
-                </p>
-                <p>
-                  <strong>Telefonnummer:</strong> {ticket.customer.phoneNumber || "-"}
-                </p>
+                
+                {ticket.customer.email && (
+                  <p>
+                    <strong>Email:</strong> {ticket.customer.email}
+                  </p>
+                )}
+                {ticket.customer.phoneNumber && (
+                  <p>
+                    <strong>Telefonnummer:</strong> {ticket.customer.phoneNumber}
+                  </p>
+                )}
+                {ticket.customer.address && (
+                  <p>
+                    <strong>Adress:</strong> {ticket.customer.address}
+                  </p>
+                )}
+                {ticket.customer.postalCode && (
+                  <p>
+                    <strong>Postnummer:</strong> {ticket.customer.postalCode}
+                  </p>
+                )}
+                {ticket.customer.city && (
+                  <p>
+                    <strong>Ort:</strong> {ticket.customer.city}
+                  </p>
+                )}
+                {ticket.customer.country && (
+                  <p>
+                    <strong>Land:</strong> {ticket.customer.country}
+                  </p>
+                )}
+                {/* Visa dynamiska fält om de finns */}
+                {ticket.customer.dynamicFields && Object.keys(ticket.customer.dynamicFields).length > 0 && (
+                  <>
+                    <div className="mt-2 mb-1">
+                      <strong>Övriga kundfält:</strong>
+                    </div>
+                    {Object.entries(ticket.customer.dynamicFields).map(([key, value]) => (
+                      <p key={`customer-${key}`}>
+                        <strong>{key}:</strong> {String(value)}
+                      </p>
+                    ))}
+                  </>
+                )}
               </>
             )}
             <p>
@@ -77,11 +148,11 @@ const TicketDrawer: React.FC<TicketDrawerProps> = ({ isOpen, onClose, ticket }) 
             </p>
             <p>
               <strong>Skapad:</strong>{" "}
-              {ticket.createdAt ? new Date(ticket.createdAt).toLocaleDateString("en-GB") : "-"}
+              {ticket.createdAt ? new Date(ticket.createdAt).toLocaleDateString("sv-SE") : "-"}
             </p>
             <p>
               <strong>Senast klar:</strong>{" "}
-              {ticket.dueDate ? new Date(ticket.dueDate).toLocaleDateString("en-GB") : "-"}
+              {ticket.dueDate ? new Date(ticket.dueDate).toLocaleDateString("sv-SE") : "-"}
             </p>
           </div>
           <div className="mt-4">
@@ -97,7 +168,7 @@ const TicketDrawer: React.FC<TicketDrawerProps> = ({ isOpen, onClose, ticket }) 
                       <strong>{field.name}:</strong>{" "}
                       {ticket.dynamicFields && ticket.dynamicFields[field.name] !== undefined
                         ? field.fieldType === "DATE"
-                          ? new Date(ticket.dynamicFields[field.name]).toLocaleDateString("en-GB")
+                          ? new Date(ticket.dynamicFields[field.name]).toLocaleDateString("sv-SE")
                           : String(ticket.dynamicFields[field.name])
                         : "-"}
                     </li>

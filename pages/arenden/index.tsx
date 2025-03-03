@@ -112,19 +112,46 @@ export default function TicketTablePage() {
     return typeof ticket.status === "object" ? ticket.status.uid : ticket.status;
   };
 
+  // Funktion för att hämta kundnamn baserat på nya kundmodellen
+  const getCustomerName = useCallback((customer: any) => {
+    if (!customer) return "-";
+    
+    // Prioritera att visa namn i följande ordning:
+    // 1. Om det finns name-fält (äldre version av kundmodellen)
+    if (customer.name) {
+      return customer.name;
+    }
+
+    // 2. Om det finns firstName och/eller lastName, kombinera dem
+    if (customer.firstName || customer.lastName) {
+      const fullName = `${customer.firstName || ''} ${customer.lastName || ''}`.trim();
+      if (fullName) return fullName;
+    }
+
+    // 3. Visa "Kund #[ID]" om ID finns
+    if (customer.id) {
+      return `Kund #${customer.id}`;
+    }
+
+    // 4. Sista utvägen - om inget annat finns, visa "Okänd kund"
+    return "Okänd kund";
+  }, []);
+
   // Filtrera ärenden baserat på kundnamn och status
   const filteredTickets = useMemo(() => {
     let result = [...tickets];
     if (filterValue) {
-      result = result.filter((ticket) =>
-        (ticket.customer?.name || "").toLowerCase().includes(filterValue.toLowerCase())
-      );
+      result = result.filter((ticket) => {
+        // Hantera sökning baserat på fullständigt kundnamn från getCustomerName-funktionen
+        const customerDisplayName = getCustomerName(ticket.customer).toLowerCase();
+        return customerDisplayName.includes(filterValue.toLowerCase());
+      });
     }
     if (statusFilter !== "all") {
       result = result.filter((ticket) => getEffectiveStatus(ticket) === statusFilter);
     }
     return result;
-  }, [tickets, filterValue, statusFilter]);
+  }, [tickets, filterValue, statusFilter, getCustomerName]);
 
   const pages = Math.ceil(filteredTickets.length / rowsPerPage);
   const paginatedTickets = useMemo(() => {
@@ -174,10 +201,10 @@ export default function TicketTablePage() {
       switch (columnKey) {
         case "createdAt":
           return ticket.createdAt
-            ? new Date(ticket.createdAt).toLocaleDateString("en-GB")
+            ? new Date(ticket.createdAt).toLocaleDateString("sv-SE")
             : "-";
         case "customerName":
-          return ticket.customer ? ticket.customer.name : "-";
+          return getCustomerName(ticket.customer);
         case "ticketType":
           return ticket.ticketType ? ticket.ticketType.name : "-";
         case "firstField": {
@@ -232,7 +259,7 @@ export default function TicketTablePage() {
           return <span>-</span>;
         }
         case "dueDate":
-          return ticket.dueDate ? new Date(ticket.dueDate).toLocaleDateString("en-GB") : "-";
+          return ticket.dueDate ? new Date(ticket.dueDate).toLocaleDateString("sv-SE") : "-";
         case "actions":
           return (
             <div className="flex gap-2">
@@ -264,14 +291,14 @@ export default function TicketTablePage() {
           if (typeof value === "string") {
             const date = new Date(value);
             if (!isNaN(date.getTime())) {
-              return date.toLocaleDateString("en-GB");
+              return date.toLocaleDateString("sv-SE");
             }
           }
           return value !== undefined && value !== null ? value : "-";
         }
       }
     },
-    [handleOpenViewDrawer, handleOpenEditDrawer, handleDelete]
+    [handleOpenViewDrawer, handleOpenEditDrawer, handleDelete, getCustomerName]
   );
 
   const onNextPage = () => {

@@ -1,10 +1,8 @@
-// src/pages/api/customers/[id].ts
-//Hanterar specifika kunder baserat på ID
-
+// pages/api/customers/[id].ts
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { PrismaClient } from '@prisma/client';
 import { getServerSession } from 'next-auth/next';
-import { authOptions } from '../auth/authOptions'; // Justera sökvägen om nödvändigt
+import { authOptions } from '../auth/authOptions';
 import { updateCustomerSchema } from '../../../utils/validation';
 import rateLimiter from '@/lib/rateLimiterApi';
 
@@ -12,10 +10,10 @@ const prisma = new PrismaClient();
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   try {
-    // Rate Limiting: Begränsa antalet förfrågningar per användare/IP
+    // Rate Limiting
     await rateLimiter.consume(req.socket.remoteAddress || 'unknown');
 
-    // Autentisering: Kontrollera om användaren är inloggad
+    // Autentisering
     const session = await getServerSession(req, res, authOptions);
 
     if (!session) {
@@ -67,7 +65,21 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             return res.status(400).json({ message: 'Valideringsfel', errors });
           }
 
-          const { name, email, phoneNumber } = parseResult.data;
+          // Extrahera alla fält från validerad data
+          const { 
+            firstName, 
+            lastName, 
+            email, 
+            phoneNumber, 
+            address, 
+            postalCode, 
+            city, 
+            country, 
+            dateOfBirth, 
+            newsletter, 
+            loyal, 
+            dynamicFields 
+          } = parseResult.data;
 
           // Hämta kunden från databasen
           const customer = await prisma.customer.findUnique({
@@ -83,10 +95,26 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             return res.status(403).json({ error: 'Forbidden' });
           }
 
+          // Bygga updateData med endast de fält som skickats med
+          const updateData: any = {};
+          
+          if (firstName !== undefined) updateData.firstName = firstName;
+          if (lastName !== undefined) updateData.lastName = lastName;
+          if (email !== undefined) updateData.email = email;
+          if (phoneNumber !== undefined) updateData.phoneNumber = phoneNumber;
+          if (address !== undefined) updateData.address = address;
+          if (postalCode !== undefined) updateData.postalCode = postalCode;
+          if (city !== undefined) updateData.city = city;
+          if (country !== undefined) updateData.country = country;
+          if (dateOfBirth !== undefined) updateData.dateOfBirth = dateOfBirth ? new Date(dateOfBirth) : null;
+          if (newsletter !== undefined) updateData.newsletter = newsletter;
+          if (loyal !== undefined) updateData.loyal = loyal;
+          if (dynamicFields !== undefined) updateData.dynamicFields = dynamicFields;
+
           // Uppdatera kunden
           const updatedCustomer = await prisma.customer.update({
             where: { id: customerId },
-            data: { name, email, phoneNumber },
+            data: updateData,
           });
 
           res.status(200).json(updatedCustomer);
