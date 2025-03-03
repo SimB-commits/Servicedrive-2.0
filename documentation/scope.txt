@@ -1,0 +1,44 @@
+Vad är servicedrive?
+
+Servicedrive är ett ärendehanteringssystem för små till mellanstora företag. Syftet är att erbjuda ett system
+kan växa med röretagets behov. Det finns en gratisversion för nystartade företag som bara behöver en enkel
+applikation för att hantera sina kundärenden. I de olika betalversionerna finns ytterligare funktionalitet
+som automatiserad kundkontakt via email och sms, tidsbokning för kunder, chatfunktion och statistik för 
+hur väl ärenden hanteras. Utöver detta kan man även i betalversionerna ha flera roller för olika medarbetare.
+Det går även att ha flera konton kopplade så att samma användare kan komma jobba med t.ex. olika butiker
+och deras ärenden.
+
+Versioner
+
+Gratisversion
+
+- Skapa 2 egna ärendetyper
+- Ärendestatus kan ändras mellan pågående och färdiga ärenden
+
+Betalnivå 1
+
+- Skapa 5 egna ärendetyper
+- Utöver pågående och färdigstatus - skapa 3 egna status att ge ett ärende, t.ex. "Väntar på produkt"
+- Automatiserad kundkontakt via email, bekräftelsemail på skapat ärende och mail när ärendet är färdigstatus
+- Skapa egna mailmallar för personlig kundkontakt
+
+Betalnivå 2
+
+- Skapa oändligt med ärendetyper
+- Skapa oändligt med ärendestatusar
+- Automatiserad kundkontakt via email och sms
+- Skapa egna mail och smsmallar för personlig kundkontakt
+- Tidsbokning via widget på din hemsida
+- Statistik för hur ärenden hanteras
+- Tilldela medarbetare olika roller
+
+Betalnivå 3
+
+- Skapa oändligt med ärendetyper
+- Skapa oändligt med ärendestatusar
+- Automatiserad kundkontakt via email och sms
+- Skapa egna mail och smsmallar för personlig kundkontakt
+- Tidsbokning via widget på din hemsida
+- Statistik för hur ärenden hanteras
+- Tilldela medarbetare olika roller
+- AI chatfunktion via en widget på din hemsida 

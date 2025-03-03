@@ -1,0 +1,190 @@
+Layout
+
+Alla kapslas in i en topbar och en sidebar. I topbar finns ett sökfält där användaren kan söka efter ärenden och kunder. I sidebar finns menyn för att navigera
+mellan olika sidor. 
+
+Dashboard
+
+Här har användaren tillgång till olika widgets för att bygga sin dashboard. Exempel på widgets är:
+
+- Ärenden av specifika ärendetyper som är aktiva
+- Antal nya meddelanden från kunder 
+- Olästa meddelanden 
+- Ärenden som ska vara färdiga i den innevarande veckan
+- Ärendestatistik (t.ex. Totalt antal ärenden per ärendetyp, genomsnittlig tid för slutförande av ärenden,
+genomsnittlig svarstid på kundmeddelanden)
+
+Dashboarden kan byggas med de widgets man vill ha så att kunden får en personlig upplevelse.
+Detta är även den sidan kunden landar på efter att de loggar in.
+
+Skapa nytt ärende 
+
+Den här sidan är viktig och ska vara så lättnavigerad och enkel som möjligt. Här väljer man först ärendetyp,
+vilket genom state management visar rätt formulär för användaren att fylla i. Olika ärendetyper kan behöva olika
+information om och från kunden. 
+
+Delar på den här sidan innefattar:
+
+- Val av ärendetyp
+- Formulär för kunduppgifter
+- Formulär för ärendet 
+- Kommentarsruta
+- Välj ärendestatus (Default är "öppet")
+- Vill ta emot marknadsföring
+
+Ärendelista
+
+Den är sidan visar en lista över ärenden. Användaren kan välja hur ärenden ska sorteras per default
+på ärendestatus, mottagetdatum, färdigt-datum. Utöver det går det att filtrera på datum, ärendetyp och ärendestatus.
+Sidan är paginerad för bättre prestanda. 
+
+I ärendelistan visas följande information i kolumner:
+
+- Ärendenummer
+- Kundnamn
+- Ärendetyp 
+- Produkt 
+- Mottagetdatum
+- Färdigt-datum
+- Ärendestatus
+
+Ärendesida
+
+På ärendesidan visas all info om ett ärende och kunden i fråga. Från den här sidan går det också att skicka meddelande direkt till kunden via antingen mail eller sms.
+På den här sidan går det att ändra ärendestatus och skriva ut en ärendelapp. Alla fälten är redigerbara för eventuella ändringar i ärendet eller ytterligare kommentarer. 
+På ärendesidan visas även meddelandehistorik från kunden för en tydlig överblick av vad som sagts i kundkontakten och när. 
+
+Kundlista
+
+Visar alla registrerade kunder i en lista där kolumnerna visar:
+
+- KundID
+- Namn
+- Mailadress
+- Telefonnummer
+- Butik (Om systemet är uppsatt för att använda flera butiker)
+
+Klickar man på en kund visas en lista med deras ärendehistorik. Det går även att redigera kundinformation för att uppdatera uppgifter, härifrån går det även att 
+ta bort en kund och all deras information och ärendehistorik.
+
+Inställningar
+
+Den här sidan innefattar admindelen av systemet.
+
+- Skapande av ärendetyper
+- Skapande av ärendestatusar
+- Skapande av mailmallar för utskick, t.ex. bekräftelsemail och färdigtmail. 
+- Uppladdning av logotyp för användning i utskick, ärendelappar och i systemets UI för att enkelt veta vilket konto man jobbar med. 
+- Här fyller kunden även i vilken mailadress deras utskick skickas från.
+
+
+
+src/
+  pages/
+    _app.tsx
+    index.tsx             // Dashboard-sidan (landningssida efter inloggning)
+    tickets/
+      index.tsx           // Ärendelista
+      new.tsx             // Skapa nytt ärende
+      [id].tsx            // Enskild ärendesida baserat på ärende-id
+    customers/
+      index.tsx           // Kundlista
+      [id].tsx            // Enskild kundsida med ärendehistorik
+    settings/
+      index.tsx           // Inställningssida (ärendetyper, statusar, mallar, etc.)
+
+  components/
+    layout/
+      Layout.tsx          // Wrapper för topbar, sidebar och sidans innehåll
+      Topbar.tsx
+      Sidebar.tsx
+    ui/
+      Button.tsx
+      Input.tsx
+      Select.tsx
+      Textarea.tsx
+      Modal.tsx
+      Table.tsx
+      WidgetWrapper.tsx
+      // Fler grundläggande UI-komponenter ...
+    widgets/
+      // Dashboard-widgets delas upp här
+      ActiveTicketsWidget.tsx
+      NewMessagesWidget.tsx
+      UnreadMessagesWidget.tsx
+      DueThisWeekWidget.tsx
+      StatisticsWidget.tsx
+    forms/
+      // Återanvändbara formulärkomponenter
+      CustomerForm.tsx
+      TicketForm.tsx
+      StatusForm.tsx
+      TemplateForm.tsx
+      // Mappning till val av ärendetyp -> dynamiska formulär
+
+  features/
+    tickets/
+      components/
+        TicketTable.tsx        // En tabellkomponent specialiserad för ärenden
+        TicketFilters.tsx      // Filterkomponent för ärendelistan
+        TicketDetailView.tsx   // Visar detaljer om ett enskilt ärende
+      hooks/
+        useTickets.ts          // Logik för att hämta, filtrera, paginera ärenden
+        useCreateTicket.ts     // Hook för att skapa nytt ärende
+        useTicketStatuses.ts   // Hanterar ärendestatus-logik
+      utils/
+        ticketHelpers.ts       // Hjälpfunktioner för ärendelogik
+    customers/
+      components/
+        CustomerTable.tsx
+        CustomerFilters.tsx
+        CustomerDetailView.tsx
+      hooks/
+        useCustomers.ts
+      utils/
+        customerHelpers.ts
+    settings/
+      components/
+        IssueTypeManager.tsx
+        StatusManager.tsx
+        TemplateManager.tsx
+        LogoUploader.tsx
+        EmailConfigForm.tsx
+      hooks/
+        useSettings.ts
+      utils/
+        settingsHelpers.ts
+
+  context/
+    AppContext.tsx            // T.ex. global state för inloggad användare, roll, vald butik
+    AuthContext.tsx           // Hantering av JWT, sessioner
+
+  lib/
+    api/
+      // Generella API-anrop som kan återanvändas
+      ticketsApi.ts
+      customersApi.ts
+      settingsApi.ts
+    config/
+      // Config-filer, t.ex. environment-variabler hanteras här
+      env.ts
+    utils/
+      // Globala hjälpfunktioner
+      formatDate.ts
+      formatPhoneNumber.ts
+
+  styles/
+    globals.css               // Globala CSS-stilar, tailwind config
+    tailwind.css
+
+  types/
+    // Typsnitt för TypeScript
+    ticket.d.ts
+    customer.d.ts
+    settings.d.ts
+    user.d.ts
+
+
+
+
+

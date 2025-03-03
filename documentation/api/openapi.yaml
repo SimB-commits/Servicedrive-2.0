@@ -1,0 +1,237 @@
+openapi: 3.0.0
+info:
+  title: Servicedrive API
+  version: 1.0.0
+servers:
+  - url: http://localhost:3000
+paths:
+  /api/customers:
+    get:
+      summary: Lista alla kunder
+      responses:
+        "200":
+          description: En lista med kunder
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Customer"
+    post:
+      summary: Skapa en ny kund
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CustomerInput"
+      responses:
+        "201":
+          description: Kund skapad
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Customer"
+  /api/customers/{id}:
+    get:
+      summary: Hämta en specifik kund
+      parameters:
+        - in: path
+          name: id
+          schema:
+            type: integer
+          required: true
+          description: ID för kunden
+      responses:
+        "200":
+          description: En specifik kund
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Customer"
+        "404":
+          description: Kund hittades inte
+    put:
+      summary: Uppdatera en kund
+      parameters:
+        - in: path
+          name: id
+          schema:
+            type: integer
+          required: true
+          description: ID för kunden
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CustomerInput"
+      responses:
+        "200":
+          description: Kund uppdaterad
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Customer"
+        "404":
+          description: Kund hittades inte
+    delete:
+      summary: Radera en kund
+      parameters:
+        - in: path
+          name: id
+          schema:
+            type: integer
+          required: true
+          description: ID för kunden
+      responses:
+        "204":
+          description: Kund raderad
+  /api/tickets:
+    get:
+      summary: Lista alla ärenden
+      responses:
+        "200":
+          description: En lista med ärenden
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Ticket"
+    post:
+      summary: Skapa ett nytt ärende
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TicketInput"
+      responses:
+        "201":
+          description: Ärende skapat
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Ticket"
+  /api/tickets/{id}:
+    get:
+      summary: Hämta ett specifikt ärende
+      parameters:
+        - in: path
+          name: id
+          schema:
+            type: integer
+          required: true
+          description: ID för ärendet
+      responses:
+        "200":
+          description: Ett specifikt ärende
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Ticket"
+        "404":
+          description: Ärende hittades inte
+    put:
+      summary: Uppdatera ett ärende
+      parameters:
+        - in: path
+          name: id
+          schema:
+            type: integer
+          required: true
+          description: ID för ärendet
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+      responses:
+        "200":
+          description: Ärende uppdaterat
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Ticket"
+        "404":
+          description: Ärende hittades inte
+    delete:
+      summary: Radera ett ärende
+      parameters:
+        - in: path
+          name: id
+          schema:
+            type: integer
+          required: true
+          description: ID för ärendet
+      responses:
+        "204":
+          description: Ärende raderat
+
+components:
+  schemas:
+    Customer:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        email:
+          type: string
+        phoneNumber:
+          type: string
+        storeId:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    CustomerInput:
+      type: object
+      properties:
+        name:
+          type: string
+        email:
+          type: string
+        phoneNumber:
+          type: string
+    Ticket:
+      type: object
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        status:
+          type: string
+        customerId:
+          type: integer
+        assignedTo:
+          type: integer
+        storeId:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    TicketInput:
+      type: object
+      properties:
+        title:
+          type: string
+        status:
+          type: string
+        customerId:
+          type: integer
+        assignedTo:
+          type: integer

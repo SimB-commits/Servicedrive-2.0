@@ -5,54 +5,52 @@ export const siteConfig = {
   description: "Make beautiful websites regardless of your design experience.",
   navItems: [
     {
-      label: "Home",
-      href: "/",
-    },
-    {
-      label: "Docs",
-      href: "/docs",
-    },
-    {
-      label: "Pricing",
-      href: "/pricing",
-    },
-    {
-      label: "Blog",
-      href: "/blog",
-    },
-    {
-      label: "About",
-      href: "/about",
-    },
-  ],
-  navMenuItems: [
-    {
-      label: "Profile",
-      href: "/profile",
+      label: "Meny",
+      
     },
     {
       label: "Dashboard",
-      href: "/dashboard",
+      href: "/",
     },
     {
-      label: "Projects",
-      href: "/projects",
+      label: "Skapa Nytt",
+      href: "/nytt-arende",
     },
     {
-      label: "Team",
-      href: "/team",
+      label: "Ärenden",
+      href: "/arenden",
+    },
+    
+    
+  ],
+  navMenuItems: [
+    {
+      label: "Dashboard",
+      href: "/",
     },
     {
-      label: "Calendar",
-      href: "/calendar",
+      label: "Nytt Ärende",
+      href: "/nytt-arende",
     },
     {
-      label: "Settings",
-      href: "/settings",
+      label: "Ärenden",
+      href: "/arenden",
     },
     {
-      label: "Help & Feedback",
-      href: "/help-feedback",
+      label: "Kunder",
+      href: "/kunder",
+    },
+    {
+      label: "Ärendetyper",
+      href: "/arendetyper",
+    },
+    {
+      label: "Kundkontakt",
+      href: "/kundkontakt",
+    },
+    {
+      label: "Inställningar",
+      href: "/installningar",
     },
     {
       label: "Logout",
