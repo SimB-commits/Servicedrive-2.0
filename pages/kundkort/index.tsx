@@ -50,9 +50,9 @@ const customerFieldOptions = [
   { value: 'city', label: 'Ort' },
   { value: 'country', label: 'Land' },
   { value: 'dateOfBirth', label: 'Födelsedatum' },
-  { value: 'email', label: 'Mailadress' },
-  { value: 'phoneNumber', label: 'Telefonnummer' },
-  { value: 'DYNAMIC', label: 'Dynamiskt fält' },
+  { value: 'email', label: 'E-post' },
+  { value: 'phoneNumber', label: 'Telefon' },
+  { value: 'DYNAMIC', label: 'Eget fält' },
 ];
 
 // Input type options for dynamic fields
@@ -174,11 +174,12 @@ export default function KundkortsmallPage() {
     // Prepare the data for the API
     const dynamicFields: Record<string, string> = {};
     
-    fields.forEach(field => {
+    fields.forEach((field, index) => {
       const fieldData = {
         mapping: field.mapping,
         inputType: field.inputType,
-        isRequired: field.isRequired
+        isRequired: field.isRequired,
+        order: index // Add order information to maintain sequence
       };
       
       if (field.mapping === 'DYNAMIC' && field.fieldName) {
@@ -264,11 +265,12 @@ export default function KundkortsmallPage() {
     // Prepare data for API
     const dynamicFields: Record<string, string> = {};
     
-    editFields.forEach(field => {
+    editFields.forEach((field, index) => {
       const fieldData = {
         mapping: field.mapping,
         inputType: field.inputType,
-        isRequired: field.isRequired
+        isRequired: field.isRequired,
+        order: index // Add order information to maintain sequence
       };
       
       if (field.mapping === 'DYNAMIC' && field.fieldName) {
@@ -413,7 +415,7 @@ export default function KundkortsmallPage() {
     setEditTemplateName(template.cardName);
     
     // Parse the dynamic fields from the template
-    const parsedFields: Field[] = [];
+    const parsedFields: (Field & { order?: number })[] = [];
     if (template.dynamicFields) {
       Object.entries(template.dynamicFields).forEach(([key, value]) => {
         try {
@@ -423,18 +425,23 @@ export default function KundkortsmallPage() {
               fieldName: key,
               mapping: 'DYNAMIC',
               inputType: fieldData.inputType,
-              isRequired: fieldData.isRequired
+              isRequired: fieldData.isRequired,
+              order: fieldData.order || 0
             });
           } else {
             parsedFields.push({
               mapping: fieldData.mapping,
-              isRequired: fieldData.isRequired
+              isRequired: fieldData.isRequired,
+              order: fieldData.order || 0
             });
           }
         } catch (e) {
           console.error('Error parsing field data:', e);
         }
       });
+      
+      // Sort fields by their order property
+      parsedFields.sort((a, b) => (a.order || 0) - (b.order || 0));
     }
     
     setEditFields(parsedFields.length > 0 ? parsedFields : [
@@ -453,14 +460,14 @@ export default function KundkortsmallPage() {
     <section className="flex flex-col items-center justify-center gap-4 py-8 md:py-10">
       <div className="inline-block max-w-lg text-center">
         <h1 className={title({ size: 'sm' })}>Kundkortsmallar</h1>
-        <p className="mb-4">Skapa och hantera kundkortsmallar</p>
+        <p className="mb-4">Skapa och hantera mallar för kundinformation</p>
         <Button 
           type="button" 
           onPress={() => setCreateModalOpen(true)} 
           color="primary"
           variant="flat"
         >
-          Ska ny mall
+          Skapa ny mall
         </Button>
       </div>
 
@@ -477,27 +484,40 @@ export default function KundkortsmallPage() {
               <TableColumn>Default</TableColumn>
               <TableColumn>Åtgärder</TableColumn>
             </TableHeader>
-            <TableBody emptyContent="No templates created yet.">
+            <TableBody emptyContent="Inga mallar skapade ännu.">
               {templates.map(template => (
                 <TableRow key={template.id}>
                   <TableCell>{template.cardName}</TableCell>
                   <TableCell>
                     {template.dynamicFields ? (
                       <div className="max-h-24 overflow-y-auto">
-                        {Object.entries(template.dynamicFields).map(([key, value]) => {
-                          try {
-                            const fieldData = JSON.parse(value as string);
-                            return (
-                              <div key={key} className="text-sm">
-                                {fieldData.mapping === 'DYNAMIC' ? key : 
-                                  customerFieldOptions.find(opt => opt.value === fieldData.mapping)?.label || fieldData.mapping}
-                                {fieldData.isRequired && <span className="text-danger ml-1">*</span>}
-                              </div>
-                            );
-                          } catch (e) {
-                            return <div key={key} className="text-sm">{key}</div>;
-                          }
-                        })}
+                        {(() => {
+                          // Extract and sort fields by order
+                          const fields = Object.entries(template.dynamicFields)
+                            .map(([key, value]) => {
+                              try {
+                                const fieldData = JSON.parse(value as string);
+                                return {
+                                  key,
+                                  data: fieldData
+                                };
+                              } catch (e) {
+                                return {
+                                  key,
+                                  data: { order: 999 } // Default high order for failed parsing
+                                };
+                              }
+                            })
+                            .sort((a, b) => (a.data.order || 0) - (b.data.order || 0));
+                          
+                          return fields.map(({ key, data }) => (
+                            <div key={key} className="text-sm">
+                              {data.mapping === 'DYNAMIC' ? key : 
+                                customerFieldOptions.find(opt => opt.value === data.mapping)?.label || data.mapping}
+                              {data.isRequired && <span className="text-danger ml-1">*</span>}
+                            </div>
+                          ));
+                        })()}
                       </div>
                     ) : (
                       <span className="text-gray-500">Inga fält valda</span>
@@ -590,7 +610,7 @@ export default function KundkortsmallPage() {
                   {fields.map((field, index) => (
                     <div key={index} className="p-4 border rounded-md">
                       <div className="flex justify-between items-start mb-2">
-                        <h4 className="text-sm font-medium">Fält {index + 1}</h4>
+                        <h4 className="text-sm font-medium">Field {index + 1}</h4>
                         {fields.length > 2 && (
                           <Button
                             type="button"
@@ -619,7 +639,7 @@ export default function KundkortsmallPage() {
                               >
                                 {field.mapping 
                                   ? customerFieldOptions.find(opt => opt.value === field.mapping)?.label 
-                                  : "Select field type"}
+                                  : "Välj fälttyp"}
                               </Button>
                             </DropdownTrigger>
                             <DropdownMenu 
@@ -770,7 +790,7 @@ export default function KundkortsmallPage() {
                   {editFields.map((field, index) => (
                     <div key={index} className="p-4 border rounded-md">
                       <div className="flex justify-between items-start mb-2">
-                        <h4 className="text-sm font-medium">Fält {index + 1}</h4>
+                        <h4 className="text-sm font-medium">Field {index + 1}</h4>
                         {editFields.length > 2 && (
                           <Button
                             type="button"
@@ -788,7 +808,7 @@ export default function KundkortsmallPage() {
                       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                         <div>
                           <label htmlFor={`editField-${index}-mapping`} className="block text-sm mb-1">
-                            Fälttyp
+                            Field Type
                           </label>
                           <Dropdown>
                             <DropdownTrigger>
@@ -824,7 +844,7 @@ export default function KundkortsmallPage() {
                           <>
                             <div>
                               <label htmlFor={`editField-${index}-name`} className="block text-sm mb-1">
-                                Dynamiskt fältnamn
+                                Custom Field Name
                               </label>
                               <Input
                                 id={`editField-${index}-name`}
@@ -837,7 +857,7 @@ export default function KundkortsmallPage() {
                             </div>
                             <div>
                               <label htmlFor={`editField-${index}-inputType`} className="block text-sm mb-1">
-                                Input Typ
+                                Input Type
                               </label>
                               <Dropdown>
                                 <DropdownTrigger>

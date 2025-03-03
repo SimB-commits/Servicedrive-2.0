@@ -1,6 +1,6 @@
 import React, { useState, useEffect, FormEvent } from 'react';
 import { subtitle, title } from "@/components/primitives";
-import { Tabs, Tab, Input, Button, addToast, DatePicker } from '@heroui/react';
+import { Tabs, Tab, Input, Button, addToast, DatePicker, Dropdown, DropdownTrigger, DropdownMenu, DropdownItem } from '@heroui/react';
 import { useSession } from 'next-auth/react';
 import { TicketType } from '@/types/ticket';
 import { parseZonedDateTime, getLocalTimeZone, ZonedDateTime } from "@internationalized/date";
@@ -9,6 +9,13 @@ interface Field {
   name: string;
   fieldType: string;
   isRequired: boolean;
+}
+
+interface CustomerCardTemplate {
+  id: number;
+  cardName: string;
+  dynamicFields: Record<string, any>;
+  isDefault: boolean;
 }
 
 // Hjälpfunktion – konverterad till en arrow-funktion för att undvika TS1252
@@ -68,6 +75,11 @@ export default function DocsPage() {
   const [customerSuggestions, setCustomerSuggestions] = useState<any[]>([]);
   const [selectedCustomer, setSelectedCustomer] = useState<any>(null);
   const [submitting, setSubmitting] = useState(false);
+  
+  // Nya states för kundkortsmallar
+  const [customerCardTemplates, setCustomerCardTemplates] = useState<CustomerCardTemplate[]>([]);
+  const [selectedTemplate, setSelectedTemplate] = useState<CustomerCardTemplate | null>(null);
+  const [loadingTemplates, setLoadingTemplates] = useState(true);
 
   // Hjälpfunktion för att säkerställa ZonedDateTime
   const getZonedValue = (value: any) => {
@@ -81,6 +93,7 @@ export default function DocsPage() {
     return null;
   };
 
+  // Hämta ärendetyper
   useEffect(() => {
     if (!session) return;
     fetch('/api/tickets/types')
@@ -104,6 +117,62 @@ export default function DocsPage() {
       });
   }, [session]);
 
+  // Hämta kundkortsmallar
+  useEffect(() => {
+    if (!session) return;
+    
+    setLoadingTemplates(true);
+    fetch('/api/customerCards')
+      .then((res) => res.json())
+      .then((data) => {
+        if (Array.isArray(data)) {
+          setCustomerCardTemplates(data);
+          
+          // Hitta default mallen om den finns
+          const defaultTemplate = data.find(template => template.isDefault);
+          if (defaultTemplate) {
+            setSelectedTemplate(defaultTemplate);
+          } else if (data.length > 0) {
+            setSelectedTemplate(data[0]);
+          }
+        } else {
+          console.error("API returnerade inte en array för kundkortsmallar:", data);
+          setCustomerCardTemplates([]);
+        }
+        setLoadingTemplates(false);
+      })
+      .catch((err) => {
+        console.error('Fel vid hämtning av kundkortsmallar:', err);
+        setLoadingTemplates(false);
+      });
+  }, [session]);
+
+  // Fyll i kundinformationen baserat på vald mall
+  useEffect(() => {
+    if (selectedTemplate && !selectedCustomer) {
+      // Skapa en ny formulärobjekt baserat på mallen
+      const formValues: Record<string, string> = { 
+        name: '' // Bara name behövs för sökfunktionen
+      };
+      
+      // Förbered alla fält från mallen med tomma värden
+      if (selectedTemplate.dynamicFields) {
+        Object.entries(selectedTemplate.dynamicFields).forEach(([key, value]) => {
+          try {
+            // För att undvika att skriva över den sökbara namnegenskapen
+            if (key !== 'name') {
+              formValues[key] = '';
+            }
+          } catch (e) {
+            console.error('Error setting up form field:', e);
+          }
+        });
+      }
+      
+      setCustomerFormValues(formValues as any);
+    }
+  }, [selectedTemplate, selectedCustomer]);
+
   const handleTicketInputChange = (value: any, fieldName: string): void => {
     console.log("Uppdaterar fält", fieldName, "med värde", value);
     setTicketFormValues((prev) => ({
@@ -121,6 +190,35 @@ export default function DocsPage() {
       setSelectedCustomer(null);
     }
   };
+  
+  // Uppdaterad funktion för att hantera kund som valts från söklistan
+  const handleSelectCustomer = (customer: any) => {
+    // Gör en mer omfattande uppdatering av formuläret
+    const formValues: Record<string, string> = {
+      name: customer.name || ''
+    };
+    
+    // Lägg till standardfälten från kunden
+    if (customer.email) formValues.email = customer.email;
+    if (customer.phoneNumber) formValues.phoneNumber = customer.phoneNumber;
+    if (customer.firstName) formValues.firstName = customer.firstName;
+    if (customer.lastName) formValues.lastName = customer.lastName;
+    if (customer.address) formValues.address = customer.address;
+    if (customer.postalCode) formValues.postalCode = customer.postalCode;
+    if (customer.city) formValues.city = customer.city;
+    if (customer.country) formValues.country = customer.country;
+    
+    // Om det finns dynamiska fält i kunden, lägg till dem också
+    if (customer.dynamicFields) {
+      Object.entries(customer.dynamicFields).forEach(([key, value]) => {
+        formValues[key] = value as string;
+      });
+    }
+    
+    setCustomerFormValues(formValues as any);
+    setSelectedCustomer(customer);
+    setCustomerSuggestions([]);
+  };
 
   // Debounce för kundförslag
   useEffect(() => {
@@ -129,17 +227,33 @@ export default function DocsPage() {
       return;
     }
     const fetchSuggestions = async () => {
-      const searchTerm = customerFormValues.name.trim();
-      if (searchTerm.length < 2) {
+      const searchTerm = customerFormValues.name?.trim();
+      if (!searchTerm || searchTerm.length < 2) {
         setCustomerSuggestions([]);
         return;
       }
       try {
         const res = await fetch(`/api/customers?search=${encodeURIComponent(searchTerm)}`);
         const data = await res.json();
-        const filteredSuggestions = data.filter((customer: any) =>
-          customer.name.toLowerCase().includes(searchTerm.toLowerCase())
-        );
+        
+        // Filtrera resultat baserat på söktermen
+        // Skapa en visningsnamnegenskap från firstName + lastName för kunder som inte har ett 'name'-fält
+        const filteredSuggestions = data.filter((customer: any) => {
+          // Hantera namnmatchning på olika sätt beroende på vilka fält som finns
+          if (customer.name) {
+            return customer.name.toLowerCase().includes(searchTerm.toLowerCase());
+          } else if (customer.firstName || customer.lastName) {
+            const fullName = `${customer.firstName || ''} ${customer.lastName || ''}`.trim();
+            customer.name = fullName; // Lägg till en name-egenskap för visning
+            return fullName.toLowerCase().includes(searchTerm.toLowerCase());
+          } else if (customer.email) {
+            // Om varken name eller firstName/lastName finns, sök på email
+            customer.name = customer.email; // Använd email som visningsnamn
+            return customer.email.toLowerCase().includes(searchTerm.toLowerCase());
+          }
+          return false;
+        });
+        
         setCustomerSuggestions(filteredSuggestions);
       } catch (err) {
         console.error('Fel vid hämtning av kundförslag:', err);
@@ -149,6 +263,11 @@ export default function DocsPage() {
     const debounceTimer = setTimeout(fetchSuggestions, 300);
     return () => clearTimeout(debounceTimer);
   }, [customerFormValues.name, selectedCustomer]);
+
+  const handleSelectTemplate = (template: CustomerCardTemplate) => {
+    setSelectedTemplate(template);
+    setExpandedCustomerForm(false);
+  };
 
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -201,9 +320,6 @@ export default function DocsPage() {
         return { formattedFields, dueDateValue };
       };
       
-      
-      
-
       const { formattedFields, dueDateValue } = prepareDynamicFields();
       console.log("About to send request with dueDateValue:", dueDateValue);
 
@@ -242,10 +358,10 @@ export default function DocsPage() {
     setSubmitting(false);
   };
 
-  if (loadingTicketTypes) {
+  if (loadingTicketTypes || loadingTemplates) {
     return (
       <section className="flex flex-col items-center justify-center gap-4 py-8 md:py-10">
-        <div>Laddar ärendetyper...</div>
+        <div>Laddar...</div>
       </section>
     );
   }
@@ -283,15 +399,43 @@ export default function DocsPage() {
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
             <div>
-              <h1 className={subtitle({ size: 'sm' })}>Kundinformation</h1>
+              <div className="flex justify-between items-center mb-4">
+                <h1 className={subtitle({ size: 'sm' })}>Kundinformation</h1>
+                
+                {/* Visa mall-väljare om det finns flera mallar */}
+                {customerCardTemplates.length > 1 && (
+                  <Dropdown>
+                    <DropdownTrigger>
+                      <Button 
+                        variant="flat" 
+                        size="sm"
+                      >
+                        {selectedTemplate ? `Mall: ${selectedTemplate.cardName}` : 'Välj kundkortsmall'}
+                      </Button>
+                    </DropdownTrigger>
+                    <DropdownMenu aria-label="Kundkortsmallar">
+                      {customerCardTemplates.map(template => (
+                        <DropdownItem 
+                          key={template.id}
+                          onClick={() => handleSelectTemplate(template)}
+                        >
+                          {template.cardName} {template.isDefault && '(Standard)'}
+                        </DropdownItem>
+                      ))}
+                    </DropdownMenu>
+                  </Dropdown>
+                )}
+              </div>
+              
               <div className="mt-4 relative grid grid-cols-2 gap-4">
-                <div className="col-span-2">
+                {/* Sökfält för kundsökning - detta behåller vi eftersom det är centralt för funktionaliteten */}
+                <div className="col-span-2 mb-4">
                   <Input
-                    label="Namn"
-                    name="name"
+                    label="Sök kund"
+                    name="customerSearch"
                     type="text"
-                    isRequired
-                    value={customerFormValues.name}
+                    placeholder="Skriv kundnamn för att söka..."
+                    value={customerFormValues.name || ''}
                     onValueChange={(value: string) => handleCustomerInputChange(value, 'name')}
                   />
                   {customerSuggestions.length > 0 && (
@@ -300,34 +444,76 @@ export default function DocsPage() {
                         <div
                           key={customer.id}
                           className="px-4 py-2 hover:bg-gray-100 cursor-pointer"
-                          onClick={() => {
-                            setCustomerFormValues({ name: customer.name, email: customer.email, phoneNumber: customer.phoneNumber });
-                            setSelectedCustomer(customer);
-                            setCustomerSuggestions([]);
-                          }}
+                          onClick={() => handleSelectCustomer(customer)}
                         >
-                          {customer.name} - {customer.email}
+                          {/* Visa visningsnamn (name eller kombinerat firstName + lastName) och email */}
+                          {customer.name} {customer.email ? `- ${customer.email}` : ''}
                         </div>
                       ))}
                     </div>
                   )}
                 </div>
-                <Input
-                  label="Email"
-                  name="email"
-                  type="email"
-                  isRequired
-                  value={customerFormValues.email}
-                  onValueChange={(value: string) => handleCustomerInputChange(value, 'email')}
-                />
-                <Input
-                  label="Telefonnummer"
-                  name="phoneNumber"
-                  type="text"
-                  isRequired
-                  value={customerFormValues.phoneNumber}
-                  onValueChange={(value: string) => handleCustomerInputChange(value, 'phoneNumber')}
-                />
+                
+                {/* Visa endast valda mallens fält */}
+                {selectedTemplate && selectedTemplate.dynamicFields && (
+                  <>
+                    {/* Vi använder Object.entries och index för att garantera att fälten
+                        visas i exakt samma ordning som de definierades i mallen */}
+                    {Object.entries(selectedTemplate.dynamicFields)
+                      // Preservera ordningen som fälten är definierade i mallen
+                      .map(([key, value], index) => {
+                        try {
+                          const fieldData = typeof value === 'string' ? JSON.parse(value) : value;
+                          // Lagra både nyckeln, index och fieldData för sortering
+                          return { key, index, fieldData };
+                        } catch (e) {
+                          console.error('Error parsing field data:', e);
+                          return null;
+                        }
+                      })
+                      .filter(Boolean)
+                      // Sortera baserat på indexet i mallen för att säkerställa ordningen
+                      .sort((a, b) => a.index - b.index)
+                      .map(field => {
+                        if (!field) return null;
+                        const { key, fieldData } = field;
+                        
+                        // Rita ut fältet baserat på fältdatan
+                        const fieldLabel = fieldData.mapping === 'DYNAMIC' 
+                          ? key 
+                          : (key.charAt(0).toUpperCase() + key.slice(1));
+                        
+                        // Bestäm vilken typ av input som ska användas
+                        let inputType = "text";
+                        if (fieldData.inputType === 'NUMBER') {
+                          inputType = "number";
+                        } else if (fieldData.inputType === 'DATE') {
+                          inputType = "date";
+                        } else if (key === 'email') {
+                          inputType = "email";
+                        }
+                        
+                        return (
+                          <div key={key} className={fieldData.mapping === 'DYNAMIC' || key === 'address' ? 'col-span-2' : 'col-span-1'}>
+                            <Input
+                              label={fieldLabel}
+                              name={key}
+                              type={inputType}
+                              isRequired={fieldData.isRequired}
+                              value={customerFormValues[key] || ''}
+                              onValueChange={(value: string) => {
+                                setCustomerFormValues(prev => ({
+                                  ...prev,
+                                  [key]: value
+                                }));
+                              }}
+                            />
+                          </div>
+                        );
+                      })
+                    }
+                  </>
+                )}
               </div>
             </div>
             <div>
@@ -403,4 +589,8 @@ function zonedToString(value: ZonedDateTime): string {
   } else {
     return "";
   }
+}
+
+function setExpandedCustomerForm(arg0: boolean) {
+  throw new Error('Function not implemented.');
 }
