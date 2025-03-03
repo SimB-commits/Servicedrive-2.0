@@ -120,6 +120,7 @@ model Customer {
 }
 
 model CustomerCard {
+  cardName       String?
   id             Int      @id @default(autoincrement())
   firstName      String?  
   lastName       String?  
