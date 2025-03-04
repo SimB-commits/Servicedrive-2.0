@@ -92,8 +92,12 @@ const TicketDrawer: React.FC<TicketDrawerProps> = ({ isOpen, onClose, ticket }) 
             <p>
               <strong>Kundnamn:</strong> {getCustomerName()}
             </p>
+            // Uppdatera kundvisningen i TicketDrawer för att inkludera nyhetsbrev och stamkund
             {ticket.customer && (
               <>
+                <p>
+                  <strong>Kundnamn:</strong> {getCustomerName()}
+                </p>
                 
                 {ticket.customer.email && (
                   <p>
@@ -125,6 +129,19 @@ const TicketDrawer: React.FC<TicketDrawerProps> = ({ isOpen, onClose, ticket }) 
                     <strong>Land:</strong> {ticket.customer.country}
                   </p>
                 )}
+                
+                {/* Visa nyhetsbrev och stamkund status */}
+                {ticket.customer.newsletter !== undefined && (
+                  <p>
+                    <strong>Nyhetsbrev:</strong> {ticket.customer.newsletter ? 'Ja' : 'Nej'}
+                  </p>
+                )}
+                {ticket.customer.loyal !== undefined && (
+                  <p>
+                    <strong>Stamkund:</strong> {ticket.customer.loyal ? 'Ja' : 'Nej'}
+                  </p>
+                )}
+                
                 {/* Visa dynamiska fält om de finns */}
                 {ticket.customer.dynamicFields && Object.keys(ticket.customer.dynamicFields).length > 0 && (
                   <>

@@ -1,4 +1,4 @@
-// src/pages/kundkortsmallar/index.tsx
+// src/pages/kundkort/index.tsx
 import React, { useState, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
 import {
@@ -52,6 +52,8 @@ const customerFieldOptions = [
   { value: 'dateOfBirth', label: 'Födelsedatum' },
   { value: 'email', label: 'E-post' },
   { value: 'phoneNumber', label: 'Telefon' },
+  { value: 'newsletter', label: 'Nyhetsbrev' },
+  { value: 'loyal', label: 'Stamkund' },
   { value: 'DYNAMIC', label: 'Eget fält' },
 ];
 
@@ -97,17 +99,17 @@ export default function KundkortsmallPage() {
       } else {
         const error = await response.json();
         addToast({
-          title: 'Error',
-          description: error.message || 'Failed to fetch customer card templates',
+          title: 'Fel',
+          description: error.message || 'Kunde inte hämta kundkortsmallar',
           color: 'danger',
           variant: 'flat'
         });
       }
     } catch (error) {
-      console.error('Error fetching templates:', error);
+      console.error('Fel vid hämtning av mallar:', error);
       addToast({
-        title: 'Error',
-        description: 'An error occurred while fetching templates',
+        title: 'Fel',
+        description: 'Ett fel inträffade vid hämtning av mallar',
         color: 'danger',
         variant: 'flat'
       });
@@ -151,18 +153,18 @@ export default function KundkortsmallPage() {
     // Validate form
     const errors: Record<string, string> = {};
     if (!templateName.trim()) {
-      errors.templateName = 'Template name is required';
+      errors.templateName = 'Mall-namn är obligatoriskt';
     }
 
     fields.forEach((field, index) => {
       if (!field.mapping) {
-        errors[`field_${index}_mapping`] = 'Field mapping is required';
+        errors[`field_${index}_mapping`] = 'Fälttyp är obligatoriskt';
       }
       if (field.mapping === 'DYNAMIC' && !field.fieldName?.trim()) {
-        errors[`field_${index}_fieldName`] = 'Custom field name is required';
+        errors[`field_${index}_fieldName`] = 'Namn för eget fält är obligatoriskt';
       }
       if (field.mapping === 'DYNAMIC' && !field.inputType) {
-        errors[`field_${index}_inputType`] = 'Input type is required for custom fields';
+        errors[`field_${index}_inputType`] = 'Inputtyp är obligatoriskt för egna fält';
       }
     });
 
@@ -207,8 +209,8 @@ export default function KundkortsmallPage() {
       if (response.ok) {
         const newTemplate = await response.json();
         addToast({
-          title: 'Success',
-          description: 'Customer card template created successfully',
+          title: 'Framgång',
+          description: 'Kundkortsmall skapades',
           color: 'success',
           variant: 'flat'
         });
@@ -218,17 +220,17 @@ export default function KundkortsmallPage() {
       } else {
         const error = await response.json();
         addToast({
-          title: 'Error',
-          description: error.message || 'Failed to create template',
+          title: 'Fel',
+          description: error.message || 'Kunde inte skapa mall',
           color: 'danger',
           variant: 'flat'
         });
       }
     } catch (error) {
-      console.error('Error creating template:', error);
+      console.error('Fel vid skapande av mall:', error);
       addToast({
-        title: 'Error',
-        description: 'An error occurred while creating the template',
+        title: 'Fel',
+        description: 'Ett fel inträffade vid skapande av mallen',
         color: 'danger',
         variant: 'flat'
       });
@@ -242,18 +244,18 @@ export default function KundkortsmallPage() {
     // Similar validation as in handleSubmit
     const errors: Record<string, string> = {};
     if (!editTemplateName.trim()) {
-      errors.editTemplateName = 'Template name is required';
+      errors.editTemplateName = 'Mall-namn är obligatoriskt';
     }
 
     editFields.forEach((field, index) => {
       if (!field.mapping) {
-        errors[`editField_${index}_mapping`] = 'Field mapping is required';
+        errors[`editField_${index}_mapping`] = 'Fälttyp är obligatoriskt';
       }
       if (field.mapping === 'DYNAMIC' && !field.fieldName?.trim()) {
-        errors[`editField_${index}_fieldName`] = 'Custom field name is required';
+        errors[`editField_${index}_fieldName`] = 'Namn för eget fält är obligatoriskt';
       }
       if (field.mapping === 'DYNAMIC' && !field.inputType) {
-        errors[`editField_${index}_inputType`] = 'Input type is required for custom fields';
+        errors[`editField_${index}_inputType`] = 'Inputtyp är obligatoriskt för egna fält';
       }
     });
 
@@ -297,8 +299,8 @@ export default function KundkortsmallPage() {
       if (response.ok) {
         const updatedTemplate = await response.json();
         addToast({
-          title: 'Success',
-          description: 'Template updated successfully',
+          title: 'Framgång',
+          description: 'Mallen uppdaterades',
           color: 'success',
           variant: 'flat'
         });
@@ -308,17 +310,17 @@ export default function KundkortsmallPage() {
       } else {
         const error = await response.json();
         addToast({
-          title: 'Error',
-          description: error.message || 'Failed to update template',
+          title: 'Fel',
+          description: error.message || 'Kunde inte uppdatera mall',
           color: 'danger',
           variant: 'flat'
         });
       }
     } catch (error) {
-      console.error('Error updating template:', error);
+      console.error('Fel vid uppdatering av mall:', error);
       addToast({
-        title: 'Error',
-        description: 'An error occurred while updating the template',
+        title: 'Fel',
+        description: 'Ett fel inträffade vid uppdatering av mallen',
         color: 'danger',
         variant: 'flat'
       });
@@ -326,7 +328,7 @@ export default function KundkortsmallPage() {
   };
 
   const handleDeleteTemplate = async (id: number) => {
-    if (!confirm('Are you sure you want to delete this template?')) return;
+    if (!confirm('Är du säker på att du vill ta bort denna mall?')) return;
 
     try {
       const response = await fetch(`/api/customerCards/${id}`, {
@@ -335,8 +337,8 @@ export default function KundkortsmallPage() {
 
       if (response.ok) {
         addToast({
-          title: 'Success',
-          description: 'Template deleted successfully',
+          title: 'Framgång',
+          description: 'Mallen togs bort',
           color: 'success',
           variant: 'flat'
         });
@@ -344,17 +346,17 @@ export default function KundkortsmallPage() {
       } else {
         const error = await response.json();
         addToast({
-          title: 'Error',
-          description: error.message || 'Failed to delete template',
+          title: 'Fel',
+          description: error.message || 'Kunde inte ta bort mall',
           color: 'danger',
           variant: 'flat'
         });
       }
     } catch (error) {
-      console.error('Error deleting template:', error);
+      console.error('Fel vid borttagning av mall:', error);
       addToast({
-        title: 'Error',
-        description: 'An error occurred while deleting the template',
+        title: 'Fel',
+        description: 'Ett fel inträffade vid borttagning av mallen',
         color: 'danger',
         variant: 'flat'
       });
@@ -369,8 +371,8 @@ export default function KundkortsmallPage() {
 
       if (response.ok) {
         addToast({
-          title: 'Success',
-          description: 'Default template updated',
+          title: 'Framgång',
+          description: 'Standardmall uppdaterad',
           color: 'success',
           variant: 'flat'
         });
@@ -384,17 +386,17 @@ export default function KundkortsmallPage() {
       } else {
         const error = await response.json();
         addToast({
-          title: 'Error',
-          description: error.message || 'Failed to update default template',
+          title: 'Fel',
+          description: error.message || 'Kunde inte uppdatera standardmall',
           color: 'danger',
           variant: 'flat'
         });
       }
     } catch (error) {
-      console.error('Error setting default template:', error);
+      console.error('Fel vid inställning av standardmall:', error);
       addToast({
-        title: 'Error',
-        description: 'An error occurred while updating default template',
+        title: 'Fel',
+        description: 'Ett fel inträffade vid uppdatering av standardmall',
         color: 'danger',
         variant: 'flat'
       });
@@ -453,7 +455,7 @@ export default function KundkortsmallPage() {
   };
 
   if (!session) {
-    return <div className="p-8">Please sign in to access this page</div>;
+    return <div className="p-8">Vänligen logga in för att komma åt denna sida</div>;
   }
 
   return (
@@ -481,7 +483,7 @@ export default function KundkortsmallPage() {
             <TableHeader>
               <TableColumn>Namn</TableColumn>
               <TableColumn>Fält</TableColumn>
-              <TableColumn>Default</TableColumn>
+              <TableColumn>Standard</TableColumn>
               <TableColumn>Åtgärder</TableColumn>
             </TableHeader>
             <TableBody emptyContent="Inga mallar skapade ännu.">
@@ -525,7 +527,7 @@ export default function KundkortsmallPage() {
                   </TableCell>
                   <TableCell>
                     {template.isDefault ? (
-                      <span className="text-success font-medium">Default</span>
+                      <span className="text-success font-medium">Standard</span>
                     ) : (
                       <Button 
                         size="sm" 
@@ -610,7 +612,7 @@ export default function KundkortsmallPage() {
                   {fields.map((field, index) => (
                     <div key={index} className="p-4 border rounded-md">
                       <div className="flex justify-between items-start mb-2">
-                        <h4 className="text-sm font-medium">Field {index + 1}</h4>
+                        <h4 className="text-sm font-medium">Fält {index + 1}</h4>
                         {fields.length > 2 && (
                           <Button
                             type="button"
@@ -711,14 +713,23 @@ export default function KundkortsmallPage() {
                           </>
                         )}
 
-                        <div className="sm:col-span-2">
-                          <Checkbox
-                            isSelected={field.isRequired}
-                            onValueChange={(checked) => updateField(index, { isRequired: checked })}
-                          >
-                            Obligatoriskt fält
-                          </Checkbox>
-                        </div>
+                        {/* Specialhantering för nyhetsbrev och stamkund - de använder checkbox i formuläret */}
+                        {(field.mapping === 'newsletter' || field.mapping === 'loyal') ? (
+                          <div className="sm:col-span-2">
+                            <p className="text-sm text-default-600">
+                              {field.mapping === 'newsletter' ? 'Detta fält kommer visas som en checkbox för nyhetsbrev' : 'Detta fält kommer visas som en checkbox för stamkund'}
+                            </p>
+                          </div>
+                        ) : (
+                          <div className="sm:col-span-2">
+                            <Checkbox
+                              isSelected={field.isRequired}
+                              onValueChange={(checked) => updateField(index, { isRequired: checked })}
+                            >
+                              Obligatoriskt fält
+                            </Checkbox>
+                          </div>
+                        )}
                       </div>
                     </div>
                   ))}
@@ -790,7 +801,7 @@ export default function KundkortsmallPage() {
                   {editFields.map((field, index) => (
                     <div key={index} className="p-4 border rounded-md">
                       <div className="flex justify-between items-start mb-2">
-                        <h4 className="text-sm font-medium">Field {index + 1}</h4>
+                        <h4 className="text-sm font-medium">Fält {index + 1}</h4>
                         {editFields.length > 2 && (
                           <Button
                             type="button"
@@ -808,7 +819,7 @@ export default function KundkortsmallPage() {
                       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                         <div>
                           <label htmlFor={`editField-${index}-mapping`} className="block text-sm mb-1">
-                            Field Type
+                            Fälttyp
                           </label>
                           <Dropdown>
                             <DropdownTrigger>
@@ -819,7 +830,7 @@ export default function KundkortsmallPage() {
                               >
                                 {field.mapping 
                                   ? customerFieldOptions.find(opt => opt.value === field.mapping)?.label 
-                                  : "Select field type"}
+                                  : "Välj fälttyp"}
                               </Button>
                             </DropdownTrigger>
                             <DropdownMenu 
@@ -844,20 +855,20 @@ export default function KundkortsmallPage() {
                           <>
                             <div>
                               <label htmlFor={`editField-${index}-name`} className="block text-sm mb-1">
-                                Custom Field Name
+                                Dynamiskt fältnamn
                               </label>
                               <Input
                                 id={`editField-${index}-name`}
                                 value={field.fieldName || ''}
                                 onValueChange={(value) => updateEditField(index, { fieldName: value })}
-                                placeholder="Enter field name"
+                                placeholder="Skriv fältnamnet"
                                 isInvalid={!!validationErrors[`editField_${index}_fieldName`]}
                                 errorMessage={validationErrors[`editField_${index}_fieldName`]}
                               />
                             </div>
                             <div>
                               <label htmlFor={`editField-${index}-inputType`} className="block text-sm mb-1">
-                                Input Type
+                                Input Typ
                               </label>
                               <Dropdown>
                                 <DropdownTrigger>
@@ -868,7 +879,7 @@ export default function KundkortsmallPage() {
                                   >
                                     {field.inputType 
                                       ? inputTypeOptions.find(opt => opt.value === field.inputType)?.label 
-                                      : "Select input type"}
+                                      : "Välj input typ"}
                                   </Button>
                                 </DropdownTrigger>
                                 <DropdownMenu 
@@ -891,14 +902,23 @@ export default function KundkortsmallPage() {
                           </>
                         )}
 
-                        <div className="sm:col-span-2">
-                          <Checkbox
-                            isSelected={field.isRequired}
-                            onValueChange={(checked) => updateEditField(index, { isRequired: checked })}
-                          >
-                            Obligatoriskt fält
-                          </Checkbox>
-                        </div>
+                        {/* Specialhantering för nyhetsbrev och stamkund - de använder checkbox i formuläret */}
+                        {(field.mapping === 'newsletter' || field.mapping === 'loyal') ? (
+                          <div className="sm:col-span-2">
+                            <p className="text-sm text-default-600">
+                              {field.mapping === 'newsletter' ? 'Detta fält kommer visas som en checkbox för nyhetsbrev' : 'Detta fält kommer visas som en checkbox för stamkund'}
+                            </p>
+                          </div>
+                        ) : (
+                          <div className="sm:col-span-2">
+                            <Checkbox
+                              isSelected={field.isRequired}
+                              onValueChange={(checked) => updateEditField(index, { isRequired: checked })}
+                            >
+                              Obligatoriskt fält
+                            </Checkbox>
+                          </div>
+                        )}
                       </div>
                     </div>
                   ))}

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, FormEvent } from 'react';
 import { subtitle, title } from "@/components/primitives";
-import { Tabs, Tab, Input, Button, addToast, DatePicker, Dropdown, DropdownTrigger, DropdownMenu, DropdownItem } from '@heroui/react';
+import { Tabs, Tab, Input, Button, addToast, DatePicker, Dropdown, DropdownTrigger, DropdownMenu, DropdownItem, Checkbox } from '@heroui/react';
 import { useSession } from 'next-auth/react';
 import { TicketType } from '@/types/ticket';
 import { parseZonedDateTime, getLocalTimeZone, ZonedDateTime } from "@internationalized/date";
@@ -149,17 +149,22 @@ export default function DocsPage() {
   useEffect(() => {
     if (selectedTemplate && !selectedCustomer) {
       // Skapa en ny formulärobjekt baserat på mallen
-      const formValues: Record<string, string> = { 
-        name: '' // Bara name behövs för sökfunktionen
+      const formValues: Record<string, any> = { 
+        name: '' // Bara name behövs för sökningen
       };
       
       // Förbered alla fält från mallen med tomma värden
       if (selectedTemplate.dynamicFields) {
         Object.entries(selectedTemplate.dynamicFields).forEach(([key, value]) => {
           try {
-            // För att undvika att skriva över den sökbara namnegenskapen
-            if (key !== 'name') {
-              formValues[key] = '';
+            const fieldData = typeof value === 'string' ? JSON.parse(value) : value;
+            const fieldName = fieldData.mapping === 'DYNAMIC' ? key : fieldData.mapping;
+            
+            // Sätt standardvärden för olika fälttyper
+            if (fieldName === 'newsletter' || fieldName === 'loyal') {
+              formValues[fieldName] = false; // Checkboxar är avstängda som standard
+            } else {
+              formValues[fieldName] = ''; // Textfält är tomma som standard
             }
           } catch (e) {
             console.error('Error setting up form field:', e);
@@ -170,6 +175,77 @@ export default function DocsPage() {
       setCustomerFormValues(formValues as any);
     }
   }, [selectedTemplate, selectedCustomer]);
+
+  // Uppdaterad funktion för att rendera mallfält inklusive checkboxar
+  const renderTemplateField = (key: string, fieldData: any, formValues: Record<string, any>) => {
+    const fieldName = fieldData.mapping === 'DYNAMIC' ? key : fieldData.mapping;
+    const fieldLabel = fieldData.mapping === 'DYNAMIC' 
+      ? key 
+      : (fieldName.charAt(0).toUpperCase() + fieldName.slice(1));
+    
+    // Specialhantering för nyhetsbrev och stamkund - använd Checkbox
+    if (fieldName === 'newsletter') {
+      return (
+        <div key={key} className="col-span-1 mt-4">
+          <Checkbox
+            isSelected={formValues.newsletter || false}
+            onValueChange={(checked) => {
+              setCustomerFormValues(prev => ({
+                ...prev,
+                newsletter: checked
+              }));
+            }}
+          >
+            Nyhetsbrev
+          </Checkbox>
+        </div>
+      );
+    }
+    
+    // Bestäm vilken typ av input som ska användas
+    let inputType = "text";
+    if (fieldData.inputType === 'NUMBER') {
+      inputType = "number";
+    } else if (fieldData.inputType === 'DATE' || fieldName === 'dateOfBirth') {
+      inputType = "date";
+    } else if (fieldName === 'email') {
+      inputType = "email";
+    }
+    
+    return (
+      <div key={key} className={fieldData.mapping === 'DYNAMIC' || fieldName === 'address' ? 'col-span-2' : 'col-span-1'}>
+        <Input
+          label={fieldLabel}
+          name={fieldName}
+          type={inputType}
+          isRequired={fieldData.isRequired || fieldName === 'email'}
+          value={formValues[fieldName] || ''}
+          onValueChange={(value) => {
+            setCustomerFormValues(prev => ({ ...prev, [fieldName]: value }));
+          }}
+        />
+      </div>
+    );
+  };
+    if (fieldName === 'loyal') {
+      return (
+        <div key={key} className="col-span-1 mt-4">
+          <Checkbox
+            isSelected={formValues.loyal || false}
+            onValueChange={(checked) => {
+              setCustomerFormValues(prev => ({
+                ...prev,
+                loyal: checked
+              }));
+            }}
+          >
+            Stamkund
+          </Checkbox>
+        </div>
+      );
+    }
+    
+  
 
   const handleTicketInputChange = (value: any, fieldName: string): void => {
     console.log("Uppdaterar fält", fieldName, "med värde", value);
@@ -314,6 +390,9 @@ const getCustomerDisplayName = (customer: any): string => {
           postalCode,
           city,
           country,
+          dateOfBirth,
+          newsletter,
+          loyal,
           ...otherFields // Övriga fält hamnar i dynamicFields
         } = customerFormValues;
   
@@ -327,6 +406,10 @@ const getCustomerDisplayName = (customer: any): string => {
           postalCode,
           city,
           country,
+          dateOfBirth,
+          // Säkerställ att newsletter och loyal skickas som booleans
+          newsletter: newsletter === true,
+          loyal: loyal === true,
           // Samla alla andra fält i dynamicFields
           dynamicFields: otherFields 
         };
@@ -464,7 +547,7 @@ const getCustomerDisplayName = (customer: any): string => {
                       {customerCardTemplates.map(template => (
                         <DropdownItem 
                           key={template.id}
-                          onClick={() => handleSelectTemplate(template)}
+                          onPress={() => handleSelectTemplate(template)}
                         >
                           {template.cardName} {template.isDefault && '(Standard)'}
                         </DropdownItem>
@@ -501,7 +584,7 @@ const getCustomerDisplayName = (customer: any): string => {
                   )}
                 </div>
                 
-                {/* Visa endast valda mallens fält */}
+                {/* Inom renderingen, använd detta för att visa formulärfälten: */}
                 {selectedTemplate && selectedTemplate.dynamicFields && (
                   <>
                     {/* Vi använder Object.entries och sorterar baserat på order-egenskapen */}
@@ -525,43 +608,11 @@ const getCustomerDisplayName = (customer: any): string => {
                       .sort((a, b) => (a.order || 0) - (b.order || 0))
                       .map(field => {
                         if (!field) return null;
-                        const { key, fieldData } = field;
-                        
-                        // Rita ut fältet baserat på fältdatan
-                        const fieldLabel = fieldData.mapping === 'DYNAMIC' 
-                          ? key 
-                          : (key.charAt(0).toUpperCase() + key.slice(1));
-                        
-                        // Bestäm vilken typ av input som ska användas
-                        let inputType = "text";
-                        if (fieldData.inputType === 'NUMBER') {
-                          inputType = "number";
-                        } else if (fieldData.inputType === 'DATE') {
-                          inputType = "date";
-                        } else if (key === 'email') {
-                          inputType = "email";
-                        }
-                        
-                        return (
-                          <div key={key} className={fieldData.mapping === 'DYNAMIC' || key === 'address' ? 'col-span-2' : 'col-span-1'}>
-                            <Input
-                              label={fieldLabel}
-                              name={key}
-                              type={inputType}
-                              isRequired={fieldData.isRequired}
-                              value={customerFormValues[key] || ''}
-                              onValueChange={(value: string) => {
-                                setCustomerFormValues(prev => ({
-                                  ...prev,
-                                  [key]: value
-                                }));
-                              }}
-                            />
-                          </div>
-                        );
+                        // Anropa renderTemplateField för att hantera varje fält
+                        return renderTemplateField(field.key, field.fieldData, customerFormValues);
                       })
                     }
-                  </>
+                  </> 
                 )}
               </div>
             </div>
