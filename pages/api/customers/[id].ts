@@ -3,7 +3,7 @@ import type { NextApiRequest, NextApiResponse } from 'next';
 import { PrismaClient } from '@prisma/client';
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from '../auth/authOptions';
-import { updateCustomerSchema } from '../../../utils/validation';
+import { updateCustomerSchema } from '@/utils/validation';
 import rateLimiter from '@/lib/rateLimiterApi';
 
 const prisma = new PrismaClient();
@@ -139,13 +139,33 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             return res.status(403).json({ error: 'Forbidden' });
           }
 
-          await prisma.customer.delete({
-            where: { id: customerId },
+          // Använd en transaktion för att ta bort kunden och alla relaterade ärenden
+          await prisma.$transaction(async (tx) => {
+            // 1. Först ta bort alla meddelanden som tillhör kundens ärenden
+            await tx.message.deleteMany({
+              where: {
+                ticket: {
+                  customerId: customerId
+                }
+              }
+            });
+            
+            // 2. Ta bort alla kundens ärenden
+            await tx.ticket.deleteMany({
+              where: {
+                customerId: customerId
+              }
+            });
+            
+            // 3. Till sist ta bort själva kunden
+            await tx.customer.delete({
+              where: { id: customerId }
+            });
           });
 
           res.status(204).end();
         } catch (error) {
-          console.error(error);
+          console.error('Fel vid borttagning:', error);
           res.status(500).json({ error: 'Server error' });
         }
         break;

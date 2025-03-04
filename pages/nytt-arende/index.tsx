@@ -59,8 +59,6 @@ const formatValue = (value: any): string => {
   return "";
 };
 
-
-
 export default function DocsPage() {
   const [ticketFormValues, setTicketFormValues] = useState<Record<string, any>>({});
   const { data: session, status } = useSession();
@@ -285,7 +283,7 @@ const getCustomerDisplayName = (customer: any): string => {
 
   const handleSelectTemplate = (template: CustomerCardTemplate) => {
     setSelectedTemplate(template);
-    setExpandedCustomerForm(false);
+    // Ta bort anropet till setExpandedCustomerForm som orsakar felet
   };
 
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
@@ -641,9 +639,3 @@ function zonedToString(value: ZonedDateTime): string {
     return "";
   }
 }
-
-function setExpandedCustomerForm(arg0: boolean) {
-  throw new Error('Function not implemented.');
-}
-
-

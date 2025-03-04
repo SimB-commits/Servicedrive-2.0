@@ -55,9 +55,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
       case 'POST':
         try {
+          // Logga inkommande data för debug
+          console.log("Inkommande customer-data:", req.body);
+          
           // Validera inkommande data med Zod
           const parseResult = createCustomerSchema.safeParse(req.body);
-          console.log('parseResult:', parseResult);
 
           if (!parseResult.success) {
             const errors = parseResult.error.errors.map((err) => ({
@@ -72,7 +74,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             firstName, 
             lastName, 
             email, 
-            phoneNumber, 
+            phoneNumber,  // Viktigt!
             address, 
             postalCode, 
             city, 
@@ -82,6 +84,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             loyal, 
             dynamicFields 
           } = parseResult.data;
+
+          // Logga phoneNumber specifikt för debug
+          console.log("phoneNumber från validerad data:", phoneNumber);
 
           // Kontrollera om kunden redan finns inom butiken
           const existingCustomer = await prisma.customer.findFirst({
@@ -95,28 +100,37 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             return res.status(400).json({ message: 'Kund med denna email finns redan.' });
           }
 
-          // Skapa ny kund - säkerställ att varje fält hamnar i rätt kolumn i databasen
+          // Förbered data för Prisma - explicit hantering av phoneNumber
+          const customerData = {
+            firstName,
+            lastName,
+            email,
+            phoneNumber,  // Se till att detta kommer med
+            address,
+            postalCode,
+            city,
+            country,
+            dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : null,
+            newsletter: newsletter || false,
+            loyal: loyal || false,
+            dynamicFields: dynamicFields || {},
+            storeId: session.user.storeId,
+          };
+
+          // Logga hela objektet som skickas till Prisma
+          console.log("Customer-data som skickas till Prisma:", customerData);
+
+          // Skapa ny kund med explicit benämning av phoneNumber
           const newCustomer = await prisma.customer.create({
-            data: {
-              firstName,
-              lastName,
-              email,
-              phoneNumber,
-              address,
-              postalCode,
-              city,
-              country,
-              dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : null,
-              newsletter: newsletter || false,
-              loyal: loyal || false,
-              dynamicFields: dynamicFields || {},
-              storeId: session.user.storeId,
-            },
+            data: customerData
           });
+
+          // Logga skapad kund för att verifiera
+          console.log("Skapad kund:", newCustomer);
 
           res.status(201).json(newCustomer);
         } catch (error) {
-          console.error(error);
+          console.error('Error:', error);
           res.status(500).json({ error: 'Server error' });
         }
         break;

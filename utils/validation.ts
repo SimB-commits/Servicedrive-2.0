@@ -88,7 +88,7 @@ export const createCustomerSchema = z.object({
     message: 'Ogiltigt datum',
   }).optional(),
   email: z.string().email('Ogiltig email-adress').optional(),
-  phone: z.string().min(7, 'Telefonnummer måste vara minst 7 tecken').optional(),
+  phoneNumber: z.string().min(7, 'Telefonnummer måste vara minst 7 tecken').optional(),
   newsletter: z.boolean().optional(),
   loyal: z.boolean().optional(),
   dynamicFields: z.record(z.string()).optional(),
@@ -108,7 +108,7 @@ export const updateCustomerSchema = z.object({
     })
     .optional(),
   email: z.string().email('Ogiltig email-adress').optional(),
-  phone: z.string().min(7, 'Telefonnummer måste vara minst 7 tecken').optional(),
+  phoneNumber: z.string().min(7, 'Telefonnummer måste vara minst 7 tecken').optional(),
   newsletter: z.boolean().optional(),
   loyal: z.boolean().optional(),
   dynamicFields: z.record(z.string()).optional(),
