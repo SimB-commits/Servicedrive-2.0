@@ -95,6 +95,24 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             return res.status(403).json({ error: 'Forbidden' });
           }
 
+          // Om e-postadressen ändras, kontrollera att den inte redan används av en annan kund i samma butik
+          if (email && email !== customer.email) {
+            const existingCustomerWithEmail = await prisma.customer.findFirst({
+              where: {
+                email: email,
+                storeId: session.user.storeId,
+                id: { not: customerId }, // Exkludera nuvarande kund från sökningen
+              },
+            });
+
+            if (existingCustomerWithEmail) {
+              return res.status(400).json({ 
+                message: 'Valideringsfel', 
+                errors: [{ field: 'email', message: 'E-postadressen används redan av en annan kund' }] 
+              });
+            }
+          }
+
           // Bygga updateData med endast de fält som skickats med
           const updateData: any = {};
           
@@ -106,7 +124,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           if (postalCode !== undefined) updateData.postalCode = postalCode;
           if (city !== undefined) updateData.city = city;
           if (country !== undefined) updateData.country = country;
-          if (dateOfBirth !== undefined) updateData.dateOfBirth = dateOfBirth ? new Date(dateOfBirth) : null;
+          
+          // Hantera dateOfBirth korrekt - tillåt undefined och null
+          if (dateOfBirth !== undefined) {
+            updateData.dateOfBirth = dateOfBirth ? new Date(dateOfBirth) : null;
+          }
+          
           if (newsletter !== undefined) updateData.newsletter = newsletter;
           if (loyal !== undefined) updateData.loyal = loyal;
           if (dynamicFields !== undefined) updateData.dynamicFields = dynamicFields;
@@ -119,8 +142,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
           res.status(200).json(updatedCustomer);
         } catch (error) {
-          console.error(error);
-          res.status(500).json({ error: 'Server error' });
+          console.error('Uppdateringsfel:', error);
+          
+          // Kontrollera om det är ett Prisma-fel
+          if (error.code === 'P2002') {
+            // Unikt constraint-fel (t.ex. e-postadress måste vara unik)
+            return res.status(400).json({
+              message: 'Valideringsfel',
+              errors: [{ field: 'email', message: 'E-postadressen används redan av en annan kund' }]
+            });
+          }
+          
+          res.status(500).json({ error: 'Server error', details: error.message });
         }
         break;
 
@@ -175,15 +208,24 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         res.status(405).end(`Method ${method} Not Allowed`);
     }
   } catch (error: any) {
-    console.error('Error in [id].ts:', error.message);
+    console.error('Error in customers/[id].ts:', error.message);
 
     if (error.constructor.name === 'RateLimiterRes') {
       return res.status(429).json({ message: 'För många förfrågningar. Försök igen senare.' });
     }
+    
+    // Hantera Prisma-fel
+    if (error.code === 'P2002') {
+      // Unikt constraint-fel (t.ex. e-postadress måste vara unik)
+      return res.status(400).json({
+        message: 'Valideringsfel',
+        errors: [{ field: 'email', message: 'E-postadressen används redan av en annan kund' }]
+      });
+    }
 
     // Kontrollera om felet redan har skickats som svar
     if (!res.headersSent) {
-      res.status(500).json({ message: 'Ett internt serverfel uppstod.' });
+      res.status(500).json({ message: 'Ett internt serverfel uppstod.', details: error.message });
     }
   } finally {
     await prisma.$disconnect();

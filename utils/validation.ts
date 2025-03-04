@@ -101,12 +101,9 @@ export const updateCustomerSchema = z.object({
   postalCode: z.string().min(2, 'Postnummer måste vara minst 2 tecken').optional(),
   city: z.string().min(2, 'Ort måste vara minst 2 tecken').optional(),
   country: z.string().min(2, 'Land måste vara minst 2 tecken').optional(),
-  dateOfBirth: z
-    .string()
-    .refine(date => !isNaN(new Date(date).getTime()), {
-      message: 'Ogiltigt datum',
-    })
-    .optional(),
+  dateOfBirth: z.string().refine(date => !date || !isNaN(new Date(date).getTime()), {
+    message: 'Ogiltigt datum',
+  }).optional().nullable(),
   email: z.string().email('Ogiltig email-adress').optional(),
   phoneNumber: z.string().min(7, 'Telefonnummer måste vara minst 7 tecken').optional(),
   newsletter: z.boolean().optional(),
