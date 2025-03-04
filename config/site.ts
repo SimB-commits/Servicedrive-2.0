@@ -10,7 +10,7 @@ export const siteConfig = {
     },
     {
       label: "Dashboard",
-      href: "/",
+      href: "/dashboard",
     },
     {
       label: "Skapa Nytt",
@@ -39,14 +39,6 @@ export const siteConfig = {
     {
       label: "Kunder",
       href: "/kunder",
-    },
-    {
-      label: "Ärendetyper",
-      href: "/arendetyper",
-    },
-    {
-      label: "Kundkontakt",
-      href: "/kundkontakt",
     },
     {
       label: "Inställningar",
