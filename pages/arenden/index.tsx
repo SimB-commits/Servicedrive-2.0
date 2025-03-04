@@ -18,6 +18,7 @@ import {
 import { title } from "@/components/primitives";
 import TicketDrawer from "@/components/TicketDrawer";
 import TicketEditDrawer, { Ticket } from "@/components/TicketEditDrawer";
+import { DeleteIcon, EditIcon, EyeIcon } from "@/components/icons";
 
 // Statisk kolumnordning – ordna här hur kolumnerna ska visas.
 const staticColumns = [
@@ -263,19 +264,26 @@ export default function TicketTablePage() {
         case "actions":
           return (
             <div className="flex gap-2">
-              <Button size="sm" variant="flat" onPress={() => handleOpenViewDrawer(ticket)}>
-                Öppna
+              <Button type="button" 
+                      variant="flat" 
+                      isIconOnly 
+                      onPress={() => handleOpenViewDrawer(ticket)}>
+                <EyeIcon />
               </Button>
-              <Button size="sm" variant="flat" onPress={() => handleOpenEditDrawer(ticket)}>
-                Editera
+              <Button type="button" 
+                      variant="flat" 
+                      isIconOnly 
+                      onPress={() => handleOpenEditDrawer(ticket)}>
+                <EditIcon />
               </Button>
               <Button
-                size="sm"
-                variant="flat"
+                type="button" 
+                variant="flat" 
+                isIconOnly
                 color="danger"
                 onPress={() => handleDelete(ticket.id)}
               >
-                Ta bort
+                <DeleteIcon />
               </Button>
             </div>
           );

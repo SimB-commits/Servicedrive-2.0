@@ -597,15 +597,7 @@ export default function KundkortsmallPage() {
               <div>
                 <div className="flex justify-between items-center mb-2">
                   <h3 className="text-md font-medium">Kundfält</h3>
-                  <Button 
-                    type="button" 
-                    size="sm"
-                    variant="flat"
-                    color="primary"
-                    onPress={addField}
-                  >
-                    Lägg till fält
-                  </Button>
+                  
                 </div>
 
                 <div className="space-y-4">
@@ -735,7 +727,15 @@ export default function KundkortsmallPage() {
                   ))}
                 </div>
               </div>
-
+              <Button 
+                    type="button" 
+                    size="sm"
+                    variant="flat"
+                    color="primary"
+                    onPress={addField}
+                  >
+                    Lägg till fält
+                  </Button>
               <div className="flex justify-end gap-2">
                 <Button 
                   type="button" 

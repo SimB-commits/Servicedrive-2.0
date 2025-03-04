@@ -13,7 +13,9 @@ const formatDateForInput = (dateString: string | undefined): string => {
     console.error('Fel vid datumformatering:', error);
     return '';
   }
-};import React, { useState, useEffect, useMemo } from 'react';
+};
+
+import React, { useState, useEffect, useMemo } from 'react';
 import { useSession } from 'next-auth/react';
 import {
 addToast,
@@ -39,7 +41,8 @@ DropdownItem,
 Pagination
 } from '@heroui/react';
 import { title, subtitle } from '@/components/primitives';
-import { DeleteIcon, EditIcon } from '@/components/icons';
+import { DeleteIcon, EditIcon, EyeIcon } from '@/components/icons';
+import CustomerDrawer from '@/components/CustomerDrawer';
 
 interface Customer {
 id: number;
@@ -79,10 +82,20 @@ const [filterValue, setFilterValue] = useState("");
 const [page, setPage] = useState(1);
 const [rowsPerPage, setRowsPerPage] = useState(10);
 
+// State för att hantera CustomerDrawer
+const [viewDrawerOpen, setViewDrawerOpen] = useState(false);
+const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
+
 // Kundkortsmallsrelaterade states
 const [customerCardTemplates, setCustomerCardTemplates] = useState<CustomerCardTemplate[]>([]);
 const [selectedTemplate, setSelectedTemplate] = useState<CustomerCardTemplate | null>(null);
 const [loadingTemplates, setLoadingTemplates] = useState(true);
+
+// Funktion för att öppna CustomerDrawer
+const handleOpenViewDrawer = (customer: Customer) => {
+  setSelectedCustomer(customer);
+  setViewDrawerOpen(true);
+};
 
 // Hämta kunder vid sidladdning
 useEffect(() => {
@@ -612,18 +625,17 @@ const renderTemplateFields = (
         .sort((a, b) => (a?.order || 0) - (b?.order || 0))
         .map(field => {
           if (!field) return null;
-          const { key, fieldData } = field;
           
           // Hantera olika typer av fält
-          const fieldName = fieldData.mapping === 'DYNAMIC' ? key : fieldData.mapping;
-          const fieldLabel = fieldData.mapping === 'DYNAMIC' 
-            ? key 
+          const fieldName = field.fieldData.mapping === 'DYNAMIC' ? field.key : field.fieldData.mapping;
+          const fieldLabel = field.fieldData.mapping === 'DYNAMIC' 
+            ? field.key 
             : (fieldName.charAt(0).toUpperCase() + fieldName.slice(1));
           
           // Speciella fält (utöver text)
           if (fieldName === 'newsletter' || fieldName === 'loyal') {
             return (
-              <div key={key} className="col-span-2 mt-2">
+              <div key={field.key} className="col-span-2 mt-2">
                 <Checkbox
                   isSelected={formValues[fieldName] || false}
                   onValueChange={(checked) => onChangeHandler(checked, fieldName)}
@@ -636,21 +648,21 @@ const renderTemplateFields = (
           
           // Bestäm vilken typ av input som ska användas
           let inputType = "text";
-          if (fieldData.inputType === 'NUMBER') {
+          if (field.fieldData.inputType === 'NUMBER') {
             inputType = "number";
-          } else if (fieldData.inputType === 'DATE' || fieldName === 'dateOfBirth') {
+          } else if (field.fieldData.inputType === 'DATE' || fieldName === 'dateOfBirth') {
             inputType = "date";
           } else if (fieldName === 'email') {
             inputType = "email";
           }
           
           return (
-            <div key={key} className={fieldData.mapping === 'DYNAMIC' || fieldName === 'address' ? 'col-span-2' : 'col-span-1'}>
+            <div key={field.key} className={field.fieldData.mapping === 'DYNAMIC' || fieldName === 'address' ? 'col-span-2' : 'col-span-1'}>
               <Input
                 label={fieldLabel}
                 name={fieldName}
                 type={inputType}
-                isRequired={fieldData.isRequired || fieldName === 'email'}
+                isRequired={field.fieldData.isRequired || fieldName === 'email'}
                 value={formValues[fieldName] || ''}
                 onValueChange={(value) => onChangeHandler(value, fieldName)}
                 isInvalid={!!formErrors[fieldName]}
@@ -701,7 +713,7 @@ return (
           <TableColumn>E-post</TableColumn>
           <TableColumn>Telefon</TableColumn>
           <TableColumn>Adress</TableColumn>
-          <TableColumn>Lojalitet</TableColumn>
+          <TableColumn>Kundtyp</TableColumn>
           <TableColumn>Åtgärder</TableColumn>
         </TableHeader>
         <TableBody emptyContent="Inga kunder hittades">
@@ -721,11 +733,19 @@ return (
               </TableCell>
               <TableCell>
                 {customer.loyal ? 
-                  <span className="text-success">Lojal kund</span> : 
+                  <span className="text-success">Stamkund</span> : 
                   <span className="text-default-500">Standard</span>}
               </TableCell>
               <TableCell>
                 <div className="flex items-center gap-2">
+                  <Button 
+                    type="button" 
+                    variant="flat" 
+                    isIconOnly
+                    onPress={() => handleOpenViewDrawer(customer)}
+                  >
+                    <EyeIcon />
+                  </Button>
                   <Button 
                     type="button" 
                     variant="flat" 
@@ -929,7 +949,7 @@ return (
                   isSelected={editFormValues.loyal || false}
                   onValueChange={(checked) => handleEditInputChange(checked, 'loyal')}
                 >
-                  Lojal kund
+                  Stamkund
                 </Checkbox>
               </div>
               
@@ -969,6 +989,13 @@ return (
         </ModalBody>
       </ModalContent>
     </Modal>
+
+    {/* CustomerDrawer-komponent som visar kunddetaljer */}
+    <CustomerDrawer
+      isOpen={viewDrawerOpen}
+      onClose={() => setViewDrawerOpen(false)}
+      customer={selectedCustomer}
+    />
   </section>
 );
 }

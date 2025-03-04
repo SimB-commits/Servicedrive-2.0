@@ -15,7 +15,10 @@ import {
   TableBody,
   TableCell,
   TableColumn,
-  Input
+  Input,
+  Card,
+  CardBody,
+  CardHeader,
 } from '@heroui/react';
 import { title, subtitle } from '@/components/primitives';
 import { DeleteIcon, EditIcon } from '@/components/icons';
@@ -63,7 +66,7 @@ export default function Arendestatusar() {
     fetchStatuses();
   }, []);
 
-  // Hämta tillgängliga mailmallar (förutsätter att du har en API-rutt på /api/mail/templates)
+  // Hämta tillgängliga mailmallar
   useEffect(() => {
     async function fetchMailTemplates() {
       try {
@@ -98,6 +101,8 @@ export default function Arendestatusar() {
   // Skapa ny status
   const handleSubmit = async (event: { preventDefault: () => void; }) => {
     event.preventDefault();
+    setValidationErrors({});
+
     const payload = {
       name: statusName,
       mailTemplateId: selectedMailTemplate ? Number(selectedMailTemplate) : null,
@@ -153,6 +158,8 @@ export default function Arendestatusar() {
   };
 
   const handleDelete = async (id: number) => {
+    if (!confirm('Är du säker på att du vill ta bort denna status?')) return;
+    
     try {
       const res = await fetch(`/api/tickets/statuses/${id}`, { method: 'DELETE' });
       if (res.ok) {
@@ -190,9 +197,11 @@ export default function Arendestatusar() {
     setEditStatusColor(status.color || '#ffffff');
   };
 
-  const handleEditSubmit = async (event: { preventDefault: () => void; }) => {
-    event.preventDefault();
+  const handleEditSubmit = async () => {
     if (!editingStatus) return;
+    
+    setValidationErrors({});
+    
     const payload = {
       name: editName,
       mailTemplateId: editSelectedMailTemplate ? Number(editSelectedMailTemplate) : null,
@@ -240,231 +249,267 @@ export default function Arendestatusar() {
     <section className="flex flex-col items-center justify-center gap-4 py-8 md:py-10">
       <div className="inline-block max-w-lg text-center">
         <h1 className={title({ size: 'sm' })}>Ärendestatusar</h1>
-        <p>Butik ID: {session.user.storeId}</p>
-        <Button type="button" onPress={() => setCreateModalOpen(true)} variant="flat">
+        <p className={subtitle()}>Skapa och hantera statusar för dina ärenden</p>
+        <Button 
+          type="button" 
+          onPress={() => setCreateModalOpen(true)} 
+          color="primary"
+          variant="flat"
+          className="mt-4"
+        >
           Skapa ny status
         </Button>
       </div>
 
       {/* Tabell med statusar */}
-      <div className="w-full max-w-full mt-10">
-        <h2 className="text-lg font-semibold mb-4">Lista över Statusar</h2>
-        <Table>
-          <TableHeader>
-            <TableColumn>ID</TableColumn>
-            <TableColumn>Namn</TableColumn>
-            <TableColumn>Färg</TableColumn>
-            <TableColumn>Mailmall</TableColumn>
-            <TableColumn>Åtgärder</TableColumn>
-          </TableHeader>
-          <TableBody emptyContent="Inga statusar har skapats än.">
-            {statuses.map((s) => (
-              <TableRow key={s.id}>
-                <TableCell>{s.id}</TableCell>
-                <TableCell>{s.name}</TableCell>
-                <TableCell>
-                  <div
-                    className="w-6 h-6 rounded-full"
-                    style={{ backgroundColor: s.color }}
-                  />
-                </TableCell>
-                <TableCell>{s.mailTemplate ? s.mailTemplate.name : '-'}</TableCell>
-                <TableCell>
-                  <div className="flex items-center gap-2">
-                    <Button type="button" variant="flat" onPress={() => handleEdit(s)}>
-                      <EditIcon />
-                    </Button>
-                    <Button type="button" variant="flat" onPress={() => handleDelete(s.id)}>
-                      <DeleteIcon />
-                    </Button>
-                  </div>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </div>
+      <Card className="w-full max-w-6xl mt-6">
+        <CardHeader className="flex flex-col">
+          <h2 className="text-lg font-semibold">Lista över Statusar</h2>
+        </CardHeader>
+        <CardBody>
+          <Table 
+            aria-label="Statusar"
+            removeWrapper
+            selectionMode="none"
+          >
+            <TableHeader>
+              <TableColumn>ID</TableColumn>
+              <TableColumn>Namn</TableColumn>
+              <TableColumn>Färg</TableColumn>
+              <TableColumn>Mailmall</TableColumn>
+              <TableColumn>Åtgärder</TableColumn>
+            </TableHeader>
+            <TableBody emptyContent="Inga statusar har skapats än.">
+              {statuses.map((s) => (
+                <TableRow key={s.id}>
+                  <TableCell>{s.id}</TableCell>
+                  <TableCell>{s.name}</TableCell>
+                  <TableCell>
+                    <div
+                      className="w-6 h-6 rounded-full border border-default-200"
+                      style={{ backgroundColor: s.color }}
+                    />
+                  </TableCell>
+                  <TableCell>{s.mailTemplate ? s.mailTemplate.name : '-'}</TableCell>
+                  <TableCell>
+                    <div className="flex items-center gap-2">
+                      <Button 
+                        type="button" 
+                        variant="flat"
+                        isIconOnly
+                        size="sm"
+                        onPress={() => handleEdit(s)}
+                      >
+                        <EditIcon />
+                      </Button>
+                      <Button 
+                        type="button" 
+                        variant="flat" 
+                        isIconOnly
+                        size="sm"
+                        color="danger"
+                        onPress={() => handleDelete(s.id)}
+                      >
+                        <DeleteIcon />
+                      </Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </CardBody>
+      </Card>
 
       {/* Modal för skapande av ny status */}
-      {createModalOpen && (
-        <Modal
-          isOpen={createModalOpen}
-          scrollBehavior="inside"
-          onOpenChange={setCreateModalOpen}
-          backdrop="opaque"
-        >
-          <ModalContent>
-            <ModalHeader>
-              <h2 className="text-lg font-semibold">Skapa ny status</h2>
-            </ModalHeader>
-            <ModalBody>
-              <Form
-                onSubmit={handleSubmit}
-                onReset={handleReset}
-                validationBehavior="native"
-                validationErrors={validationErrors}
-                className="w-full"
-              >
-                <div className="mb-4">
-                  <label htmlFor="statusName" className="block text-left text-sm font-bold mb-2">
-                    Namn på status
-                  </label>
-                  <input
-                    id="statusName"
-                    name="statusName"
-                    type="text"
-                    value={statusName}
-                    onChange={(e) => setStatusName(e.target.value)}
-                    required
-                    className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700"
-                  />
-                </div>
-                <div className="mb-4">
-                  <label htmlFor="mailTemplate" className="block text-left text-sm font-bold mb-2">
-                    Välj mailmall
-                  </label>
-                  <select
-                    id="mailTemplate"
-                    name="mailTemplate"
-                    value={selectedMailTemplate}
-                    onChange={(e) => setSelectedMailTemplate(e.target.value)}
-                    className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700"
-                  >
-                    <option value="">Ingen mall vald</option>
-                    {mailTemplates.map((mt) => (
-                      <option key={mt.id} value={mt.id}>
-                        {mt.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="mb-4">
-                  <label htmlFor="statusColor" className="block text-left text-sm font-bold mb-2">
+      <Modal
+        isOpen={createModalOpen}
+        onOpenChange={setCreateModalOpen}
+        scrollBehavior="inside"
+        backdrop="opaque"
+        size="md"
+      >
+        <ModalContent>
+          <ModalHeader>
+            <h2 className="text-xl font-semibold">Skapa ny status</h2>
+          </ModalHeader>
+          <ModalBody>
+            <Form
+              onSubmit={handleSubmit}
+              onReset={handleReset}
+              validationBehavior="native"
+              validationErrors={validationErrors}
+              className="space-y-6"
+            >
+              <div>
+                <Input
+                  id="statusName"
+                  name="statusName"
+                  label="Namn på status"
+                  labelPlacement="outside"
+                  value={statusName}
+                  onValueChange={(value) => setStatusName(value)}
+                  placeholder="Ange statusens namn"
+                  isRequired
+                  className="w-full"
+                />
+              </div>
+              
+              <div>
+                <label htmlFor="mailTemplate" className="block text-sm font-medium mb-2">
+                  Välj mailmall
+                </label>
+                <select
+                  id="mailTemplate"
+                  name="mailTemplate"
+                  value={selectedMailTemplate}
+                  onChange={(e) => setSelectedMailTemplate(e.target.value)}
+                  className="w-full rounded-md border border-default-200 bg-background p-2"
+                >
+                  <option value="">Ingen mall vald</option>
+                  {mailTemplates.map((mt) => (
+                    <option key={mt.id} value={mt.id}>
+                      {mt.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              
+              <div>
+                <label htmlFor="statusColor" className="block text-sm font-medium mb-2">
                   Välj färg
-                  </label>
-                  <div className="flex items-center gap-2">
-                    <input
-                      id="statusColor"
-                      name="statusColor"
-                      type="color"
-                      value={statusColor}
-                      onChange={(e) => setStatusColor(e.target.value)}
-                      className="shadow appearance-none border rounded py-2 px-3"
-                    />
-                  <div className="w-6 h-6 rounded-full" style={{ backgroundColor: statusColor }} />
+                </label>
+                <div className="flex items-center gap-2">
+                  <input
+                    id="statusColor"
+                    name="statusColor"
+                    type="color"
+                    value={statusColor}
+                    onChange={(e) => setStatusColor(e.target.value)}
+                    className="border border-default-200 rounded p-1 h-10 w-16"
+                  />
+                  <div className="w-8 h-8 rounded-full border border-default-200" style={{ backgroundColor: statusColor }} />
+                  <span className="ml-2 text-sm text-default-600">{statusColor}</span>
                 </div>
               </div>
-                  
-                <div className="mt-4 flex justify-between">
-                  <Button type="reset" className="bg-gray-500 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded">
-                    Återställ
-                  </Button>
-                  <Button type="submit" className="bg-success hover:bg-secondary-700 text-white font-bold py-2 px-4 rounded">
-                    Skapa status
-                  </Button>
-                </div>
-              </Form>
-            </ModalBody>
-            <ModalFooter>
-              <Button type="button" variant="flat" onPress={() => setCreateModalOpen(false)}>
-                Stäng
-              </Button>
-            </ModalFooter>
-          </ModalContent>
-        </Modal>
-      )}
+            </Form>
+          </ModalBody>
+          <ModalFooter>
+            <Button 
+              type="button" 
+              variant="flat" 
+              onPress={() => {
+                handleReset();
+                setCreateModalOpen(false);
+              }}
+            >
+              Avbryt
+            </Button>
+            <Button 
+              type="submit" 
+              color="primary"
+              onPress={(e) => {
+                // Simulera ett form submit genom att hitta och klicka på submit-knappen
+                const form = document.querySelector('form');
+                if (form) {
+                  const submitEvent = new Event('submit', { cancelable: true, bubbles: true });
+                  form.dispatchEvent(submitEvent);
+                }
+              }}
+            >
+              Skapa status
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
 
       {/* Modal för redigering av status */}
-      {editingStatus && (
-        <Modal
-          isOpen={true}
-          scrollBehavior="inside"
-          onOpenChange={(isOpen) => {
-            if (!isOpen) setEditingStatus(null);
-          }}
-          backdrop="opaque"
-        >
-          <ModalContent>
-            <ModalHeader>
-              <h2 className="text-lg font-semibold">Redigera status</h2>
-            </ModalHeader>
-            <ModalBody>
-              <Form
-                onSubmit={handleEditSubmit}
-                onReset={() => setEditingStatus(null)}
-                className="w-full"
-              >
-                <div className="mb-4">
-                  <label htmlFor="editStatusName" className="block text-left text-sm font-bold mb-2">
-                    Namn på status
-                  </label>
+      <Modal
+        isOpen={!!editingStatus}
+        onOpenChange={(isOpen) => {
+          if (!isOpen) setEditingStatus(null);
+        }}
+        scrollBehavior="inside"
+        backdrop="opaque"
+        size="md"
+      >
+        <ModalContent>
+          <ModalHeader>
+            <h2 className="text-xl font-semibold">Redigera status</h2>
+          </ModalHeader>
+          <ModalBody>
+            <div className="space-y-6">
+              <div>
+                <Input
+                  id="editStatusName"
+                  name="editStatusName"
+                  label="Namn på status"
+                  labelPlacement="outside"
+                  value={editName}
+                  onValueChange={(value) => setEditName(value)}
+                  placeholder="Ange statusens namn"
+                  isRequired
+                  className="w-full"
+                />
+              </div>
+              
+              <div>
+                <label htmlFor="editMailTemplate" className="block text-sm font-medium mb-2">
+                  Välj mailmall
+                </label>
+                <select
+                  id="editMailTemplate"
+                  name="editMailTemplate"
+                  value={editSelectedMailTemplate}
+                  onChange={(e) => setEditSelectedMailTemplate(e.target.value)}
+                  className="w-full rounded-md border border-default-200 bg-background p-2"
+                >
+                  <option value="">Ingen mall vald</option>
+                  {mailTemplates.map((mt) => (
+                    <option key={mt.id} value={mt.id}>
+                      {mt.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              
+              <div>
+                <label htmlFor="editStatusColor" className="block text-sm font-medium mb-2">
+                  Välj färg
+                </label>
+                <div className="flex items-center gap-2">
                   <input
-                    id="editStatusName"
-                    name="editStatusName"
-                    type="text"
-                    value={editName}
-                    onChange={(e) => setEditName(e.target.value)}
-                    required
-                    className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700"
+                    id="editStatusColor"
+                    name="editStatusColor"
+                    type="color"
+                    value={editStatusColor}
+                    onChange={(e) => setEditStatusColor(e.target.value)}
+                    className="border border-default-200 rounded p-1 h-10 w-16"
                   />
+                  <div className="w-8 h-8 rounded-full border border-default-200" style={{ backgroundColor: editStatusColor }} />
+                  <span className="ml-2 text-sm text-default-600">{editStatusColor}</span>
                 </div>
-                <div className="mb-4">
-                  <label htmlFor="editMailTemplate" className="block text-left text-sm font-bold mb-2">
-                    Välj mailmall
-                  </label>
-                  <select
-                    id="editMailTemplate"
-                    name="editMailTemplate"
-                    value={editSelectedMailTemplate}
-                    onChange={(e) => setEditSelectedMailTemplate(e.target.value)}
-                    className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700"
-                  >
-                    <option value="">Ingen mall vald</option>
-                    {mailTemplates.map((mt) => (
-                      <option key={mt.id} value={mt.id}>
-                        {mt.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="mb-4">
-  <label htmlFor="statusColor" className="block text-left text-sm font-bold mb-2">
-    Välj färg
-  </label>
-  <div className="flex items-center gap-2">
-    <input
-      id="editstatusColor"
-      name="editstatusColor"
-      type="color"
-      value={editStatusColor}
-      onChange={(e) => {
-        console.log("Ny färg:", e.target.value);
-        setEditStatusColor(e.target.value);
-      }}
-      className="shadow appearance-none border rounded py-2 px-3"
-    />
-    <div className="w-6 h-6 rounded-full" style={{ backgroundColor: editStatusColor }} />
-  </div>
-</div>
-
-                <div className="mt-4 flex justify-end gap-4">
-                  <Button type="reset" className="bg-gray-500 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded">
-                    Avbryt
-                  </Button>
-                  <Button type="submit" className="bg-success hover:bg-secondary-700 text-white font-bold py-2 px-4 rounded">
-                    Spara
-                  </Button>
-                </div>
-              </Form>
-            </ModalBody>
-            <ModalFooter>
-              <Button type="button" variant="flat" onPress={() => setEditingStatus(null)}>
-                Stäng
-              </Button>
-            </ModalFooter>
-          </ModalContent>
-        </Modal>
-      )}
+              </div>
+            </div>
+          </ModalBody>
+          <ModalFooter>
+            <Button 
+              type="button" 
+              variant="flat" 
+              onPress={() => setEditingStatus(null)}
+            >
+              Avbryt
+            </Button>
+            <Button 
+              type="button" 
+              color="primary"
+              onPress={handleEditSubmit}
+            >
+              Spara ändringar
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
     </section>
   );
 }
