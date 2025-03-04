@@ -65,7 +65,23 @@ export default function DocsPage() {
   const [ticketTypes, setTicketTypes] = useState<TicketType[]>([]);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [loadingTicketTypes, setLoadingTicketTypes] = useState(true);
-  const [customerFormValues, setCustomerFormValues] = useState<{ name: string; email: string; phoneNumber: string; }>({
+  type CustomerFormType = {
+    name?: string;
+    email?: string; 
+    phoneNumber?: string;
+    firstName?: string;
+    lastName?: string;
+    address?: string;
+    postalCode?: string;
+    city?: string;
+    country?: string;
+    dateOfBirth?: string;
+    newsletter?: boolean;
+    loyal?: boolean;
+    [key: string]: any; // För dynamiska fält
+  };
+  
+  const [customerFormValues, setCustomerFormValues] = useState<CustomerFormType>({
     name: '',
     email: '',
     phoneNumber: ''
@@ -177,75 +193,74 @@ export default function DocsPage() {
   }, [selectedTemplate, selectedCustomer]);
 
   // Uppdaterad funktion för att rendera mallfält inklusive checkboxar
-  const renderTemplateField = (key: string, fieldData: any, formValues: Record<string, any>) => {
-    const fieldName = fieldData.mapping === 'DYNAMIC' ? key : fieldData.mapping;
-    const fieldLabel = fieldData.mapping === 'DYNAMIC' 
-      ? key 
-      : (fieldName.charAt(0).toUpperCase() + fieldName.slice(1));
-    
-    // Specialhantering för nyhetsbrev och stamkund - använd Checkbox
-    if (fieldName === 'newsletter') {
-      return (
-        <div key={key} className="col-span-1 mt-4">
-          <Checkbox
-            isSelected={formValues.newsletter || false}
-            onValueChange={(checked) => {
-              setCustomerFormValues(prev => ({
-                ...prev,
-                newsletter: checked
-              }));
-            }}
-          >
-            Nyhetsbrev
-          </Checkbox>
-        </div>
-      );
-    }
-    
-    // Bestäm vilken typ av input som ska användas
-    let inputType = "text";
-    if (fieldData.inputType === 'NUMBER') {
-      inputType = "number";
-    } else if (fieldData.inputType === 'DATE' || fieldName === 'dateOfBirth') {
-      inputType = "date";
-    } else if (fieldName === 'email') {
-      inputType = "email";
-    }
-    
+const renderTemplateField = (key: string, fieldData: any, formValues: Record<string, any>) => {
+  const fieldName = fieldData.mapping === 'DYNAMIC' ? key : fieldData.mapping;
+  const fieldLabel = fieldData.mapping === 'DYNAMIC' 
+    ? key 
+    : (fieldName.charAt(0).toUpperCase() + fieldName.slice(1));
+  
+  // Specialhantering för nyhetsbrev och stamkund - använd Checkbox
+  if (fieldName === 'newsletter') {
     return (
-      <div key={key} className={fieldData.mapping === 'DYNAMIC' || fieldName === 'address' ? 'col-span-2' : 'col-span-1'}>
-        <Input
-          label={fieldLabel}
-          name={fieldName}
-          type={inputType}
-          isRequired={fieldData.isRequired || fieldName === 'email'}
-          value={formValues[fieldName] || ''}
-          onValueChange={(value) => {
-            setCustomerFormValues(prev => ({ ...prev, [fieldName]: value }));
+      <div key={key} className="col-span-1 mt-4">
+        <Checkbox
+          isSelected={formValues.newsletter || false}
+          onValueChange={(checked) => {
+            setCustomerFormValues(prev => ({
+              ...prev,
+              newsletter: checked
+            }));
           }}
-        />
+        >
+          Nyhetsbrev
+        </Checkbox>
       </div>
     );
-  };
-    if (fieldName === 'loyal') {
-      return (
-        <div key={key} className="col-span-1 mt-4">
-          <Checkbox
-            isSelected={formValues.loyal || false}
-            onValueChange={(checked) => {
-              setCustomerFormValues(prev => ({
-                ...prev,
-                loyal: checked
-              }));
-            }}
-          >
-            Stamkund
-          </Checkbox>
-        </div>
-      );
-    }
-    
+  }
   
+  if (fieldName === 'loyal') {
+    return (
+      <div key={key} className="col-span-1 mt-4">
+        <Checkbox
+          isSelected={formValues.loyal || false}
+          onValueChange={(checked) => {
+            setCustomerFormValues(prev => ({
+              ...prev,
+              loyal: checked
+            }));
+          }}
+        >
+          Stamkund
+        </Checkbox>
+      </div>
+    );
+  }
+  
+  // Bestäm vilken typ av input som ska användas
+  let inputType = "text";
+  if (fieldData.inputType === 'NUMBER') {
+    inputType = "number";
+  } else if (fieldData.inputType === 'DATE' || fieldName === 'dateOfBirth') {
+    inputType = "date";
+  } else if (fieldName === 'email') {
+    inputType = "email";
+  }
+  
+  return (
+    <div key={key} className={fieldData.mapping === 'DYNAMIC' || fieldName === 'address' ? 'col-span-2' : 'col-span-1'}>
+      <Input
+        label={fieldLabel}
+        name={fieldName}
+        type={inputType}
+        isRequired={fieldData.isRequired || fieldName === 'email'}
+        value={formValues[fieldName] || ''}
+        onValueChange={(value) => {
+          setCustomerFormValues(prev => ({ ...prev, [fieldName]: value }));
+        }}
+      />
+    </div>
+  );
+};
 
   const handleTicketInputChange = (value: any, fieldName: string): void => {
     console.log("Uppdaterar fält", fieldName, "med värde", value);

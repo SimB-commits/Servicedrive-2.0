@@ -89,10 +89,6 @@ const TicketDrawer: React.FC<TicketDrawerProps> = ({ isOpen, onClose, ticket }) 
         </DrawerHeader>
         <DrawerBody>
           <div className="space-y-2">
-            <p>
-              <strong>Kundnamn:</strong> {getCustomerName()}
-            </p>
-            // Uppdatera kundvisningen i TicketDrawer för att inkludera nyhetsbrev och stamkund
             {ticket.customer && (
               <>
                 <p>
