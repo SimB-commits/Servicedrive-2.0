@@ -2,128 +2,191 @@ import React, { useState, useEffect } from 'react';
 import {
   Card,
   CardBody,
+  CardHeader,
   Switch,
   Button,
   addToast,
-  Divider
+  Divider,
+  Select,
+  SelectItem,
+  Tabs,
+  Tab,
+  RadioGroup,
+  Radio,
+  Spinner,
+  Checkbox
 } from '@heroui/react';
 
-// Local storage key för att lagra dashboard-inställningar
-const DASHBOARD_SETTINGS_KEY = 'servicedrive_dashboard_settings';
-
-// Typer för widgets
-interface Widget {
-  id: string;
-  name: string;
-  description: string;
-  enabled: boolean;
-  position: number;
-}
+// Importera från vår utils/dashboard.ts fil
+import { 
+  getDefaultWidgets, 
+  getDefaultDisplayOptions, 
+  getDefaultDataOptions,
+  getWidgetsFromStorage,
+  getDisplayOptionsFromStorage,
+  getDataOptionsFromStorage,
+  saveWidgetsToStorage,
+  saveDisplayOptionsToStorage,
+  saveDataOptionsToStorage,
+  resetAllSettingsToDefault,
+  Widget,
+  DisplayOptions,
+  DataOptions
+} from '@/utils/dashboard';
 
 const DashboardSettings = () => {
   // State för widgets som kan visas på dashboard
   const [widgets, setWidgets] = useState<Widget[]>([]);
+  
+  // State för displayinställningar
+  const [displayOptions, setDisplayOptions] = useState<DisplayOptions>({
+    theme: 'system',
+    density: 'comfortable',
+    tableRows: 10,
+    chartStyle: 'gradient',
+    useAnimations: true
+  });
+  
+  // State för datainställningar
+  const [dataOptions, setDataOptions] = useState<DataOptions>({
+    refreshInterval: 0,
+    dataTimespan: 14,
+    includeClosedTickets: true,
+    calculateAverages: true,
+    groupByCategories: true
+  });
+  
+  const [activeTab, setActiveTab] = useState('widgets');
   const [loading, setLoading] = useState(true);
+  const [savingChanges, setSavingChanges] = useState(false);
 
-  // Läs in sparade widgets från localStorage vid komponentmontering
+  // Ladda alla inställningar vid komponentmontering
   useEffect(() => {
-    const loadSavedWidgets = () => {
+    const loadAllSettings = () => {
       setLoading(true);
+      
+      // Ladda widget-inställningar
       try {
-        // Hämta widgets från localStorage om de finns
         const savedWidgetsJson = localStorage.getItem(DASHBOARD_SETTINGS_KEY);
         if (savedWidgetsJson) {
           const savedWidgets = JSON.parse(savedWidgetsJson);
           setWidgets(savedWidgets);
         } else {
           // Om inga sparade inställningar finns, använd standard
-          setWidgets([
-            {
-              id: 'active_tickets',
-              name: 'Aktiva ärenden',
-              description: 'Visar antal aktiva ärenden per ärendetyp',
-              enabled: true,
-              position: 1
-            },
-            {
-              id: 'unread_messages',
-              name: 'Olästa meddelanden',
-              description: 'Visar antal olästa meddelanden från kunder',
-              enabled: true,
-              position: 2
-            },
-            {
-              id: 'due_this_week',
-              name: 'Kommande deadline',
-              description: 'Ärenden som ska vara färdiga denna vecka',
-              enabled: true,
-              position: 3
-            },
-            {
-              id: 'ticket_statistics',
-              name: 'Ärendestatistik',
-              description: 'Visar statistik över ärenden och genomsnittlig handläggningstid',
-              enabled: true,
-              position: 4
-            },
-            {
-              id: 'recent_customers',
-              name: 'Senaste kunder',
-              description: 'Visar de senaste registrerade kunderna',
-              enabled: true,
-              position: 5
-            }
-          ]);
+          setWidgets(getDefaultWidgets());
         }
       } catch (error) {
-        console.error('Fel vid inläsning av dashboard-inställningar:', error);
-        // Vid fel, använd standardinställningar
-        setWidgets([
-          {
-            id: 'active_tickets',
-            name: 'Aktiva ärenden',
-            description: 'Visar antal aktiva ärenden per ärendetyp',
-            enabled: true,
-            position: 1
-          },
-          {
-            id: 'unread_messages',
-            name: 'Olästa meddelanden',
-            description: 'Visar antal olästa meddelanden från kunder',
-            enabled: true,
-            position: 2
-          },
-          {
-            id: 'due_this_week',
-            name: 'Kommande deadline',
-            description: 'Ärenden som ska vara färdiga denna vecka',
-            enabled: true,
-            position: 3
-          },
-          {
-            id: 'ticket_statistics',
-            name: 'Ärendestatistik',
-            description: 'Visar statistik över ärenden och genomsnittlig handläggningstid',
-            enabled: true,
-            position: 4
-          },
-          {
-            id: 'recent_customers',
-            name: 'Senaste kunder',
-            description: 'Visar de senaste registrerade kunderna',
-            enabled: true,
-            position: 5
-          }
-        ]);
-      } finally {
-        setLoading(false);
+        console.error('Fel vid inläsning av widget-inställningar:', error);
+        setWidgets(getDefaultWidgets());
       }
+      
+      // Ladda displayinställningar
+      try {
+        const savedDisplayOptionsJson = localStorage.getItem(DASHBOARD_DISPLAY_OPTIONS_KEY);
+        if (savedDisplayOptionsJson) {
+          const savedDisplayOptions = JSON.parse(savedDisplayOptionsJson);
+          setDisplayOptions(savedDisplayOptions);
+        }
+      } catch (error) {
+        console.error('Fel vid inläsning av displayinställningar:', error);
+      }
+      
+      // Ladda datainställningar
+      try {
+        const savedDataOptionsJson = localStorage.getItem(DASHBOARD_DATA_OPTIONS_KEY);
+        if (savedDataOptionsJson) {
+          const savedDataOptions = JSON.parse(savedDataOptionsJson);
+          setDataOptions(savedDataOptions);
+        }
+      } catch (error) {
+        console.error('Fel vid inläsning av datainställningar:', error);
+      }
+      
+      setLoading(false);
     };
 
-    loadSavedWidgets();
+    loadAllSettings();
   }, []);
+  
+  // Funktion för att få standardwidgets
+  const getDefaultWidgets = (): Widget[] => {
+    return [
+      {
+        id: 'summary_cards',
+        name: 'Sammanfattningskort',
+        description: 'Visar snabböversikt med antal ärenden och kunder',
+        enabled: true,
+        position: 1,
+        size: 'medium'
+      },
+      {
+        id: 'activity_chart',
+        name: 'Aktivitetsgraf',
+        description: 'Visar nya och avslutade ärenden över tid',
+        enabled: true,
+        position: 2,
+        size: 'large'
+      },
+      {
+        id: 'status_distribution',
+        name: 'Statusfördelning',
+        description: 'Visar fördelningen av ärenden per status',
+        enabled: true,
+        position: 3,
+        size: 'medium'
+      },
+      {
+        id: 'type_distribution',
+        name: 'Ärendetypsfördelning',
+        description: 'Visar antal ärenden per ärendetyp',
+        enabled: true,
+        position: 4,
+        size: 'medium'
+      },
+      {
+        id: 'performance_chart',
+        name: 'Prestandaöversikt',
+        description: 'Visar antal färdiga ärenden och genomsnittlig hanteringstid',
+        enabled: true,
+        position: 5,
+        size: 'large'
+      },
+      {
+        id: 'due_this_week',
+        name: 'Kommande deadlines',
+        description: 'Visar ärenden som ska vara färdiga denna vecka',
+        enabled: true,
+        position: 6,
+        size: 'medium'
+      },
+      {
+        id: 'recent_activity',
+        name: 'Senaste aktivitet',
+        description: 'Visar de senaste ärendena som skapats',
+        enabled: true,
+        position: 7,
+        size: 'medium'
+      },
+      {
+        id: 'progress_overview',
+        name: 'Färdigställda ärenden',
+        description: 'Visar en progress bar med totalt avslutade ärenden',
+        enabled: true,
+        position: 8,
+        size: 'large'
+      },
+      {
+        id: 'quick_actions',
+        name: 'Snabbåtgärder',
+        description: 'Knappar för vanliga åtgärder som att skapa nytt ärende',
+        enabled: true,
+        position: 9,
+        size: 'medium'
+      }
+    ];
+  };
 
-  // Funktion för att aktivera/inaktivera widget och spara ändringar
+  // Funktion för att aktivera/inaktivera widget
   const toggleWidget = (id: string) => {
     const updatedWidgets = widgets.map(widget => 
       widget.id === id 
@@ -132,16 +195,19 @@ const DashboardSettings = () => {
     );
     
     setWidgets(updatedWidgets);
+    // Notifierar oss när knappen klickas, men sparar inte än
+  };
+
+  // Funktion för att uppdatera widgetstorlek
+  const updateWidgetSize = (id: string, size: 'small' | 'medium' | 'large') => {
+    const updatedWidgets = widgets.map(widget => 
+      widget.id === id 
+        ? { ...widget, size } 
+        : widget
+    );
     
-    // Spara ändringarna direkt i localStorage
-    localStorage.setItem(DASHBOARD_SETTINGS_KEY, JSON.stringify(updatedWidgets));
-    
-    addToast({
-      title: 'Framgång',
-      description: 'Dashboard-inställningar uppdaterade',
-      color: 'success',
-      variant: 'flat'
-    });
+    setWidgets(updatedWidgets);
+    // Notifierar oss när storleken ändras, men sparar inte än
   };
 
   // Funktion för att flytta widget upp i ordningen
@@ -160,9 +226,7 @@ const DashboardSettings = () => {
     });
     
     setWidgets(newWidgets);
-    
-    // Spara ändringarna direkt i localStorage
-    localStorage.setItem(DASHBOARD_SETTINGS_KEY, JSON.stringify(newWidgets));
+    // Notifierar oss när ordningen ändras, men sparar inte än
   };
 
   // Funktion för att flytta widget ner i ordningen
@@ -181,160 +245,400 @@ const DashboardSettings = () => {
     });
     
     setWidgets(newWidgets);
-    
-    // Spara ändringarna direkt i localStorage
-    localStorage.setItem(DASHBOARD_SETTINGS_KEY, JSON.stringify(newWidgets));
+    // Notifierar oss när ordningen ändras, men sparar inte än
   };
 
   // Funktion för att spara alla ändringar
   const saveChanges = () => {
-    // Spara alla ändringar till localStorage
-    localStorage.setItem(DASHBOARD_SETTINGS_KEY, JSON.stringify(widgets));
+    setSavingChanges(true);
     
-    addToast({
-      title: 'Framgång',
-      description: 'Dashboard-inställningar sparade',
-      color: 'success',
-      variant: 'flat'
-    });
-  };
-
-  // Funktion för att återställa till standardinställningar
-  const resetToDefaults = () => {
-    if (confirm('Är du säker på att du vill återställa alla dashboard-inställningar till standard?')) {
-      const defaultWidgets = [
-        {
-          id: 'active_tickets',
-          name: 'Aktiva ärenden',
-          description: 'Visar antal aktiva ärenden per ärendetyp',
-          enabled: true,
-          position: 1
-        },
-        {
-          id: 'unread_messages',
-          name: 'Olästa meddelanden',
-          description: 'Visar antal olästa meddelanden från kunder',
-          enabled: true,
-          position: 2
-        },
-        {
-          id: 'due_this_week',
-          name: 'Kommande deadline',
-          description: 'Ärenden som ska vara färdiga denna vecka',
-          enabled: true,
-          position: 3
-        },
-        {
-          id: 'ticket_statistics',
-          name: 'Ärendestatistik',
-          description: 'Visar statistik över ärenden och genomsnittlig handläggningstid',
-          enabled: true,
-          position: 4
-        },
-        {
-          id: 'recent_customers',
-          name: 'Senaste kunder',
-          description: 'Visar de senaste registrerade kunderna',
-          enabled: true,
-          position: 5
-        }
-      ];
+    try {
+      // Spara alla ändringar till localStorage med hjälpfunktionerna
+      saveWidgetsToStorage(widgets);
+      saveDisplayOptionsToStorage(displayOptions);
+      saveDataOptionsToStorage(dataOptions);
       
-      setWidgets(defaultWidgets);
-      localStorage.setItem(DASHBOARD_SETTINGS_KEY, JSON.stringify(defaultWidgets));
+      // Triggrar custom event för att uppdatera dashboard
+      window.dispatchEvent(new Event('dashboard-settings-changed'));
+      
+      // Simulerar en kort laddningstid
+      setTimeout(() => {
+        setSavingChanges(false);
+        
+        addToast({
+          title: 'Framgång',
+          description: 'Dashboard-inställningar sparade',
+          color: 'success',
+          variant: 'flat'
+        });
+      }, 600);
+    } catch (error) {
+      console.error("Fel vid sparande av inställningar:", error);
+      setSavingChanges(false);
       
       addToast({
-        title: 'Framgång',
-        description: 'Dashboard-inställningar återställda till standard',
-        color: 'success',
+        title: 'Fel',
+        description: 'Kunde inte spara inställningar',
+        color: 'danger',
         variant: 'flat'
       });
     }
   };
 
+  // Funktion för att återställa till standardinställningar
+  const resetToDefaults = () => {
+    if (confirm('Är du säker på att du vill återställa alla dashboard-inställningar till standard?')) {
+      try {
+        resetAllSettingsToDefault();
+        
+        // Uppdatera lokala states
+        setWidgets(getDefaultWidgets());
+        setDisplayOptions(getDefaultDisplayOptions());
+        setDataOptions(getDefaultDataOptions());
+        
+        addToast({
+          title: 'Framgång',
+          description: 'Dashboard-inställningar återställda till standard',
+          color: 'success',
+          variant: 'flat'
+        });
+      } catch (error) {
+        console.error("Fel vid återställning av inställningar:", error);
+        
+        addToast({
+          title: 'Fel',
+          description: 'Kunde inte återställa inställningar',
+          color: 'danger',
+          variant: 'flat'
+        });
+      }
+    }
+  };
+
+  // Hantera ändringar i displayinställningar
+  const handleDisplayOptionChange = (key: keyof DisplayOptions, value: any) => {
+    setDisplayOptions(prev => ({
+      ...prev,
+      [key]: value
+    }));
+  };
+
+  // Hantera ändringar i datainställningar
+  const handleDataOptionChange = (key: keyof DataOptions, value: any) => {
+    setDataOptions(prev => ({
+      ...prev,
+      [key]: value
+    }));
+  };
+
   if (loading) {
-    return <div className="text-center py-4">Laddar inställningar...</div>;
+    return (
+      <div className="flex justify-center items-center py-12">
+        <Spinner size="lg" color="primary" />
+        <span className="ml-4">Laddar inställningar...</span>
+      </div>
+    );
   }
 
   return (
     <div className="p-4">
-      <div className="flex justify-between items-center mb-4">
+      <div className="flex justify-between items-center mb-6">
         <h2 className="text-xl font-semibold">Dashboard-inställningar</h2>
         <div className="flex gap-2">
           <Button color="danger" variant="flat" onPress={resetToDefaults}>
             Återställ standard
           </Button>
-          <Button color="primary" onPress={saveChanges}>
+          <Button 
+            color="primary" 
+            onPress={saveChanges} 
+            isLoading={savingChanges}
+          >
             Spara ändringar
           </Button>
         </div>
       </div>
       
       <p className="text-default-500 mb-6">
-        Anpassa din dashboard genom att välja vilka widgets som ska visas och i vilken ordning.
+        Anpassa hur din dashboard fungerar och visas för att få den perfekta överblicken över dina ärenden.
       </p>
       
-      <Card className="mb-6">
-        <CardBody>
-          <h3 className="text-lg font-medium mb-4">Widgets</h3>
-          
-          {widgets
-            .sort((a, b) => a.position - b.position)
-            .map((widget, index) => (
-              <React.Fragment key={widget.id}>
-                {index > 0 && <Divider className="my-3" />}
-                <div className="flex items-center justify-between py-2">
-                  <div className="flex-grow">
-                    <p className="font-medium">{widget.name}</p>
-                    <p className="text-sm text-default-500">{widget.description}</p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className="flex flex-col">
-                      <Button 
-                        isIconOnly 
-                        size="sm" 
-                        variant="light"
-                        isDisabled={index === 0}
-                        onPress={() => moveWidgetUp(widget.id)}
-                      >
-                        ↑
-                      </Button>
-                      <Button 
-                        isIconOnly 
-                        size="sm" 
-                        variant="light"
-                        isDisabled={index === widgets.length - 1}
-                        onPress={() => moveWidgetDown(widget.id)}
-                      >
-                        ↓
-                      </Button>
-                    </div>
-                    <Switch 
-                      isSelected={widget.enabled}
-                      onValueChange={() => toggleWidget(widget.id)}
-                    />
-                  </div>
-                </div>
-              </React.Fragment>
-            ))}
-        </CardBody>
-      </Card>
+      <Tabs 
+        selectedKey={activeTab}
+        onSelectionChange={(key) => setActiveTab(key as string)}
+        variant="underlined"
+        color="primary"
+        className="mb-6"
+      >
+        <Tab key="widgets" title="Widgets" />
+        <Tab key="appearance" title="Utseende" />
+        <Tab key="data" title="Data" />
+      </Tabs>
       
-      <Card>
-        <CardBody>
-          <h3 className="text-lg font-medium mb-2">Visa antal rader i tabeller</h3>
-          <p className="text-default-500 mb-4">
-            Välj standardantal rader som ska visas i tabeller på din dashboard.
-          </p>
+      {/* Widgets-tabben */}
+      {activeTab === 'widgets' && (
+        <Card className="mb-6">
+          <CardHeader>
+            <h3 className="text-lg font-medium">Widgets och layout</h3>
+            <p className="text-default-500 text-sm">
+              Välj vilka widgets som ska visas och i vilken ordning. Du kan också ändra storlek på vissa widgets.
+            </p>
+          </CardHeader>
+          <CardBody>
+            {widgets
+              .sort((a, b) => a.position - b.position)
+              .map((widget, index) => (
+                <React.Fragment key={widget.id}>
+                  {index > 0 && <Divider className="my-3" />}
+                  <div className="flex items-center justify-between py-2">
+                    <div className="flex-grow">
+                      <p className="font-medium">{widget.name}</p>
+                      <p className="text-sm text-default-500">{widget.description}</p>
+                    </div>
+                    <div className="flex items-center gap-4">
+                      {/* Storleksväljare, endast för vissa widgets som stöder storleksändring */}
+                      {['activity_chart', 'performance_chart', 'progress_overview', 'status_distribution'].includes(widget.id) && (
+                        <Select
+                          size="sm"
+                          label="Storlek"
+                          labelPlacement="outside-left"
+                          className="w-32"
+                          selectedKeys={[widget.size || 'medium']}
+                          onChange={(e) => updateWidgetSize(widget.id, e.target.value as 'small' | 'medium' | 'large')}
+                        >
+                          <SelectItem key="small" value="small">Liten</SelectItem>
+                          <SelectItem key="medium" value="medium">Medium</SelectItem>
+                          <SelectItem key="large" value="large">Stor</SelectItem>
+                        </Select>
+                      )}
+                      
+                      {/* Knappar för att flytta upp/ner i ordningen */}
+                      <div className="flex flex-col">
+                        <Button 
+                          isIconOnly 
+                          size="sm" 
+                          variant="light"
+                          isDisabled={index === 0}
+                          onPress={() => moveWidgetUp(widget.id)}
+                        >
+                          ↑
+                        </Button>
+                        <Button 
+                          isIconOnly 
+                          size="sm" 
+                          variant="light"
+                          isDisabled={index === widgets.length - 1}
+                          onPress={() => moveWidgetDown(widget.id)}
+                        >
+                          ↓
+                        </Button>
+                      </div>
+                      
+                      {/* Toggle för att aktivera/inaktivera widget */}
+                      <Switch 
+                        isSelected={widget.enabled}
+                        onValueChange={() => toggleWidget(widget.id)}
+                      />
+                    </div>
+                  </div>
+                </React.Fragment>
+              ))}
+          </CardBody>
+        </Card>
+      )}
+      
+      {/* Utseende-tabben */}
+      {activeTab === 'appearance' && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <Card>
+            <CardHeader>
+              <h3 className="text-lg font-medium">Generellt utseende</h3>
+            </CardHeader>
+            <CardBody>
+              <div className="space-y-6">
+                <div>
+                  <h4 className="font-medium mb-2">Tema</h4>
+                  <RadioGroup
+                    value={displayOptions.theme}
+                    onValueChange={(value) => handleDisplayOptionChange('theme', value)}
+                  >
+                    <Radio value="light">Ljust tema</Radio>
+                    <Radio value="dark">Mörkt tema</Radio>
+                    <Radio value="system">Följ systeminställning</Radio>
+                  </RadioGroup>
+                </div>
+                
+                <div>
+                  <h4 className="font-medium mb-2">Densitet</h4>
+                  <RadioGroup
+                    value={displayOptions.density}
+                    onValueChange={(value) => handleDisplayOptionChange('density', value)}
+                  >
+                    <Radio value="compact">Kompakt</Radio>
+                    <Radio value="comfortable">Standard</Radio>
+                    <Radio value="spacious">Luftig</Radio>
+                  </RadioGroup>
+                </div>
+                
+                <div>
+                  <h4 className="font-medium mb-2">Animationer</h4>
+                  <div className="flex items-center">
+                    <Switch
+                      isSelected={displayOptions.useAnimations}
+                      onValueChange={(checked) => handleDisplayOptionChange('useAnimations', checked)}
+                    />
+                    <span className="ml-2">
+                      {displayOptions.useAnimations ? 'Animationer påslagna' : 'Animationer avstängda'}
+                    </span>
+                  </div>
+                  <p className="text-sm text-default-500 mt-1">
+                    Slå av animationer för bättre prestanda på äldre enheter
+                  </p>
+                </div>
+              </div>
+            </CardBody>
+          </Card>
           
-          <div className="flex gap-3">
-            <Button variant={widgets.length === 5 ? "solid" : "flat"}>5</Button>
-            <Button variant={widgets.length === 10 ? "solid" : "flat"}>10</Button>
-            <Button variant={widgets.length === 15 ? "solid" : "flat"}>15</Button>
-            <Button variant={widgets.length === 20 ? "solid" : "flat"}>20</Button>
-          </div>
-        </CardBody>
-      </Card>
+          <Card>
+            <CardHeader>
+              <h3 className="text-lg font-medium">Grafik och tabeller</h3>
+            </CardHeader>
+            <CardBody>
+              <div className="space-y-6">
+                <div>
+                  <h4 className="font-medium mb-2">Diagramstil</h4>
+                  <RadioGroup
+                    value={displayOptions.chartStyle}
+                    onValueChange={(value) => handleDisplayOptionChange('chartStyle', value)}
+                  >
+                    <Radio value="filled">Fyllda</Radio>
+                    <Radio value="gradient">Gradient</Radio>
+                    <Radio value="transparent">Transparent</Radio>
+                  </RadioGroup>
+                  <p className="text-sm text-default-500 mt-1">
+                    Välj stil för diagram och grafer på dashboarden
+                  </p>
+                </div>
+                
+                <div>
+                  <h4 className="font-medium mb-2">Antal rader i tabeller</h4>
+                  <RadioGroup
+                    value={displayOptions.tableRows.toString()}
+                    onValueChange={(value) => handleDisplayOptionChange('tableRows', parseInt(value))}
+                  >
+                    <Radio value="5">5 rader</Radio>
+                    <Radio value="10">10 rader</Radio>
+                    <Radio value="15">15 rader</Radio>
+                    <Radio value="20">20 rader</Radio>
+                  </RadioGroup>
+                  <p className="text-sm text-default-500 mt-1">
+                    Välj standard antal rader för tabeller på dashboarden
+                  </p>
+                </div>
+              </div>
+            </CardBody>
+          </Card>
+        </div>
+      )}
+      
+      {/* Data-tabben */}
+      {activeTab === 'data' && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <Card>
+            <CardHeader>
+              <h3 className="text-lg font-medium">Uppdatering och tidsperiod</h3>
+            </CardHeader>
+            <CardBody>
+              <div className="space-y-6">
+                <div>
+                  <h4 className="font-medium mb-2">Automatisk uppdatering</h4>
+                  <RadioGroup
+                    value={dataOptions.refreshInterval.toString()}
+                    onValueChange={(value) => handleDataOptionChange('refreshInterval', parseInt(value))}
+                  >
+                    <Radio value="0">Manuell uppdatering</Radio>
+                    <Radio value="1">Varje minut</Radio>
+                    <Radio value="5">Var 5:e minut</Radio>
+                    <Radio value="15">Var 15:e minut</Radio>
+                    <Radio value="30">Var 30:e minut</Radio>
+                  </RadioGroup>
+                  <p className="text-sm text-default-500 mt-1">
+                    Välj hur ofta dashboarden ska uppdateras automatiskt
+                  </p>
+                </div>
+                
+                <div>
+                  <h4 className="font-medium mb-2">Tidsperiod för data</h4>
+                  <RadioGroup
+                    value={dataOptions.dataTimespan.toString()}
+                    onValueChange={(value) => handleDataOptionChange('dataTimespan', parseInt(value))}
+                  >
+                    <Radio value="7">Senaste veckan</Radio>
+                    <Radio value="14">Senaste 2 veckorna</Radio>
+                    <Radio value="30">Senaste månaden</Radio>
+                    <Radio value="90">Senaste 3 månaderna</Radio>
+                    <Radio value="180">Senaste 6 månaderna</Radio>
+                  </RadioGroup>
+                </div>
+              </div>
+            </CardBody>
+          </Card>
+          
+          <Card>
+            <CardHeader>
+              <h3 className="text-lg font-medium">Databeräkningar</h3>
+            </CardHeader>
+            <CardBody>
+              <div className="space-y-6">
+                <div>
+                  <h4 className="font-medium mb-2">Datavisningsalternativ</h4>
+                  
+                  <div className="space-y-2">
+                    <Checkbox
+                      isSelected={dataOptions.includeClosedTickets}
+                      onValueChange={(checked) => handleDataOptionChange('includeClosedTickets', checked)}
+                    >
+                      Inkludera avslutade ärenden i statistiken
+                    </Checkbox>
+                    
+                    <Checkbox
+                      isSelected={dataOptions.calculateAverages}
+                      onValueChange={(checked) => handleDataOptionChange('calculateAverages', checked)}
+                    >
+                      Beräkna genomsnitt (lösningstid, etc.)
+                    </Checkbox>
+                    
+                    <Checkbox
+                      isSelected={dataOptions.groupByCategories}
+                      onValueChange={(checked) => handleDataOptionChange('groupByCategories', checked)}
+                    >
+                      Gruppera ärenden efter kategori
+                    </Checkbox>
+                  </div>
+                  
+                  <p className="text-sm text-default-500 mt-3">
+                    Anpassa databeläkningar och grupperingar för statistikvisningar
+                  </p>
+                </div>
+                
+                <Divider />
+                
+                <div className="px-2 pt-2 pb-4">
+                  <h4 className="font-medium mb-4">Dashboardprestanda</h4>
+                  
+                  <p className="text-sm mb-6">
+                    Om du har många ärenden och upplever att dashboarden laddar långsamt, 
+                    kan du justera dessa inställningar för att förbättra prestandan.
+                  </p>
+                  
+                  <Button color="primary" variant="flat" fullWidth>
+                    Analysera dashboardprestanda
+                  </Button>
+                </div>
+              </div>
+            </CardBody>
+          </Card>
+        </div>
+      )}
     </div>
   );
 };
