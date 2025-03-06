@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Card,
   CardBody,
@@ -7,6 +7,9 @@ import {
   addToast,
   Divider
 } from '@heroui/react';
+
+// Local storage key för att lagra dashboard-inställningar
+const DASHBOARD_SETTINGS_KEY = 'servicedrive_dashboard_settings';
 
 // Typer för widgets
 interface Widget {
@@ -19,55 +22,119 @@ interface Widget {
 
 const DashboardSettings = () => {
   // State för widgets som kan visas på dashboard
-  const [widgets, setWidgets] = useState<Widget[]>([
-    {
-      id: 'active_tickets',
-      name: 'Aktiva ärenden',
-      description: 'Visar antal aktiva ärenden per ärendetyp',
-      enabled: true,
-      position: 1
-    },
-    {
-      id: 'unread_messages',
-      name: 'Olästa meddelanden',
-      description: 'Visar antal olästa meddelanden från kunder',
-      enabled: true,
-      position: 2
-    },
-    {
-      id: 'due_this_week',
-      name: 'Kommande deadline',
-      description: 'Ärenden som ska vara färdiga denna vecka',
-      enabled: true,
-      position: 3
-    },
-    {
-      id: 'ticket_statistics',
-      name: 'Ärendestatistik',
-      description: 'Visar statistik över ärenden och genomsnittlig handläggningstid',
-      enabled: false,
-      position: 4
-    },
-    {
-      id: 'recent_customers',
-      name: 'Senaste kunder',
-      description: 'Visar de senaste registrerade kunderna',
-      enabled: false,
-      position: 5
-    }
-  ]);
+  const [widgets, setWidgets] = useState<Widget[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  // Funktion för att aktivera/inaktivera widget
+  // Läs in sparade widgets från localStorage vid komponentmontering
+  useEffect(() => {
+    const loadSavedWidgets = () => {
+      setLoading(true);
+      try {
+        // Hämta widgets från localStorage om de finns
+        const savedWidgetsJson = localStorage.getItem(DASHBOARD_SETTINGS_KEY);
+        if (savedWidgetsJson) {
+          const savedWidgets = JSON.parse(savedWidgetsJson);
+          setWidgets(savedWidgets);
+        } else {
+          // Om inga sparade inställningar finns, använd standard
+          setWidgets([
+            {
+              id: 'active_tickets',
+              name: 'Aktiva ärenden',
+              description: 'Visar antal aktiva ärenden per ärendetyp',
+              enabled: true,
+              position: 1
+            },
+            {
+              id: 'unread_messages',
+              name: 'Olästa meddelanden',
+              description: 'Visar antal olästa meddelanden från kunder',
+              enabled: true,
+              position: 2
+            },
+            {
+              id: 'due_this_week',
+              name: 'Kommande deadline',
+              description: 'Ärenden som ska vara färdiga denna vecka',
+              enabled: true,
+              position: 3
+            },
+            {
+              id: 'ticket_statistics',
+              name: 'Ärendestatistik',
+              description: 'Visar statistik över ärenden och genomsnittlig handläggningstid',
+              enabled: true,
+              position: 4
+            },
+            {
+              id: 'recent_customers',
+              name: 'Senaste kunder',
+              description: 'Visar de senaste registrerade kunderna',
+              enabled: true,
+              position: 5
+            }
+          ]);
+        }
+      } catch (error) {
+        console.error('Fel vid inläsning av dashboard-inställningar:', error);
+        // Vid fel, använd standardinställningar
+        setWidgets([
+          {
+            id: 'active_tickets',
+            name: 'Aktiva ärenden',
+            description: 'Visar antal aktiva ärenden per ärendetyp',
+            enabled: true,
+            position: 1
+          },
+          {
+            id: 'unread_messages',
+            name: 'Olästa meddelanden',
+            description: 'Visar antal olästa meddelanden från kunder',
+            enabled: true,
+            position: 2
+          },
+          {
+            id: 'due_this_week',
+            name: 'Kommande deadline',
+            description: 'Ärenden som ska vara färdiga denna vecka',
+            enabled: true,
+            position: 3
+          },
+          {
+            id: 'ticket_statistics',
+            name: 'Ärendestatistik',
+            description: 'Visar statistik över ärenden och genomsnittlig handläggningstid',
+            enabled: true,
+            position: 4
+          },
+          {
+            id: 'recent_customers',
+            name: 'Senaste kunder',
+            description: 'Visar de senaste registrerade kunderna',
+            enabled: true,
+            position: 5
+          }
+        ]);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadSavedWidgets();
+  }, []);
+
+  // Funktion för att aktivera/inaktivera widget och spara ändringar
   const toggleWidget = (id: string) => {
-    setWidgets(
-      widgets.map(widget => 
-        widget.id === id 
-          ? { ...widget, enabled: !widget.enabled } 
-          : widget
-      )
+    const updatedWidgets = widgets.map(widget => 
+      widget.id === id 
+        ? { ...widget, enabled: !widget.enabled } 
+        : widget
     );
     
-    // I en riktig implementation skulle vi spara ändringarna till databasen här
+    setWidgets(updatedWidgets);
+    
+    // Spara ändringarna direkt i localStorage
+    localStorage.setItem(DASHBOARD_SETTINGS_KEY, JSON.stringify(updatedWidgets));
     
     addToast({
       title: 'Framgång',
@@ -93,6 +160,9 @@ const DashboardSettings = () => {
     });
     
     setWidgets(newWidgets);
+    
+    // Spara ändringarna direkt i localStorage
+    localStorage.setItem(DASHBOARD_SETTINGS_KEY, JSON.stringify(newWidgets));
   };
 
   // Funktion för att flytta widget ner i ordningen
@@ -111,11 +181,15 @@ const DashboardSettings = () => {
     });
     
     setWidgets(newWidgets);
+    
+    // Spara ändringarna direkt i localStorage
+    localStorage.setItem(DASHBOARD_SETTINGS_KEY, JSON.stringify(newWidgets));
   };
 
   // Funktion för att spara alla ändringar
   const saveChanges = () => {
-    // I en riktig implementation skulle vi spara alla ändringar till databasen här
+    // Spara alla ändringar till localStorage
+    localStorage.setItem(DASHBOARD_SETTINGS_KEY, JSON.stringify(widgets));
     
     addToast({
       title: 'Framgång',
@@ -125,13 +199,75 @@ const DashboardSettings = () => {
     });
   };
 
+  // Funktion för att återställa till standardinställningar
+  const resetToDefaults = () => {
+    if (confirm('Är du säker på att du vill återställa alla dashboard-inställningar till standard?')) {
+      const defaultWidgets = [
+        {
+          id: 'active_tickets',
+          name: 'Aktiva ärenden',
+          description: 'Visar antal aktiva ärenden per ärendetyp',
+          enabled: true,
+          position: 1
+        },
+        {
+          id: 'unread_messages',
+          name: 'Olästa meddelanden',
+          description: 'Visar antal olästa meddelanden från kunder',
+          enabled: true,
+          position: 2
+        },
+        {
+          id: 'due_this_week',
+          name: 'Kommande deadline',
+          description: 'Ärenden som ska vara färdiga denna vecka',
+          enabled: true,
+          position: 3
+        },
+        {
+          id: 'ticket_statistics',
+          name: 'Ärendestatistik',
+          description: 'Visar statistik över ärenden och genomsnittlig handläggningstid',
+          enabled: true,
+          position: 4
+        },
+        {
+          id: 'recent_customers',
+          name: 'Senaste kunder',
+          description: 'Visar de senaste registrerade kunderna',
+          enabled: true,
+          position: 5
+        }
+      ];
+      
+      setWidgets(defaultWidgets);
+      localStorage.setItem(DASHBOARD_SETTINGS_KEY, JSON.stringify(defaultWidgets));
+      
+      addToast({
+        title: 'Framgång',
+        description: 'Dashboard-inställningar återställda till standard',
+        color: 'success',
+        variant: 'flat'
+      });
+    }
+  };
+
+  if (loading) {
+    return <div className="text-center py-4">Laddar inställningar...</div>;
+  }
+
   return (
     <div className="p-4">
       <div className="flex justify-between items-center mb-4">
         <h2 className="text-xl font-semibold">Dashboard-inställningar</h2>
-        <Button color="primary" onPress={saveChanges}>
-          Spara ändringar
-        </Button>
+        <div className="flex gap-2">
+          <Button color="danger" variant="flat" onPress={resetToDefaults}>
+            Återställ standard
+          </Button>
+          <Button color="primary" onPress={saveChanges}>
+            Spara ändringar
+          </Button>
+        </div>
       </div>
       
       <p className="text-default-500 mb-6">
