@@ -17,10 +17,10 @@ import ArendetyperContent from '../arendetyper/index';
 import KundkortContent from '../kundkort/index';
 import MailmallsContent from '../mailmallar/index';
 import AccountSettings from '@/components/AccountSettings';
-import DashboardSettings from '@/components/DashboardSettings';
+import ImportExportManager from '@/components/ImportExport';
 
 // Typer för att hantera aktiv tab
-type TabKey = 'konto' | 'arendetyper' | 'kundkortsmallar' | 'mailmallar' | 'dashboard';
+type TabKey = 'konto' | 'arendetyper' | 'kundkortsmallar' | 'mailmallar' | 'dataimport';
 
 export default function InstallningarPage() {
   const { data: session, status } = useSession();
@@ -44,8 +44,8 @@ export default function InstallningarPage() {
         return <KundkortContent />;
       case 'mailmallar':
         return <MailmallsContent />;
-      /*case 'dashboard':
-        return <DashboardSettings />;*/
+      case 'dataimport':
+        return <ImportExportManager />;
       default:
         return <div>Välj en inställningskategori</div>;
     }
@@ -92,7 +92,7 @@ export default function InstallningarPage() {
           <Tab key="arendetyper" title="Ärendetyper" />
           <Tab key="kundkortsmallar" title="Kundkortsmallar" />
           <Tab key="mailmallar" title="Mailmallar" />
-          
+          <Tab key="dataimport" title="Import/Export" />
         </Tabs>
         
         <div className="mt-4">

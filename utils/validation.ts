@@ -206,6 +206,60 @@ export const updateMailTemplateSchema = z.object({
   body: z.string().optional(),
 });
 
+// Schema för kundimport med flexiblare valideringsregler
+export const importCustomerSchema = z.object({
+  firstName: z.string().optional().nullable(),
+  lastName: z.string().optional().nullable(),
+  address: z.string().optional().nullable(),
+  postalCode: z.string().optional().nullable(),
+  city: z.string().optional().nullable(),
+  country: z.string().optional().nullable(),
+  dateOfBirth: z.union([z.string(), z.date()]).optional().nullable(),
+  email: z.string().email('Ogiltig email-adress'), // Email är fortfarande obligatoriskt
+  phoneNumber: z.union([z.string(), z.number()]).optional().nullable()
+    .transform(val => val ? String(val) : null), // Konvertera till sträng
+  newsletter: z.union([z.boolean(), z.string(), z.number()]).optional()
+    .transform(val => {
+      if (typeof val === 'string') {
+        return ['true', 'yes', 'ja', '1', 'y'].includes(val.toLowerCase());
+      }
+      if (typeof val === 'number') {
+        return val === 1;
+      }
+      return Boolean(val);
+    }),
+  loyal: z.union([z.boolean(), z.string(), z.number()]).optional()
+    .transform(val => {
+      if (typeof val === 'string') {
+        return ['true', 'yes', 'ja', '1', 'y'].includes(val.toLowerCase());
+      }
+      if (typeof val === 'number') {
+        return val === 1;
+      }
+      return Boolean(val);
+    }),
+  dynamicFields: z.record(z.any()).optional().nullable(),
+});
+
+// Schema för ärendeimport med flexiblare valideringsregler
+export const importTicketSchema = z.object({
+  title: z.string().optional().nullable(),
+  description: z.string().optional().nullable(),
+  status: z.string().optional().nullable(),
+  dueDate: z.union([z.string(), z.date()]).optional().nullable(),
+  customerId: z.number().optional().nullable(),
+  customerEmail: z.string().email('Ogiltig email-adress').optional().nullable(), // Antingen customerId eller customerEmail måste anges
+  ticketTypeId: z.number().optional().nullable(),
+  dynamicFields: z.record(z.any()).optional().nullable(),
+}).refine(data => data.customerId || data.customerEmail, {
+  message: "Antingen customerId eller customerEmail måste anges",
+  path: ["customerEmail"],
+});
+
+// Typ för importdata
+export type ImportCustomerData = z.infer<typeof importCustomerSchema>;
+export type ImportTicketData = z.infer<typeof importTicketSchema>;
+
 // Typ för att skapa TicketType
 export type CreateTicketTypeInput = z.infer<typeof createTicketTypeSchema>;
 

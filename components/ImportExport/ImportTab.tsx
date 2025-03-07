@@ -12,7 +12,6 @@ import ExcelJS from 'exceljs';
 
 // Importera undermappar
 import FileUploader from './ImportComponents/FileUploader';
-import DataPreview from './ImportComponents/DataPreview';
 import FieldMappingModal from './ImportComponents/FieldMappingModal';
 import ImportSummary from './ImportComponents/ImportSummary';
 
@@ -21,7 +20,8 @@ import {
   mapCustomerFields, 
   mapTicketFields, 
   detectFileType,
-  validateImport
+  validateImport,
+  normalizeFieldName
 } from '@/utils/import-export';
 
 interface FieldMapping {
@@ -53,7 +53,7 @@ const ImportTab = () => {
     if (importTarget === 'customers') {
       setTargetFields([
         'firstName', 'lastName', 'email', 'phoneNumber', 'address', 
-        'postalCode', 'city', 'country', 'newsletter', 'loyal'
+        'postalCode', 'city', 'country', 'dateOfBirth', 'newsletter', 'loyal'
       ]);
     } else {
       setTargetFields([
@@ -158,48 +158,50 @@ const ImportTab = () => {
           // Försök att automatiskt mappa fält baserat på namn
           const autoMapping: Record<string, string> = {};
           
-          availableFields.forEach(sourceField => {
-            // Normalisera fältnamnet för enklare matchning
-            const normalizedField = sourceField.toLowerCase().replace(/[^a-z0-9]/g, '');
-            
-            // Hitta bästa matchning i targetFields
-            let bestMatch = '';
-            let bestMatchScore = 0;
-            
-            targetFields.forEach(targetField => {
-              const normalizedTarget = targetField.toLowerCase();
+          if (availableFields.length > 0 && data.length > 0) {
+            availableFields.forEach(sourceField => {
+              // Normalisera fältnamnet för enklare matchning
+              const normalizedField = normalizeFieldName(sourceField);
               
-              // Exakta matchningar
-              if (
-                normalizedField === normalizedTarget ||
-                normalizedField === normalizedTarget.replace(/[^a-z0-9]/g, '')
-              ) {
-                bestMatch = targetField;
-                bestMatchScore = 100;
-              } 
-              // Partiella matchningar
-              else if (
-                normalizedField.includes(normalizedTarget) || 
-                normalizedTarget.includes(normalizedField)
-              ) {
-                // Om vi redan har en exakt matchning, hoppa över
-                if (bestMatchScore < 100) {
-                  const score = Math.min(normalizedField.length, normalizedTarget.length) / 
-                                Math.max(normalizedField.length, normalizedTarget.length) * 90;
-                  
-                  if (score > bestMatchScore) {
-                    bestMatch = targetField;
-                    bestMatchScore = score;
+              // Hitta bästa matchning i targetFields
+              let bestMatch = '';
+              let bestMatchScore = 0;
+              
+              targetFields.forEach(targetField => {
+                const normalizedTarget = normalizeFieldName(targetField);
+                
+                // Exakta matchningar
+                if (
+                  normalizedField === normalizedTarget ||
+                  normalizedField === normalizedTarget.replace(/[^a-z0-9åäö]/g, '')
+                ) {
+                  bestMatch = targetField;
+                  bestMatchScore = 100;
+                } 
+                // Partiella matchningar
+                else if (
+                  normalizedField.includes(normalizedTarget) || 
+                  normalizedTarget.includes(normalizedField)
+                ) {
+                  // Om vi redan har en exakt matchning, hoppa över
+                  if (bestMatchScore < 100) {
+                    const score = Math.min(normalizedField.length, normalizedTarget.length) / 
+                                  Math.max(normalizedField.length, normalizedTarget.length) * 90;
+                    
+                    if (score > bestMatchScore) {
+                      bestMatch = targetField;
+                      bestMatchScore = score;
+                    }
                   }
                 }
+              });
+              
+              // Om vi hittade en matchning med poäng över 70, använd den
+              if (bestMatchScore > 70) {
+                autoMapping[sourceField] = bestMatch;
               }
             });
-            
-            // Om vi hittade en matchning med poäng över 70, använd den
-            if (bestMatchScore > 70) {
-              autoMapping[sourceField] = bestMatch;
-            }
-          });
+          }
           
           setFieldMapping(autoMapping);
           setShowMappingModal(true);
@@ -269,13 +271,30 @@ const ImportTab = () => {
     setImportSummary(null);
 
     try {
-      // Validera importen
-      const validationResult = validateImport(fileData, fieldMapping, importTarget);
+      // Förenklade valideringsregler - kräv bara e-post för kunder
+      let validationPassed = true;
+      let validationMessage = '';
       
-      if (!validationResult.valid) {
+      if (importTarget === 'customers') {
+        // Kontrollera bara att e-post mappas för kunder
+        const hasEmailMapping = Object.values(fieldMapping).includes('email');
+        if (!hasEmailMapping) {
+          validationPassed = false;
+          validationMessage = 'E-postfält måste mappas för kundimport';
+        }
+      } else if (importTarget === 'tickets') {
+        // För ärenden behöver vi mappning till kund-email
+        const hasCustomerEmailMapping = Object.values(fieldMapping).includes('customerEmail');
+        if (!hasCustomerEmailMapping) {
+          validationPassed = false;
+          validationMessage = 'Kundens e-post måste mappas för ärendeimport';
+        }
+      }
+      
+      if (!validationPassed) {
         addToast({
           title: 'Valideringsfel',
-          description: validationResult.message || 'Data kunde inte valideras.',
+          description: validationMessage || 'Data kunde inte valideras.',
           color: 'danger',
           variant: 'flat'
         });
@@ -283,7 +302,7 @@ const ImportTab = () => {
           total: fileData.length,
           success: 0,
           failed: fileData.length,
-          errors: [validationResult.message || 'Okänt valideringsfel']
+          errors: [validationMessage || 'Okänt valideringsfel']
         });
         setLoading(false);
         return;
@@ -294,9 +313,28 @@ const ImportTab = () => {
         // Mappa fält baserat på fältmappningen
         const mappedRow: Record<string, any> = {};
         
+        // För kunder eller ärenden, lägg till dynamicFields-objekt
+        if (importTarget === 'customers' || importTarget === 'tickets') {
+          // Skapa tomt dynamicFields-objekt om det saknas
+          mappedRow.dynamicFields = {};
+        }
+        
+        // För kunder, sätt standardvärden för boolean-fält
+        if (importTarget === 'customers') {
+          // Sätt standardvärden för boolean-fält
+          mappedRow.newsletter = false;
+          mappedRow.loyal = false;
+        }
+        
+        // Mappa alla fält som finns i mappningen
         for (const [sourceField, targetField] of Object.entries(fieldMapping)) {
-          if (targetField && row[sourceField] !== undefined) {
-            mappedRow[targetField] = row[sourceField];
+          if (targetField && sourceField) {
+            const value = row[sourceField];
+            
+            // Lägg till värdet i mappedRow om det finns
+            if (value !== undefined && value !== null && value !== '') {
+              mappedRow[targetField] = value;
+            }
           }
         }
         
@@ -312,7 +350,7 @@ const ImportTab = () => {
       };
 
       // Importera stegvis
-      const batchSize = 20;
+      const batchSize = 10; // Mindre batchstorlek för att undvika överbelastning
       const totalBatches = Math.ceil(dataToImport.length / batchSize);
       
       for (let batchIndex = 0; batchIndex < totalBatches; batchIndex++) {
@@ -320,35 +358,50 @@ const ImportTab = () => {
         const end = Math.min(start + batchSize, dataToImport.length);
         const batch = dataToImport.slice(start, end);
         
+        // Uppdatera framsteg
+        setImportProgress(Math.round(((batchIndex) / totalBatches) * 100));
+        
         try {
-          // Anropa API:et baserat på importmål
-          const response = await fetch(`/api/import/${importTarget}`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ 
-              data: batch,
-              // Inkludera eventuella ytterligare inställningar
-              settings: {
-                skipExisting: true
-              } 
-            }),
-          });
-
-          if (response.ok) {
-            const result = await response.json();
-            results.success += result.success || 0;
-            results.failed += result.failed || 0;
+          // För varje post i batchen, skapa en egen POST-förfrågan
+          // till våra specialanpassade import-API:er
+          try {
+            // Välj API-endpoint baserat på importmål
+            const endpoint = importTarget === 'customers' 
+              ? '/api/import/customers' 
+              : '/api/import/tickets';
             
-            if (result.errors && result.errors.length > 0) {
-              results.errors.push(...result.errors);
+            // Skicka hela batchen för importering
+            const response = await fetch(endpoint, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                data: batch,
+                options: {
+                  skipExisting: true
+                }
+              }),
+            });
+            
+            if (response.ok) {
+              const result = await response.json();
+              results.success += result.success || 0;
+              results.failed += result.failed || 0;
+              
+              if (result.errors && result.errors.length > 0) {
+                results.errors.push(...result.errors);
+              }
+            } else {
+              const error = await response.json();
+              console.error('API-fel:', error);
+              results.failed += batch.length;
+              results.errors.push(`Batch ${batchIndex + 1}: ${error.message || 'Okänt fel'}`);
             }
-          } else {
-            const error = await response.json();
-            console.error('API-fel:', error);
+          } catch (error) {
+            console.error('Fel vid import av batch:', error);
             results.failed += batch.length;
-            results.errors.push(`Batch ${batchIndex + 1}: ${error.message || 'Okänt fel'}`);
+            results.errors.push(`Batch ${batchIndex + 1}: ${error instanceof Error ? error.message : 'Okänt fel'}`);
           }
         } catch (error) {
           console.error('Fel vid import av batch:', error);
@@ -356,7 +409,7 @@ const ImportTab = () => {
           results.errors.push(`Batch ${batchIndex + 1}: ${error instanceof Error ? error.message : 'Okänt fel'}`);
         }
 
-        // Uppdatera framsteg
+        // Uppdatera framsteg efter varje batch
         setImportProgress(Math.round(((batchIndex + 1) / totalBatches) * 100));
       }
 
@@ -382,7 +435,7 @@ const ImportTab = () => {
       console.error('Fel vid import:', error);
       addToast({
         title: 'Import misslyckades',
-        description: 'Ett fel uppstod under importprocessen.',
+        description: error instanceof Error ? error.message : 'Ett fel uppstod under importprocessen.',
         color: 'danger',
         variant: 'flat'
       });
