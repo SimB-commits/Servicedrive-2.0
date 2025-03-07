@@ -9,7 +9,7 @@ export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
   // Lista över öppna rutter som inte kräver autentisering
-  const openPaths = ['/api/auth', '/public'];
+  const openPaths = ['/api/auth', '/auth/login', '/auth/signup', '/auth/logout', '/public'];
 
   const isOpenPath = openPaths.some((path) => pathname.startsWith(path));
 
@@ -27,5 +27,5 @@ export async function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/api/:path*', '/protected/:path*'], // Anpassa efter dina rutter
+  matcher: ['/api/:path*', '/protected/:path*', '/dashboard/:path*', '/arenden/:path*', '/kunder/:path*', '/nytt-arende/:path*', '/installningar/:path*', '/'],
 };

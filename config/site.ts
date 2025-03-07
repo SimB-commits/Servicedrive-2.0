@@ -1,8 +1,8 @@
 export type SiteConfig = typeof siteConfig;
 
 export const siteConfig = {
-  name: "Next.js + HeroUI",
-  description: "Make beautiful websites regardless of your design experience.",
+  name: "Servicedrive",
+  description: "Hantera ärenden och kunder smidigt och enkelt.",
   navItems: [
     {
       label: "Meny",
@@ -13,11 +13,11 @@ export const siteConfig = {
       href: "/dashboard",
     },
     {
-      label: "Skapa Nytt",
+      label: "Nytt Ärende",
       href: "/nytt-arende",
     },
     {
-      label: "Ärenden",
+      label: "Ärendelista",
       href: "/arenden",
     },
     
@@ -26,7 +26,7 @@ export const siteConfig = {
   navMenuItems: [
     {
       label: "Dashboard",
-      href: "/",
+      href: "/dashboard",
     },
     {
       label: "Nytt Ärende",
@@ -45,8 +45,8 @@ export const siteConfig = {
       href: "/installningar",
     },
     {
-      label: "Logout",
-      href: "/logout",
+      label: "Logga ut",
+      href: "/auth/logout",
     },
   ],
   links: {

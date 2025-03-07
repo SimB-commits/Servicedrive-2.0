@@ -32,13 +32,6 @@ import {
 } from 'recharts';
 import { title } from "@/components/primitives";
 
-import {
-  getEnabledWidgets,
-  getWidgetSize,
-  getChartStyle,
-  useDashboardSettings
-} from '@/utils/dashboard';
-
 // Färgschema för diagrammen
 const COLORS = {
   primary: '#000000',
@@ -55,14 +48,8 @@ const COLORS = {
   accent5: '#d1c4e9'
 };
 
-
 // Funktion för att generera data för aktivitetsgrafen baserat på faktiska tickets
-const generateActivityData = (tickets = [], dataOptions) => {
-  const days = dataOptions.dataTimespan;
-  // Filtrera ärenden baserat på dataOptions.includeClosedTickets
-  const filteredTickets = dataOptions.includeClosedTickets 
-    ? tickets 
-    : tickets.filter(ticket => ticket && ticket.status !== 'CLOSED');
+const generateActivityData = (tickets = [], days = 14) => {
   if (!Array.isArray(tickets) || tickets.length === 0) return [];
   
   const activityData = [];
@@ -159,7 +146,7 @@ const generatePerformanceData = (tickets = []) => {
   return performanceData;
 };
 
-export default function Dashboard() {
+export default function DashboardRedesign() {
   const router = useRouter();
   const { data: session, status } = useSession();
   const [loading, setLoading] = useState(true);
@@ -168,15 +155,6 @@ export default function Dashboard() {
   const [ticketTypes, setTicketTypes] = useState([]);
   const [activityData, setActivityData] = useState([]);
   const [performanceData, setPerformanceData] = useState([]);
-
-  // Använd vår custom hook för att få tillgång till alla dashboard-inställningar
-  const {
-    enabledWidgets,     // Widgets som är aktiverade, sorterade efter position
-    displayOptions,     // DisplayOptions (tema, densitet, etc.)
-    dataOptions,        // DataOptions (uppdateringsintervall, tidsperiod, etc.)
-    chartStyle,         // Förberäknad stil för diagram
-    getWidgetSize       // Hjälpfunktion för att få rätt storlek för en widget
-  } = useDashboardSettings();
   
   // Hämta data när komponenten laddas
   useEffect(() => {
@@ -232,29 +210,15 @@ export default function Dashboard() {
     };
     
     fetchData();
-    // Sätt upp auto-refresh baserat på dataOptions
-    let refreshTimer: NodeJS.Timeout | null = null;
-    if (dataOptions.refreshInterval > 0) {
-      refreshTimer = setInterval(() => {
-        fetchData();
-      }, dataOptions.refreshInterval * 60 * 1000); // Konvertera från minuter till millisekunder
-    }
-    
-    return () => {
-      if (refreshTimer) {
-        clearInterval(refreshTimer);
-      }
-    };
-  }, [status, dataOptions.refreshInterval]); // Lägg till dataOptions.refreshInterval i dependency array
+  }, [status]);
   
-  // Uppdatera useEffect för att lyssna på relevanta options för data-generering
+  // Generera data för grafer när tickets ändras
   useEffect(() => {
     if (Array.isArray(tickets) && tickets.length > 0) {
-      // Använd dataOptions.dataTimespan och andra inställningar
-      setActivityData(generateActivityData(tickets, dataOptions));
+      setActivityData(generateActivityData(tickets));
       setPerformanceData(generatePerformanceData(tickets));
     }
-  }, [tickets, dataOptions.dataTimespan, dataOptions.includeClosedTickets]);
+  }, [tickets]);
   
   // Räkna ärenden per status
   const countTicketsByStatus = () => {
@@ -445,22 +409,17 @@ export default function Dashboard() {
       </div>
       
       <div className="w-full max-w-6xl mx-auto">
-        {/* Visa endast widgets som är aktiverade */}
-        
         {/* Hälsning och sammanfattning */}
-        {enabledWidgets.some(w => w.id === 'summary_cards') && (
-          <div className="mb-8">
-            <h1 className="text-4xl font-bold mb-2">Hej där!</h1>
-            <p className="text-xl text-default-600">
-              Du har <span className="font-semibold">{dueTickets.length} ärenden</span> som behöver avslutas denna vecka 
-              och <span className="font-semibold">{tickets.filter(t => t && t.status === 'OPEN').length} öppna ärenden</span> att hantera.
-            </p>
-          </div>
-        )}
+        <div className="mb-8">
+          <h1 className="text-4xl font-bold mb-2">Hej {session.user.firstName}!</h1>
+          <p className="text-xl text-default-600">
+            Du har <span className="font-semibold">{dueTickets.length} ärenden</span> som behöver avslutas denna vecka 
+            och <span className="font-semibold">{tickets.filter(t => t && t.status === 'OPEN').length} öppna ärenden</span> att hantera.
+          </p>
+        </div>
         
         {/* Överblick */}
-        {enabledWidgets.some(w => w.id === 'summary_cards') && (
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
           <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-none">
             <CardBody className="flex flex-col items-center justify-center py-6">
               <div className="text-4xl font-bold text-blue-600 mb-2">{tickets.length}</div>
@@ -489,54 +448,50 @@ export default function Dashboard() {
             </CardBody>
           </Card>
         </div>
-        )}
+        
         {/* Huvudinnehåll */}
         <div className="grid grid-cols-12 gap-6 mb-8">
           {/* Ärendeaktivitet - linjediagram */}
-          {enabledWidgets.some(w => w.id === 'activity_chart') && (
-            <Card className={`col-span-12 ${getWidgetSize('activity_chart')}`}>
-              <CardBody>
-                <h2 className="text-xl font-semibold mb-4">Ärendeaktivitet - Senaste {dataOptions.dataTimespan} dagarna</h2>
-                <div className="h-72">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <LineChart
-                      data={activityData}
-                      margin={{
-                        top: 5,
-                        right: 30,
-                        left: 20,
-                        bottom: 5,
-                      }}
-                    >
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="date" />
-                      <YAxis />
-                      <Tooltip />
-                      <Legend />
-                      <Line
-                        type="monotone"
-                        dataKey="nya"
-                        stroke={COLORS.warning}
-                        activeDot={{ r: 8 }}
-                        strokeWidth={chartStyle.strokeWidth}
-                        name="Nya ärenden"
-                        opacity={chartStyle.opacity}
-                      />
-                      <Line
-                        type="monotone"
-                        dataKey="avslutade"
-                        stroke={COLORS.success}
-                        strokeWidth={chartStyle.strokeWidth}
-                        name="Avslutade ärenden"
-                        opacity={chartStyle.opacity}
-                      />
-                    </LineChart>
-                  </ResponsiveContainer>
-                </div>
-              </CardBody>
-            </Card>
+          <Card className="col-span-12 lg:col-span-8">
+            <CardBody>
+              <h2 className="text-xl font-semibold mb-4">Ärendeaktivitet - Senaste 14 dagarna</h2>
+              <div className="h-72">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart
+                    data={activityData}
+                    margin={{
+                      top: 5,
+                      right: 30,
+                      left: 20,
+                      bottom: 5,
+                    }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="date" />
+                    <YAxis />
+                    <Tooltip />
+                    <Legend />
+                    <Line
+                      type="monotone"
+                      dataKey="nya"
+                      stroke={COLORS.warning}
+                      activeDot={{ r: 8 }}
+                      strokeWidth={2}
+                      name="Nya ärenden"
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="avslutade"
+                      stroke={COLORS.success}
+                      strokeWidth={2}
+                      name="Avslutade ärenden"
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            </CardBody>
+          </Card>
           
-          )}
           {/* Ärendestatus - cirkeldiagram */}
           <Card className="col-span-12 lg:col-span-4">
             <CardBody>

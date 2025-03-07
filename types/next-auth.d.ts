@@ -9,7 +9,7 @@ declare module 'next-auth' {
       id: string;
       role: UserRole;
       storeId: number | null;
-      name: string | null; // Lägg till name som string eller null
+      firstName: string | null; // Lägg till name som string eller null
     } & DefaultSession['user'];
   }
 
@@ -17,7 +17,7 @@ declare module 'next-auth' {
     id: string;
     role: UserRole;
     storeId: number | null;
-    //name: string | null; // Lägg till name som string eller null
+    firstName: string | null; // Lägg till name som string eller null
   }
 }
 
@@ -26,7 +26,7 @@ declare module 'next-auth/jwt' {
     id: string;
     role: UserRole;
     storeId: number | null;
-    name: string | null; // Lägg till name som string eller null
+    firstName: string | null; // Lägg till name som string eller null
   }
 }
 

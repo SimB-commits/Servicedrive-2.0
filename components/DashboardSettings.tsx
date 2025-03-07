@@ -67,12 +67,10 @@ const DashboardSettings = () => {
       
       // Ladda widget-inställningar
       try {
-        const savedWidgetsJson = localStorage.getItem(DASHBOARD_SETTINGS_KEY);
-        if (savedWidgetsJson) {
-          const savedWidgets = JSON.parse(savedWidgetsJson);
+        if (typeof window !== 'undefined') {
+          const savedWidgets = getWidgetsFromStorage();
           setWidgets(savedWidgets);
         } else {
-          // Om inga sparade inställningar finns, använd standard
           setWidgets(getDefaultWidgets());
         }
       } catch (error) {
@@ -82,9 +80,8 @@ const DashboardSettings = () => {
       
       // Ladda displayinställningar
       try {
-        const savedDisplayOptionsJson = localStorage.getItem(DASHBOARD_DISPLAY_OPTIONS_KEY);
-        if (savedDisplayOptionsJson) {
-          const savedDisplayOptions = JSON.parse(savedDisplayOptionsJson);
+        if (typeof window !== 'undefined') {
+          const savedDisplayOptions = getDisplayOptionsFromStorage();
           setDisplayOptions(savedDisplayOptions);
         }
       } catch (error) {
@@ -93,9 +90,8 @@ const DashboardSettings = () => {
       
       // Ladda datainställningar
       try {
-        const savedDataOptionsJson = localStorage.getItem(DASHBOARD_DATA_OPTIONS_KEY);
-        if (savedDataOptionsJson) {
-          const savedDataOptions = JSON.parse(savedDataOptionsJson);
+        if (typeof window !== 'undefined') {
+          const savedDataOptions = getDataOptionsFromStorage();
           setDataOptions(savedDataOptions);
         }
       } catch (error) {
@@ -108,84 +104,6 @@ const DashboardSettings = () => {
     loadAllSettings();
   }, []);
   
-  // Funktion för att få standardwidgets
-  const getDefaultWidgets = (): Widget[] => {
-    return [
-      {
-        id: 'summary_cards',
-        name: 'Sammanfattningskort',
-        description: 'Visar snabböversikt med antal ärenden och kunder',
-        enabled: true,
-        position: 1,
-        size: 'medium'
-      },
-      {
-        id: 'activity_chart',
-        name: 'Aktivitetsgraf',
-        description: 'Visar nya och avslutade ärenden över tid',
-        enabled: true,
-        position: 2,
-        size: 'large'
-      },
-      {
-        id: 'status_distribution',
-        name: 'Statusfördelning',
-        description: 'Visar fördelningen av ärenden per status',
-        enabled: true,
-        position: 3,
-        size: 'medium'
-      },
-      {
-        id: 'type_distribution',
-        name: 'Ärendetypsfördelning',
-        description: 'Visar antal ärenden per ärendetyp',
-        enabled: true,
-        position: 4,
-        size: 'medium'
-      },
-      {
-        id: 'performance_chart',
-        name: 'Prestandaöversikt',
-        description: 'Visar antal färdiga ärenden och genomsnittlig hanteringstid',
-        enabled: true,
-        position: 5,
-        size: 'large'
-      },
-      {
-        id: 'due_this_week',
-        name: 'Kommande deadlines',
-        description: 'Visar ärenden som ska vara färdiga denna vecka',
-        enabled: true,
-        position: 6,
-        size: 'medium'
-      },
-      {
-        id: 'recent_activity',
-        name: 'Senaste aktivitet',
-        description: 'Visar de senaste ärendena som skapats',
-        enabled: true,
-        position: 7,
-        size: 'medium'
-      },
-      {
-        id: 'progress_overview',
-        name: 'Färdigställda ärenden',
-        description: 'Visar en progress bar med totalt avslutade ärenden',
-        enabled: true,
-        position: 8,
-        size: 'large'
-      },
-      {
-        id: 'quick_actions',
-        name: 'Snabbåtgärder',
-        description: 'Knappar för vanliga åtgärder som att skapa nytt ärende',
-        enabled: true,
-        position: 9,
-        size: 'medium'
-      }
-    ];
-  };
-
   // Funktion för att aktivera/inaktivera widget
   const toggleWidget = (id: string) => {
     const updatedWidgets = widgets.map(widget => 
@@ -259,7 +177,9 @@ const DashboardSettings = () => {
       saveDataOptionsToStorage(dataOptions);
       
       // Triggrar custom event för att uppdatera dashboard
-      window.dispatchEvent(new Event('dashboard-settings-changed'));
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('dashboard-settings-changed'));
+      }
       
       // Simulerar en kort laddningstid
       setTimeout(() => {
@@ -523,7 +443,7 @@ const DashboardSettings = () => {
                   <h4 className="font-medium mb-2">Antal rader i tabeller</h4>
                   <RadioGroup
                     value={displayOptions.tableRows.toString()}
-                    onValueChange={(value) => handleDisplayOptionChange('tableRows', parseInt(value))}
+                    onValueChange={(value) => handleDataOptionChange('tableRows', parseInt(value))}
                   >
                     <Radio value="5">5 rader</Radio>
                     <Radio value="10">10 rader</Radio>

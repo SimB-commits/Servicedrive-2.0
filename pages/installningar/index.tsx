@@ -44,8 +44,8 @@ export default function InstallningarPage() {
         return <KundkortContent />;
       case 'mailmallar':
         return <MailmallsContent />;
-      case 'dashboard':
-        return <DashboardSettings />;
+      /*case 'dashboard':
+        return <DashboardSettings />;*/
       default:
         return <div>Välj en inställningskategori</div>;
     }
@@ -92,7 +92,7 @@ export default function InstallningarPage() {
           <Tab key="arendetyper" title="Ärendetyper" />
           <Tab key="kundkortsmallar" title="Kundkortsmallar" />
           <Tab key="mailmallar" title="Mailmallar" />
-          <Tab key="dashboard" title="Dashboard" />
+          
         </Tabs>
         
         <div className="mt-4">

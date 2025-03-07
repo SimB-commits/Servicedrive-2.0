@@ -1,6 +1,6 @@
 // Hantera inställningar och kommunikation mellan komponenter
-
 // utils/dashboard.ts
+import { useState, useEffect } from 'react';
 
 // Konstanter för localStorage-nycklar
 export const DASHBOARD_SETTINGS_KEY = 'servicedrive_dashboard_settings';
@@ -135,6 +135,10 @@ export const getDefaultDataOptions = (): DataOptions => {
 
 // Funktion för att läsa widgets från localStorage
 export const getWidgetsFromStorage = (): Widget[] => {
+  if (typeof window === 'undefined') {
+    return getDefaultWidgets();
+  }
+  
   try {
     const json = localStorage.getItem(DASHBOARD_SETTINGS_KEY);
     if (json) {
@@ -148,6 +152,10 @@ export const getWidgetsFromStorage = (): Widget[] => {
 
 // Funktion för att läsa displayOptions från localStorage
 export const getDisplayOptionsFromStorage = (): DisplayOptions => {
+  if (typeof window === 'undefined') {
+    return getDefaultDisplayOptions();
+  }
+  
   try {
     const json = localStorage.getItem(DASHBOARD_DISPLAY_OPTIONS_KEY);
     if (json) {
@@ -161,6 +169,10 @@ export const getDisplayOptionsFromStorage = (): DisplayOptions => {
 
 // Funktion för att läsa dataOptions från localStorage
 export const getDataOptionsFromStorage = (): DataOptions => {
+  if (typeof window === 'undefined') {
+    return getDefaultDataOptions();
+  }
+  
   try {
     const json = localStorage.getItem(DASHBOARD_DATA_OPTIONS_KEY);
     if (json) {
@@ -174,6 +186,8 @@ export const getDataOptionsFromStorage = (): DataOptions => {
 
 // Funktion för att spara widgets till localStorage och trigga en uppdatering
 export const saveWidgetsToStorage = (widgets: Widget[]): void => {
+  if (typeof window === 'undefined') return;
+  
   try {
     localStorage.setItem(DASHBOARD_SETTINGS_KEY, JSON.stringify(widgets));
     // Trigga en custom event som dashboard-komponenten kan lyssna på
@@ -185,6 +199,8 @@ export const saveWidgetsToStorage = (widgets: Widget[]): void => {
 
 // Funktion för att spara displayOptions till localStorage och trigga en uppdatering
 export const saveDisplayOptionsToStorage = (options: DisplayOptions): void => {
+  if (typeof window === 'undefined') return;
+  
   try {
     localStorage.setItem(DASHBOARD_DISPLAY_OPTIONS_KEY, JSON.stringify(options));
     // Trigga en custom event som dashboard-komponenten kan lyssna på
@@ -196,6 +212,8 @@ export const saveDisplayOptionsToStorage = (options: DisplayOptions): void => {
 
 // Funktion för att spara dataOptions till localStorage och trigga en uppdatering
 export const saveDataOptionsToStorage = (options: DataOptions): void => {
+  if (typeof window === 'undefined') return;
+  
   try {
     localStorage.setItem(DASHBOARD_DATA_OPTIONS_KEY, JSON.stringify(options));
     // Trigga en custom event som dashboard-komponenten kan lyssna på
@@ -262,6 +280,8 @@ export const useDashboardSettings = () => {
   
   // Uppdatera states när localStorage ändras
   useEffect(() => {
+    if (typeof window === 'undefined') return;
+    
     const handleSettingsChange = () => {
       setWidgets(getWidgetsFromStorage());
       setDisplayOptions(getDisplayOptionsFromStorage());
