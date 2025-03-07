@@ -116,7 +116,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         
         // Konvertera status om den anges som text
         let status = TicketStatus.OPEN; // Standardvärde
-        let customStatusId = null;
+        let customStatusObj = null;
         
         if (ticketData.status) {
           if (typeof ticketData.status === 'string') {
@@ -124,7 +124,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             
             // Kontrollera om det är en dynamisk status (börjar med "CUSTOM_")
             if (statusValue.startsWith('CUSTOM_')) {
-              customStatusId = Number(statusValue.replace('CUSTOM_', ''));
+              const customStatusId = Number(statusValue.replace('CUSTOM_', ''));
+              if (customStatusId) {
+                customStatusObj = {
+                  connect: { id: customStatusId }
+                };
+              }
             } else {
               // Försök mappa till enum-värden
               switch (statusValue) {
@@ -168,14 +173,86 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           }
         }
         
+        // Hantera dynamiska fält - samla alla fält som inte har en direkt mappning
+        const dynamicFieldData: Record<string, any> = {};
+        
+        // Om vi har dynamicFields i den inkommande datan, använd dem som bas
+        if (ticketData.dynamicFields && typeof ticketData.dynamicFields === 'object') {
+          Object.assign(dynamicFieldData, ticketData.dynamicFields);
+        }
+        
+        // Hitta fält i den inkommande datan som inte finns i standard schema för Ticket
+        // och lägg till dem i dynamicFields
+        const standardFields = [
+          'title', 'description', 'status', 'dueDate', 'ticketTypeId', 
+          'customerId', 'customerEmail', 'dynamicFields'
+        ];
+        
+        // Identifiera icke-standard fält i inkommande data
+        for (const key in ticketData) {
+          if (
+            !standardFields.includes(key) && 
+            ticketData[key] !== undefined && 
+            ticketData[key] !== null
+          ) {
+            // Lägg till i dynamiska fält
+            dynamicFieldData[key] = ticketData[key];
+          }
+        }
+        
+        // Ladda ärendetypen för att hämta fältspecifikation
+        const ticketType = await prisma.ticketType.findUnique({
+          where: { id: ticketTypeId },
+          include: { fields: true }
+        });
+        
+        // Om vi har ärendetypspecifika fält, se till att värden valideras och konverteras korrekt
+        if (ticketType?.fields && ticketType.fields.length > 0) {
+          // Iterera över ärendetypens fält och validera/konvertera värden
+          ticketType.fields.forEach(field => {
+            const fieldName = field.name;
+            // Kontrollera om fältet finns i de dynamiska fälten
+            if (dynamicFieldData[fieldName] !== undefined) {
+              // Validera och konvertera baserat på fälttyp
+              switch (field.fieldType) {
+                case 'NUMBER':
+                  // Konvertera till nummer om möjligt
+                  dynamicFieldData[fieldName] = Number(dynamicFieldData[fieldName]) || 0;
+                  break;
+                case 'DATE':
+                case 'DUE_DATE':
+                  // Konvertera till datum om det inte redan är det
+                  try {
+                    if (typeof dynamicFieldData[fieldName] === 'string') {
+                      dynamicFieldData[fieldName] = new Date(dynamicFieldData[fieldName]).toISOString();
+                    }
+                  } catch (error) {
+                    console.warn(`Kunde inte konvertera ${fieldName} till datum:`, error);
+                  }
+                  break;
+                case 'CHECKBOX':
+                  // Konvertera till boolean
+                  if (typeof dynamicFieldData[fieldName] === 'string') {
+                    dynamicFieldData[fieldName] = ['true', 'yes', 'ja', '1', 'y'].includes(
+                      dynamicFieldData[fieldName].toLowerCase()
+                    );
+                  } else {
+                    dynamicFieldData[fieldName] = Boolean(dynamicFieldData[fieldName]);
+                  }
+                  break;
+                // TEXT behöver ingen särskild hantering
+              }
+            }
+          });
+        }
+        
         // Förbered data för att skapa ärendet
-        const ticketCreateData = {
+        const ticketCreateData: any = {
           title: ticketData.title || 'Importerat ärende',
           description: ticketData.description || '',
           status: status,
-          customStatusId: customStatusId,
           dueDate: ticketData.dueDate ? new Date(ticketData.dueDate) : null,
-          dynamicFields: ticketData.dynamicFields || {},
+          dynamicFields: dynamicFieldData, // Använd de bearbetade dynamiska fälten
           store: {
             connect: { id: session.user.storeId }
           },
@@ -189,6 +266,31 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             connect: { id: ticketTypeId }
           }
         };
+        
+        // Validera att nödvändiga datatyper är korrekta innan vi försöker skapa ärendet
+        // Detta förhindrar typfel vid skapandet
+        if (typeof ticketCreateData.title !== 'string') {
+          ticketCreateData.title = String(ticketCreateData.title || 'Importerat ärende');
+        }
+        
+        if (typeof ticketCreateData.description !== 'string') {
+          ticketCreateData.description = String(ticketCreateData.description || '');
+        }
+        
+        // Kontrollera att dynamicFields är ett objekt, inte en sträng eller null
+        if (typeof ticketCreateData.dynamicFields !== 'object' || ticketCreateData.dynamicFields === null) {
+          ticketCreateData.dynamicFields = {}; // Återställ till tomt objekt om det inte är ett objekt
+        }
+        
+        // Validera IDs
+        ticketCreateData.store.connect.id = Number(ticketCreateData.store.connect.id);
+        ticketCreateData.ticketType.connect.id = Number(ticketCreateData.ticketType.connect.id);
+        ticketCreateData.customer.connect.id = Number(ticketCreateData.customer.connect.id);
+        
+        // Endast lägg till customStatus om vi har ett customStatusObj
+        if (customStatusObj) {
+          ticketCreateData.customStatus = customStatusObj;
+        }
         
         // Skapa ärendet i databasen
         await prisma.ticket.create({

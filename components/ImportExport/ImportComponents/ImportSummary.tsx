@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Accordion, AccordionItem, Chip, Progress, Button } from '@heroui/react';
+import React, { useState, useMemo } from 'react';
+import { Accordion, AccordionItem, Chip, Progress, Button, Card, CardBody, Divider } from '@heroui/react';
 
 interface ImportSummaryProps {
   summary: {
@@ -35,37 +35,95 @@ const ImportSummary: React.FC<ImportSummaryProps> = ({ summary }) => {
     }
   };
   
-  // Gruppera liknande fel för tydlighet
-  const groupSimilarErrors = () => {
-    const errorGroups: Record<string, number> = {};
+  // Gruppera och kategorisera fel
+  const categorizedErrors = useMemo(() => {
+    const errorCategories: Record<string, string[]> = {
+      'validation': [],   // Valideringsfel
+      'database': [],     // Databasfel
+      'mapping': [],      // Mappningsfel
+      'duplicate': [],    // Dubbletter
+      'missing': [],      // Saknade fält/relationer
+      'other': []         // Övrigt
+    };
     
     summary.errors.forEach(error => {
-      // Extrahera det grundläggande felet (utan radnummer, etc.)
-      const basicError = error.replace(/^Batch \d+ \(rad \d+-\d+\): /, '')
-                             .replace(/^Rad \d+: /, '');
-      
-      errorGroups[basicError] = (errorGroups[basicError] || 0) + 1;
+      // Identifiera felkategori baserat på innehåll
+      if (error.toLowerCase().includes('valider') || error.includes('schema')) {
+        errorCategories.validation.push(error);
+      } 
+      else if (error.toLowerCase().includes('database') || error.includes('prisma')) {
+        errorCategories.database.push(error);
+      }
+      else if (error.toLowerCase().includes('mapp') || error.includes('field')) {
+        errorCategories.mapping.push(error);
+      }
+      else if (error.toLowerCase().includes('finns redan') || error.toLowerCase().includes('duplicate') || error.includes('P2002')) {
+        errorCategories.duplicate.push(error);
+      }
+      else if (error.toLowerCase().includes('hitta') || error.toLowerCase().includes('saknas') || error.includes('not found')) {
+        errorCategories.missing.push(error);
+      }
+      else {
+        errorCategories.other.push(error);
+      }
     });
     
-    return Object.entries(errorGroups).map(([error, count]) => ({
-      error,
-      count
-    }));
+    // Ta bort tomma kategorier
+    const result: Record<string, string[]> = {};
+    Object.entries(errorCategories).forEach(([category, errors]) => {
+      if (errors.length > 0) {
+        result[category] = errors;
+      }
+    });
+    
+    return result;
+  }, [summary.errors]);
+  
+  // Förenkla felmeddelanden för presentation
+  const simplifyErrorMessage = (error: string): string => {
+    // Ta bort onödiga detaljer som stacktraces och tekniska detaljer
+    let simplified = error;
+    
+    // Ta bort radnummer och batch-info
+    simplified = simplified.replace(/^Batch \d+ \(rad \d+-\d+\): /, '');
+    simplified = simplified.replace(/^Rad \d+: /, '');
+    
+    // Ta bort långa felkoder från Prisma
+    if (simplified.includes('Invalid `prisma')) {
+      simplified = simplified.split('\n')[0];
+    }
+    
+    // Ta bort tekniska detaljer som stacktraces
+    const stackIndex = simplified.indexOf('\n    at ');
+    if (stackIndex !== -1) {
+      simplified = simplified.substring(0, stackIndex);
+    }
+    
+    return simplified;
   };
   
-  // Gruppera liknande fel
-  const errorGroups = groupSimilarErrors();
+  // Visa bara de första 3 felen som standard i varje kategori
+  const getDisplayErrors = (errors: string[], limit = 3) => {
+    return showAllErrors 
+      ? errors 
+      : errors.slice(0, limit);
+  };
   
-  // Visa bara de första 3 felen som standard
-  const visibleErrors = showAllErrors 
-    ? summary.errors 
-    : summary.errors.slice(0, 3);
+  // Antalet kategorier med fel
+  const categoryCount = Object.keys(categorizedErrors).length;
 
   return (
     <div className="mt-4 border rounded-md overflow-hidden">
       <div className="bg-default-50 p-4 border-b">
-        <h4 className="font-medium">Importsammanfattning</h4>
-        <p className="text-sm text-default-500">{getSummaryText()}</p>
+        <div className="flex items-center justify-between">
+          <h4 className="font-medium">Importsammanfattning</h4>
+          <Chip 
+            color={getStatusColor()}
+            variant="flat"
+          >
+            {getSummaryText()}
+          </Chip>
+        </div>
         
         <div className="mt-4">
           <Progress 
@@ -97,41 +155,176 @@ const ImportSummary: React.FC<ImportSummaryProps> = ({ summary }) => {
         
         {summary.errors.length > 0 && (
           <>
-            <h5 className="font-medium text-sm mb-2">Vanligaste felen</h5>
+            <h5 className="font-medium text-sm mb-2">Felkategorier</h5>
             <div className="flex flex-wrap gap-2 mb-4">
-              {errorGroups.slice(0, 3).map((group, index) => (
-                <Chip 
-                  key={index}
-                  color="danger"
-                  variant="flat"
-                >
-                  {group.error} ({group.count})
-                </Chip>
-              ))}
+              {Object.entries(categorizedErrors).map(([category, errors]) => {
+                let color: "danger" | "warning" | "primary" | "default";
+                let label: string;
+                
+                switch (category) {
+                  case 'validation':
+                    color = "danger";
+                    label = "Valideringsfel";
+                    break;
+                  case 'database':
+                    color = "danger";
+                    label = "Databasfel";
+                    break;
+                  case 'mapping':
+                    color = "warning";
+                    label = "Mappningsfel";
+                    break;
+                  case 'duplicate':
+                    color = "primary";
+                    label = "Dubblettkonflikter";
+                    break;
+                  case 'missing':
+                    color = "warning";
+                    label = "Saknade resurser";
+                    break;
+                  default:
+                    color = "default";
+                    label = "Övriga fel";
+                }
+                
+                return (
+                  <Chip 
+                    key={category}
+                    color={color}
+                    variant="flat"
+                  >
+                    {label} ({errors.length})
+                  </Chip>
+                );
+              })}
             </div>
             
-            <Accordion variant="light">
-              <AccordionItem key="errors" title="Visa alla felmeddelanden">
-                <div className="max-h-60 overflow-y-auto text-xs bg-danger-50 p-2 rounded-md text-danger-700">
-                  {visibleErrors.map((error, index) => (
-                    <p key={index} className="mb-1 pb-1 border-b border-danger-200 last:border-0">
-                      {error}
-                    </p>
-                  ))}
-                  
-                  {summary.errors.length > 3 && !showAllErrors && (
-                    <Button 
-                      size="sm" 
-                      variant="flat" 
-                      className="mt-2" 
-                      onPress={() => setShowAllErrors(true)}
-                    >
-                      Visa alla {summary.errors.length} fel
-                    </Button>
-                  )}
-                </div>
-              </AccordionItem>
+            <Accordion variant="splitted" className="mb-2">
+              {Object.entries(categorizedErrors).map(([category, errors]) => {
+                let title: string;
+                let description: string;
+                let iconColor: string;
+                
+                switch (category) {
+                  case 'validation':
+                    title = "Valideringsfel";
+                    description = "Data uppfyller inte kraven för import";
+                    iconColor = "text-danger";
+                    break;
+                  case 'database':
+                    title = "Databasfel";
+                    description = "Problem uppstod vid sparande i databasen";
+                    iconColor = "text-danger";
+                    break;
+                  case 'mapping':
+                    title = "Mappningsfel";
+                    description = "Problem med att mappa fält korrekt";
+                    iconColor = "text-warning";
+                    break;
+                  case 'duplicate':
+                    title = "Dubblettkonflikter";
+                    description = "Data finns redan i systemet";
+                    iconColor = "text-primary";
+                    break;
+                  case 'missing':
+                    title = "Saknade resurser";
+                    description = "Relaterade resurser kunde inte hittas";
+                    iconColor = "text-warning";
+                    break;
+                  default:
+                    title = "Övriga fel";
+                    description = "Diverse problem med importen";
+                    iconColor = "text-default-500";
+                }
+                
+                return (
+                  <AccordionItem 
+                    key={category}
+                    title={
+                      <div className="flex items-center gap-2">
+                        <span className={`text-lg ${iconColor}`}>
+                          {category === 'validation' && '⚠'}
+                          {category === 'database' && '⛔'}
+                          {category === 'mapping' && '⚙️'}
+                          {category === 'duplicate' && '🔄'}
+                          {category === 'missing' && '🔍'}
+                          {category === 'other' && 'ℹ️'}
+                        </span>
+                        <div>
+                          <span className="font-medium">{title}</span>
+                          <p className="text-xs text-default-500">{description}</p>
+                        </div>
+                        <Chip size="sm" variant="flat" className="ml-auto">
+                          {errors.length} st
+                        </Chip>
+                      </div>
+                    }
+                  >
+                    <Card className="mb-2">
+                      <CardBody className="py-2 px-3">
+                        <div className="max-h-60 overflow-y-auto text-xs">
+                          {getDisplayErrors(errors).map((error, index) => (
+                            <div key={index} className="mb-2 pb-2 border-b border-default-200 last:border-0">
+                              <p className="text-danger-600">{simplifyErrorMessage(error)}</p>
+                              {error.includes('dynamicFields') && (
+                                <p className="text-xs text-default-500 mt-1">
+                                  Tips: Kontrollera att dynamiska fält är korrekt formaterade
+                                </p>
+                              )}
+                              {error.toLowerCase().includes('kunde inte hitta kund') && (
+                                <p className="text-xs text-default-500 mt-1">
+                                  Tips: Importera kunder innan du importerar ärenden
+                                </p>
+                              )}
+                            </div>
+                          ))}
+                          
+                          {errors.length > 3 && !showAllErrors && (
+                            <Button 
+                              size="sm" 
+                              variant="flat" 
+                              className="mt-2 w-full" 
+                              onPress={() => setShowAllErrors(true)}
+                            >
+                              Visa alla {errors.length} fel
+                            </Button>
+                          )}
+                        </div>
+                      </CardBody>
+                    </Card>
+                  </AccordionItem>
+                );
+              })}
             </Accordion>
+            
+            <Divider className="my-3" />
+            
+            {/* Tips för att lösa vanliga fel */}
+            <div className="text-xs text-default-500">
+              <h5 className="font-medium text-sm mb-1">Vanliga lösningar:</h5>
+              <ul className="list-disc list-inside space-y-1">
+                <li>Valideringsfel - Kontrollera att data har rätt format och att obligatoriska fält finns med</li>
+                <li>Dubblettkonflikter - E-postadresser måste vara unika per butik</li>
+                <li>Saknade resurser - Kontrollera att alla ärenden är kopplade till befintliga kunder</li>
+                <li>Dynamiska fält - Kontrollera att anpassade fält har rätt datatyp och format</li>
+              </ul>
+            </div>
+            
+            <div className="flex justify-end mt-4">
+              <Button 
+                size="sm" 
+                variant="bordered" 
+                color="primary"
+                onPress={() => {
+                  // Kopiera felmeddelanden till urklipp
+                  const errorText = summary.errors.join('\n\n');
+                  navigator.clipboard.writeText(errorText)
+                    .then(() => alert('Felmeddelanden kopierade till urklipp'));
+                }}
+              >
+                Kopiera alla felmeddelanden
+              </Button>
+            </div>
           </>
         )}
       </div>

@@ -5,7 +5,14 @@ import {
   CardBody, 
   Button, 
   Progress,
-  addToast
+  addToast,
+  Dropdown,
+  DropdownTrigger,
+  DropdownMenu,
+  DropdownItem,
+  Select,
+  SelectItem,
+  Chip
 } from '@heroui/react';
 import Papa from 'papaparse';
 import ExcelJS from 'exceljs';
@@ -46,21 +53,64 @@ const ImportTab = () => {
     errors: string[];
   } | null>(null);
   const [previewData, setPreviewData] = useState<any[] | null>(null);
+  const [ticketTypes, setTicketTypes] = useState<any[]>([]);
+  const [selectedTicketType, setSelectedTicketType] = useState<number | null>(null);
+  const [importOptions, setImportOptions] = useState({
+    skipExisting: true,
+    updateExisting: false,
+    includeAll: true,
+    batchSize: 10
+  });
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Hämta de tillgängliga ärendetyperna när komponenten laddas
+  useEffect(() => {
+    const fetchTicketTypes = async () => {
+      try {
+        const response = await fetch('/api/tickets/types');
+        if (response.ok) {
+          const data = await response.json();
+          setTicketTypes(data);
+          if (data.length > 0) {
+            setSelectedTicketType(data[0].id);
+          }
+        }
+      } catch (error) {
+        console.error('Fel vid hämtning av ärendetyper:', error);
+      }
+    };
+
+    fetchTicketTypes();
+  }, []);
 
   // Hämta tillgängliga fält baserat på importmål
   useEffect(() => {
     if (importTarget === 'customers') {
       setTargetFields([
         'firstName', 'lastName', 'email', 'phoneNumber', 'address', 
-        'postalCode', 'city', 'country', 'dateOfBirth', 'newsletter', 'loyal'
+        'postalCode', 'city', 'country', 'dateOfBirth', 'newsletter', 'loyal',
+        'dynamicFields' // För anpassade kundfält
       ]);
     } else {
-      setTargetFields([
-        'title', 'description', 'status', 'dueDate', 'customerEmail'
-      ]);
+      const baseFields = [
+        'title', 'description', 'status', 'dueDate', 'customerEmail',
+        'ticketTypeId', 'priority', 'dynamicFields' // För anpassade ärendefält
+      ];
+
+      // Om en ärendetyp är vald och har dynamiska fält, lägg till dem
+      if (selectedTicketType) {
+        const selectedType = ticketTypes.find(type => type.id === selectedTicketType);
+        if (selectedType && selectedType.fields) {
+          selectedType.fields.forEach((field: any) => {
+            // Lägg till ärendetypspecifika fält
+            baseFields.push(`field_${field.name}`);
+          });
+        }
+      }
+
+      setTargetFields(baseFields);
     }
-  }, [importTarget]);
+  }, [importTarget, selectedTicketType, ticketTypes]);
 
   // När en fil väljs, analysera den och försök identifiera fält
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -194,6 +244,25 @@ const ImportTab = () => {
                     }
                   }
                 }
+                
+                // Särskilda matchningar för dynamiska fält
+                if (targetField === 'dynamicFields' && 
+                    (sourceField.includes('custom') || sourceField.includes('anpassad') || 
+                     sourceField.includes('extra') || sourceField.includes('field'))) {
+                  if (bestMatchScore < 90) {
+                    bestMatch = targetField;
+                    bestMatchScore = 85;
+                  }
+                }
+                
+                // Särskilda matchningar för ärendetypsspecifika fält
+                if (importTarget === 'tickets' && targetField.startsWith('field_')) {
+                  const fieldName = targetField.replace('field_', '').toLowerCase();
+                  if (normalizedField.includes(fieldName)) {
+                    bestMatch = targetField;
+                    bestMatchScore = 95;
+                  }
+                }
               });
               
               // Om vi hittade en matchning med poäng över 70, använd den
@@ -271,30 +340,12 @@ const ImportTab = () => {
     setImportSummary(null);
 
     try {
-      // Förenklade valideringsregler - kräv bara e-post för kunder
-      let validationPassed = true;
-      let validationMessage = '';
-      
-      if (importTarget === 'customers') {
-        // Kontrollera bara att e-post mappas för kunder
-        const hasEmailMapping = Object.values(fieldMapping).includes('email');
-        if (!hasEmailMapping) {
-          validationPassed = false;
-          validationMessage = 'E-postfält måste mappas för kundimport';
-        }
-      } else if (importTarget === 'tickets') {
-        // För ärenden behöver vi mappning till kund-email
-        const hasCustomerEmailMapping = Object.values(fieldMapping).includes('customerEmail');
-        if (!hasCustomerEmailMapping) {
-          validationPassed = false;
-          validationMessage = 'Kundens e-post måste mappas för ärendeimport';
-        }
-      }
-      
-      if (!validationPassed) {
+      // Validera data för måltypen
+      const validationResult = validateImport(fileData, fieldMapping, importTarget);
+      if (!validationResult.valid) {
         addToast({
           title: 'Valideringsfel',
-          description: validationMessage || 'Data kunde inte valideras.',
+          description: validationResult.message || 'Data kunde inte valideras.',
           color: 'danger',
           variant: 'flat'
         });
@@ -302,106 +353,108 @@ const ImportTab = () => {
           total: fileData.length,
           success: 0,
           failed: fileData.length,
-          errors: [validationMessage || 'Okänt valideringsfel']
+          errors: [validationResult.message || 'Okänt valideringsfel']
         });
         setLoading(false);
         return;
       }
 
-      // Förberedd data för import
-      const dataToImport = fileData.map(row => {
-        // Mappa fält baserat på fältmappningen
-        const mappedRow: Record<string, any> = {};
+      // Förbered data för import baserat på importmål
+      let mappedData;
+      if (importTarget === 'customers') {
+        mappedData = mapCustomerFields(fileData, fieldMapping);
+      } else {
+        // För ärenden, lägg till vald ärendetyp om den inte mappats
+        mappedData = mapTicketFields(fileData, fieldMapping);
         
-        // För kunder eller ärenden, lägg till dynamicFields-objekt
-        if (importTarget === 'customers' || importTarget === 'tickets') {
-          // Skapa tomt dynamicFields-objekt om det saknas
-          mappedRow.dynamicFields = {};
+        // Om en ärendetyp valts och det inte redan finns i mappad data, lägg till
+        if (selectedTicketType) {
+          mappedData = mappedData.map(item => {
+            if (!item.ticketTypeId) {
+              return {
+                ...item,
+                ticketTypeId: selectedTicketType
+              };
+            }
+            return item;
+          });
         }
         
-        // För kunder, sätt standardvärden för boolean-fält
-        if (importTarget === 'customers') {
-          // Sätt standardvärden för boolean-fält
-          mappedRow.newsletter = false;
-          mappedRow.loyal = false;
-        }
-        
-        // Mappa alla fält som finns i mappningen
-        for (const [sourceField, targetField] of Object.entries(fieldMapping)) {
-          if (targetField && sourceField) {
-            const value = row[sourceField];
-            
-            // Lägg till värdet i mappedRow om det finns
-            if (value !== undefined && value !== null && value !== '') {
-              mappedRow[targetField] = value;
+        // Hantera ärendetypspecifika fält - flytta dessa till dynamicFields
+        mappedData = mappedData.map(item => {
+          const dynamicFields = item.dynamicFields || {};
+          
+          // Leta efter fält som börjar med field_
+          for (const [key, value] of Object.entries(item)) {
+            if (key.startsWith('field_') && value !== undefined) {
+              const fieldName = key.replace('field_', '');
+              dynamicFields[fieldName] = value;
+              // Ta bort från root-objektet
+              delete item[key];
             }
           }
-        }
-        
-        return mappedRow;
-      });
+          
+          return {
+            ...item,
+            dynamicFields
+          };
+        });
+      }
 
       // Starta importen
       const results = {
-        total: dataToImport.length,
+        total: mappedData.length,
         success: 0,
         failed: 0,
         errors: [] as string[]
       };
 
       // Importera stegvis
-      const batchSize = 10; // Mindre batchstorlek för att undvika överbelastning
-      const totalBatches = Math.ceil(dataToImport.length / batchSize);
+      const batchSize = importOptions.batchSize; // Mindre batchstorlek för att undvika överbelastning
+      const totalBatches = Math.ceil(mappedData.length / batchSize);
       
       for (let batchIndex = 0; batchIndex < totalBatches; batchIndex++) {
         const start = batchIndex * batchSize;
-        const end = Math.min(start + batchSize, dataToImport.length);
-        const batch = dataToImport.slice(start, end);
+        const end = Math.min(start + batchSize, mappedData.length);
+        const batch = mappedData.slice(start, end);
         
         // Uppdatera framsteg
         setImportProgress(Math.round(((batchIndex) / totalBatches) * 100));
         
         try {
-          // För varje post i batchen, skapa en egen POST-förfrågan
-          // till våra specialanpassade import-API:er
-          try {
-            // Välj API-endpoint baserat på importmål
-            const endpoint = importTarget === 'customers' 
-              ? '/api/import/customers' 
-              : '/api/import/tickets';
-            
-            // Skicka hela batchen för importering
-            const response = await fetch(endpoint, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({
-                data: batch,
-                options: {
-                  skipExisting: true
-                }
-              }),
-            });
-            
-            if (response.ok) {
-              const result = await response.json();
-              results.success += result.success || 0;
-              results.failed += result.failed || 0;
-              
-              if (result.errors && result.errors.length > 0) {
-                results.errors.push(...result.errors);
+          // Välj API-endpoint baserat på importmål
+          const endpoint = importTarget === 'customers' 
+            ? '/api/import/customers' 
+            : '/api/import/tickets';
+          
+          // Skicka hela batchen för importering
+          const response = await fetch(endpoint, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              data: batch,
+              options: {
+                skipExisting: importOptions.skipExisting,
+                updateExisting: importOptions.updateExisting
               }
-            } else {
-              const error = await response.json();
-              console.error('API-fel:', error);
-              results.failed += batch.length;
-              results.errors.push(`Batch ${batchIndex + 1}: ${error.message || 'Okänt fel'}`);
+            }),
+          });
+          
+          if (response.ok) {
+            const result = await response.json();
+            results.success += result.success || 0;
+            results.failed += result.failed || 0;
+            
+            if (result.errors && result.errors.length > 0) {
+              results.errors.push(...result.errors);
             }
-          } catch (error) {
-            console.error('Fel vid import av batch:', error);
+          } else {
+            const error = await response.json();
+            console.error('API-fel:', error);
             results.failed += batch.length;
-            results.errors.push(`Batch ${batchIndex + 1}: ${error instanceof Error ? error.message : 'Okänt fel'}`);
+            results.errors.push(`Batch ${batchIndex + 1}: ${error.message || 'Okänt fel'}`);
           }
         } catch (error) {
           console.error('Fel vid import av batch:', error);
@@ -495,15 +548,85 @@ const ImportTab = () => {
                 Ärenden
               </Button>
             </div>
+            
+            {/* Visa ärendetypsväljare om import av ärenden är vald */}
+            {importTarget === 'tickets' && (
+              <div className="mt-4">
+                <h5 className="text-sm font-medium mb-2">Välj ärendetyp för nya ärenden:</h5>
+                <Select
+                  className="max-w-xs"
+                  selectedKeys={selectedTicketType ? [selectedTicketType.toString()] : []}
+                  onChange={e => setSelectedTicketType(Number(e.target.value))}
+                  size="sm"
+                >
+                  {ticketTypes.map((type) => (
+                    <SelectItem key={type.id.toString()} value={type.id.toString()}>
+                      {type.name}
+                    </SelectItem>
+                  ))}
+                </Select>
+                <p className="text-xs text-default-500 mt-1">
+                  Denna ärendetyp används för ärenden som importeras utan specifik ärendetyp
+                </p>
+              </div>
+            )}
           </div>
           
-          {/* Steg 2: Ladda upp fil med FileUploader-komponenten */}
-          <FileUploader
-            fileInputRef={fileInputRef}
-            importFile={importFile}
-            fileType={fileType}
-            onFileChange={handleFileChange}
-          />
+          {/* Importalternativ */}
+          <div>
+            <h4 className="font-medium mb-2">2. Alternativ</h4>
+            <div className="flex flex-wrap gap-2">
+              <Chip
+                variant={importOptions.skipExisting ? "solid" : "flat"}
+                color={importOptions.skipExisting ? "primary" : "default"}
+                onClose={() => setImportOptions(prev => ({ ...prev, skipExisting: !prev.skipExisting }))}
+              >
+                Hoppa över befintliga
+              </Chip>
+              <Chip
+                variant={importOptions.updateExisting ? "solid" : "flat"}
+                color={importOptions.updateExisting ? "primary" : "default"}
+                onClose={() => setImportOptions(prev => ({ ...prev, updateExisting: !prev.updateExisting }))}
+              >
+                Uppdatera befintliga
+              </Chip>
+              <Chip
+                variant={importOptions.includeAll ? "solid" : "flat"}
+                color={importOptions.includeAll ? "primary" : "default"}
+                onClose={() => setImportOptions(prev => ({ ...prev, includeAll: !prev.includeAll }))}
+              >
+                Inkludera alla fält
+              </Chip>
+              
+              <Dropdown>
+                <DropdownTrigger>
+                  <Button size="sm" variant="flat">
+                    Batchstorlek: {importOptions.batchSize}
+                  </Button>
+                </DropdownTrigger>
+                <DropdownMenu
+                  aria-label="Batchstorlek"
+                  onAction={(key) => setImportOptions(prev => ({ ...prev, batchSize: Number(key) }))}
+                >
+                  <DropdownItem key="5">5 rader per batch</DropdownItem>
+                  <DropdownItem key="10">10 rader per batch</DropdownItem>
+                  <DropdownItem key="20">20 rader per batch</DropdownItem>
+                  <DropdownItem key="50">50 rader per batch</DropdownItem>
+                </DropdownMenu>
+              </Dropdown>
+            </div>
+          </div>
+          
+          {/* Steg 3: Ladda upp fil med FileUploader-komponenten */}
+          <div>
+            <h4 className="font-medium mb-2">3. Välj importfil</h4>
+            <FileUploader
+              fileInputRef={fileInputRef}
+              importFile={importFile}
+              fileType={fileType}
+              onFileChange={handleFileChange}
+            />
+          </div>
           
           {/* Visar framsteg vid import */}
           {loading && (
@@ -558,6 +681,7 @@ const ImportTab = () => {
         fieldMapping={fieldMapping}
         updateFieldMapping={updateFieldMapping}
         previewData={previewData}
+        importTarget={importTarget}
       />
     </Card>
   );

@@ -170,110 +170,198 @@ export const detectFileType = (filename: string): string | null => {
   /**
    * Transformera ärenden baserat på fältmappning
    */
-  export const mapTicketFields = (
-    data: any[], 
-    fieldMapping: Record<string, string>
-  ): any[] => {
-    return data.map(row => {
-      const mappedRow: Record<string, any> = {};
-      
-      for (const [sourceField, targetField] of Object.entries(fieldMapping)) {
-        if (targetField && row[sourceField] !== undefined) {
-          let value = row[sourceField];
-          
-          // Typkonvertering baserat på målfält
-          switch (targetField) {
-            case 'dueDate':
-              // Konvertera till datum
-              if (value && typeof value === 'string') {
-                try {
-                  const date = new Date(value);
-                  if (!isNaN(date.getTime())) {
-                    value = date.toISOString();
-                  } else {
-                    // Försök med olika datumformat
-                    const parts = value.split(/[\/\-\.]/);
-                    if (parts.length === 3) {
-                      // Anta MM/DD/YYYY eller DD/MM/YYYY
-                      if (parseInt(parts[0]) > 12) {
-                        // Sannolikt DD/MM/YYYY
-                        const date = new Date(`${parts[2]}-${parts[1]}-${parts[0]}`);
-                        if (!isNaN(date.getTime())) {
-                          value = date.toISOString();
-                        }
-                      } else {
-                        // Anta MM/DD/YYYY
-                        const date = new Date(`${parts[2]}-${parts[0]}-${parts[1]}`);
-                        if (!isNaN(date.getTime())) {
-                          value = date.toISOString();
-                        }
+  // Uppdaterad mapTicketFields funktion
+
+  // Korrigerad mapTicketFields funktion
+
+export const mapTicketFields = (
+  data: any[], 
+  fieldMapping: Record<string, string>
+): any[] => {
+  return data.map(row => {
+    const mappedRow: Record<string, any> = {};
+    
+    // Initiera dynamiska fält som ett tomt objekt
+    // VIKTIGT: Säkerställ att dynamicFields alltid är ett objekt
+    mappedRow.dynamicFields = {};
+    
+    // För varje källfält, mappa till målfält enligt fältmappningen
+    for (const [sourceField, targetField] of Object.entries(fieldMapping)) {
+      if (targetField && row[sourceField] !== undefined) {
+        let value = row[sourceField];
+        
+        // Typkonvertering baserat på målfält
+        switch (targetField) {
+          case 'dueDate':
+            // Konvertera till datum
+            if (value && typeof value === 'string') {
+              try {
+                const date = new Date(value);
+                if (!isNaN(date.getTime())) {
+                  value = date.toISOString();
+                } else {
+                  // Försök med olika datumformat
+                  const parts = value.split(/[\/\-\.]/);
+                  if (parts.length === 3) {
+                    // Anta MM/DD/YYYY eller DD/MM/YYYY
+                    if (parseInt(parts[0]) > 12) {
+                      // Sannolikt DD/MM/YYYY
+                      const date = new Date(`${parts[2]}-${parts[1]}-${parts[0]}`);
+                      if (!isNaN(date.getTime())) {
+                        value = date.toISOString();
+                      }
+                    } else {
+                      // Anta MM/DD/YYYY
+                      const date = new Date(`${parts[2]}-${parts[0]}-${parts[1]}`);
+                      if (!isNaN(date.getTime())) {
+                        value = date.toISOString();
                       }
                     }
                   }
-                } catch (error) {
-                  // Om vi inte kunde tolka datumet, behåll originalvärdet
-                  console.warn(`Kunde inte tolka datum: ${value}`, error);
                 }
+              } catch (error) {
+                // Om vi inte kunde tolka datumet, behåll originalvärdet
+                console.warn(`Kunde inte tolka datum: ${value}`, error);
               }
-              break;
-              
-            case 'status':
-              // Normalisera status
-              if (typeof value === 'string') {
-                const normalizedStatus = value.toUpperCase().trim();
-                
-                // Mappa vanliga statusar till systemets statusar
-                const statusMap: Record<string, string> = {
-                  'OPEN': 'OPEN',
-                  'OPENED': 'OPEN',
-                  'NEW': 'OPEN',
-                  'NYA': 'OPEN',
-                  'ÖPPEN': 'OPEN',
-                  'ÖPPET': 'OPEN',
-                  'ÖPPNA': 'OPEN',
-                  
-                  'IN PROGRESS': 'IN_PROGRESS',
-                  'INPROGRESS': 'IN_PROGRESS',
-                  'IN-PROGRESS': 'IN_PROGRESS',
-                  'ONGOING': 'IN_PROGRESS',
-                  'PÅGÅR': 'IN_PROGRESS',
-                  'PÅGÅENDE': 'IN_PROGRESS',
-                  
-                  'RESOLVED': 'RESOLVED',
-                  'LÖST': 'RESOLVED',
-                  'SOLVED': 'RESOLVED',
-                  
-                  'CLOSED': 'CLOSED',
-                  'CLOSE': 'CLOSED',
-                  'DONE': 'CLOSED',
-                  'COMPLETED': 'CLOSED',
-                  'FÄRDIG': 'CLOSED',
-                  'KLAR': 'CLOSED',
-                  'AVSLUTAD': 'CLOSED',
-                  'STÄNGD': 'CLOSED'
-                };
-                
-                value = statusMap[normalizedStatus] || normalizedStatus;
-              }
-              break;
+            }
+            break;
             
-            default:
-              // Standardkonvertering för textvärden
-              if (value === null) {
-                value = undefined;
-              } else if (typeof value !== 'string' && typeof value !== 'number') {
-                value = String(value);
+          case 'status':
+            // Normalisera status
+            if (typeof value === 'string') {
+              const normalizedStatus = value.toUpperCase().trim();
+              
+              // Mappa vanliga statusar till systemets statusar
+              const statusMap: Record<string, string> = {
+                'OPEN': 'OPEN',
+                'OPENED': 'OPEN',
+                'NEW': 'OPEN',
+                'NYA': 'OPEN',
+                'ÖPPEN': 'OPEN',
+                'ÖPPET': 'OPEN',
+                'ÖPPNA': 'OPEN',
+                
+                'IN PROGRESS': 'IN_PROGRESS',
+                'INPROGRESS': 'IN_PROGRESS',
+                'IN-PROGRESS': 'IN_PROGRESS',
+                'ONGOING': 'IN_PROGRESS',
+                'PÅGÅR': 'IN_PROGRESS',
+                'PÅGÅENDE': 'IN_PROGRESS',
+                
+                'RESOLVED': 'RESOLVED',
+                'LÖST': 'RESOLVED',
+                'SOLVED': 'RESOLVED',
+                
+                'CLOSED': 'CLOSED',
+                'CLOSE': 'CLOSED',
+                'DONE': 'CLOSED',
+                'COMPLETED': 'CLOSED',
+                'FÄRDIG': 'CLOSED',
+                'KLAR': 'CLOSED',
+                'AVSLUTAD': 'CLOSED',
+                'STÄNGD': 'CLOSED'
+              };
+              
+              value = statusMap[normalizedStatus] || normalizedStatus;
+            }
+            break;
+
+          case 'ticketTypeId':
+            // Konvertera till nummer
+            if (value !== null && value !== undefined) {
+              if (typeof value === 'string') {
+                // Om det är en sträng med ett namn på ärendetyp, behåll det för senare matchning
+                if (isNaN(Number(value))) {
+                  mappedRow.ticketTypeName = value;
+                  continue; // Hoppa över att sätta detta som ID just nu
+                } else {
+                  // Om det är en numerisk sträng, konvertera till nummer
+                  value = Number(value);
+                }
+              } else if (typeof value === 'number') {
+                // Om det redan är ett nummer, behåll det
+                value = value;
               }
-              break;
-          }
+            }
+            break;
+            
+          case 'customerId':
+            // Konvertera till nummer
+            if (value !== null && value !== undefined) {
+              value = Number(value) || null;
+            }
+            break;
+
+          case 'dynamicFields':
+            // Kontrollera om värdet redan är ett objekt
+            if (typeof value === 'object' && value !== null) {
+              // Om det är ett objekt, använd det
+              Object.assign(mappedRow.dynamicFields, value);
+              continue; // Hoppa över att lägga till i mappedRow
+            } else if (typeof value === 'string') {
+              // Försök parsa som JSON om det är en sträng
+              try {
+                const parsedValue = JSON.parse(value);
+                if (typeof parsedValue === 'object' && parsedValue !== null) {
+                  Object.assign(mappedRow.dynamicFields, parsedValue);
+                  continue; // Hoppa över att lägga till i mappedRow
+                }
+              } catch (e) {
+                // Om parsning misslyckas, lägg till som en sträng i dynamicFields
+                // VIKTIGT: Kontrollera att dynamicFields existerar innan vi lägger till något
+                if (mappedRow.dynamicFields) {
+                  mappedRow.dynamicFields['rawValue'] = value;
+                }
+                continue; // Hoppa över att lägga till i mappedRow
+              }
+            }
+            break;
           
-          mappedRow[targetField] = value;
+          default:
+            // Specialhantering för fält som börjar med "fält_"
+            if (targetField.startsWith('fält_')) {
+              // Extrahera fältnamnet (efter prefixet)
+              const fieldName = targetField.substring(5); // "fält_".length = 5
+              // Lägg till i dynamiska fält istället för i rotnivån
+              // VIKTIGT: Kontrollera att dynamicFields existerar
+              if (mappedRow.dynamicFields) {
+                mappedRow.dynamicFields[fieldName] = value;
+              }
+              continue; // Hoppa över att lägga till i mappedRow
+            }
+            
+            // Standardkonvertering för textvärden
+            if (value === null) {
+              value = undefined;
+            } else if (typeof value !== 'string' && typeof value !== 'number') {
+              value = String(value);
+            }
+            break;
+        }
+        
+        // Lägg till i mappedRow
+        mappedRow[targetField] = value;
+      }
+    }
+    
+    // Efter att ha gått igenom alla mappad fält, gå igenom eventuella fält med 'fält_' prefix
+    // som inte har kopplats till dynamicFields via mappningen
+    for (const key in row) {
+      if (key.startsWith('fält_') && !Object.keys(fieldMapping).includes(key)) {
+        const fieldName = key.substring(5); // Ta bort "fält_" prefixet
+        if (row[key] !== undefined && row[key] !== null) {
+          // Säkerställ att dynamicFields är initierat
+          if (!mappedRow.dynamicFields) {
+            mappedRow.dynamicFields = {};
+          }
+          mappedRow.dynamicFields[fieldName] = row[key];
         }
       }
-      
-      return mappedRow;
-    });
-  };
+    }
+    
+    return mappedRow;
+  });
+};
   
   /**
    * Generisk funktion för att exportera data
