@@ -69,22 +69,26 @@ const ImportTab = () => {
 
   // Hämta de tillgängliga ärendetyperna när komponenten laddas
   useEffect(() => {
-    const fetchTicketTypes = async () => {
+    // Hämta alla ärendetyper och deras fält
+    const fetchAllTicketTypeFields = async () => {
       try {
         const response = await fetch('/api/tickets/types');
         if (response.ok) {
           const data = await response.json();
           setTicketTypes(data);
-          if (data.length > 0) {
+          if (data.length > 0 && !selectedTicketType) {
             setSelectedTicketType(data[0].id);
           }
+          
+          // Loggning
+          console.log('Samtliga ärendetyper:', data);
         }
       } catch (error) {
         console.error('Fel vid hämtning av ärendetyper:', error);
       }
     };
-
-    fetchTicketTypes();
+  
+    fetchAllTicketTypeFields();
   }, []);
 
   // Hämta tillgängliga fält baserat på importmål
@@ -98,23 +102,82 @@ const ImportTab = () => {
     } else {
       const baseFields = [
         'title', 'description', 'status', 'dueDate', 'customerEmail',
-        'ticketTypeId', 'priority', 'dynamicFields' // För anpassade ärendefält
+        'ticketTypeId', 'ticketTypeName', 'priority', 'dynamicFields' // För anpassade ärendefält
       ];
-
-      // Om en ärendetyp är vald och har dynamiska fält, lägg till dem
-      if (selectedTicketType) {
-        const selectedType = ticketTypes.find(type => type.id === selectedTicketType);
-        if (selectedType && selectedType.fields) {
-          selectedType.fields.forEach((field: any) => {
-            // Lägg till ärendetypspecifika fält med field_ prefix
-            baseFields.push(`field_${field.name}`);
+  
+      // Samla in ALLA dynamiska fält från ALLA ärendetyper
+      const allDynamicFields = new Set<string>();
+      
+      ticketTypes.forEach(ticketType => {
+        if (ticketType.fields && Array.isArray(ticketType.fields)) {
+          ticketType.fields.forEach(field => {
+            if (field.name) {
+              // Normalisera namnet för att hantera specialtecken och ha en konsekvent namngivning
+              const normalizedName = field.name
+                .replace(/[^\w\sÅÄÖåäö]/g, '')  // Ta bort specialtecken men behåll svenska bokstäver
+                .trim()
+                .replace(/\s+/g, '_');          // Ersätt mellanslag med understreck
+                
+              allDynamicFields.add(normalizedName);
+              
+              // Lägg även till originalnamnets variant
+              allDynamicFields.add(field.name);
+            }
           });
         }
-      }
-
+      });
+      
+      // Logga alla dynamiska fält för felsökning
+      console.log('Alla dynamiska fält från ärendetyper:', Array.from(allDynamicFields));
+      
+      // Lägg till alla dynamiska fält med field_-prefix
+      allDynamicFields.forEach(fieldName => {
+        if (!fieldName.startsWith('field_')) {
+          baseFields.push(`field_${fieldName}`);
+        } else {
+          baseFields.push(fieldName);
+        }
+      });
+      
+      // Logga alla targetFields för felsökning
+      console.log('Tillgängliga målfält:', baseFields);
+      
       setTargetFields(baseFields);
     }
-  }, [importTarget, selectedTicketType, ticketTypes]);
+  }, [importTarget, ticketTypes]);
+
+  const logMappingStatus = () => {
+    console.log("Aktuell fältmappning:", fieldMapping);
+    
+    // Kontrollera om några viktiga fält saknas i mappningen
+    const mappedFields = Object.values(fieldMapping).filter(Boolean);
+    
+    const missingImportantFields = [];
+    if (importTarget === 'tickets') {
+      if (!mappedFields.includes('customerEmail')) {
+        missingImportantFields.push('customerEmail');
+      }
+    } else {
+      if (!mappedFields.includes('email')) {
+        missingImportantFields.push('email');
+      }
+    }
+    
+    if (missingImportantFields.length > 0) {
+      console.warn("Viktiga fält saknas i mappningen:", missingImportantFields);
+    }
+    
+    // Kontrollera om dynamiska fält saknas
+    const dynamicTargetFields = targetFields.filter(field => field.startsWith('field_'));
+    const mappedDynamicFields = dynamicTargetFields.filter(field => mappedFields.includes(field));
+    
+    console.log("Dynamiska fält i targetFields:", dynamicTargetFields);
+    console.log("Mappade dynamiska fält:", mappedDynamicFields);
+    
+    if (dynamicTargetFields.length > mappedDynamicFields.length) {
+      console.warn("Inte alla dynamiska fält är mappade.");
+    }
+  };
   
   // Funktion för autodetektering av datatyp baserat på kolumninnehåll
   const detectDataTypeFromColumns = (data: any[]): 'customers' | 'tickets' => {
@@ -385,6 +448,7 @@ const ImportTab = () => {
 
   // Starta importprocessen
   const handleImport = async () => {
+    logMappingStatus();
     if (!fileData || !fieldMapping) {
       addToast({
         title: 'Fel',
