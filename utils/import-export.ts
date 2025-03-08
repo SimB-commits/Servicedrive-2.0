@@ -170,217 +170,232 @@ export const detectFileType = (filename: string): string | null => {
   /**
    * Transformera ärenden baserat på fältmappning
    */
-  // Uppdaterad mapTicketFields funktion
 
-  // Korrigerad mapTicketFields funktion
-
-export const mapTicketFields = (
-  data: any[], 
-  fieldMapping: Record<string, string>
-): any[] => {
-  return data.map(row => {
-    const mappedRow: Record<string, any> = {};
-    
-    // Initiera dynamiska fält som ett tomt objekt
-    // VIKTIGT: Säkerställ att dynamicFields alltid är ett objekt
-    mappedRow.dynamicFields = {};
-    
-    // För varje källfält, mappa till målfält enligt fältmappningen
-    for (const [sourceField, targetField] of Object.entries(fieldMapping)) {
-      if (targetField && row[sourceField] !== undefined) {
-        let value = row[sourceField];
-        
-        // Typkonvertering baserat på målfält
-        switch (targetField) {
-          case 'dueDate':
-            // Konvertera till datum
-            if (value && typeof value === 'string') {
-              try {
-                const date = new Date(value);
-                if (!isNaN(date.getTime())) {
-                  value = date.toISOString();
-                } else {
-                  // Försök med olika datumformat
-                  const parts = value.split(/[\/\-\.]/);
-                  if (parts.length === 3) {
-                    // Anta MM/DD/YYYY eller DD/MM/YYYY
-                    if (parseInt(parts[0]) > 12) {
-                      // Sannolikt DD/MM/YYYY
-                      const date = new Date(`${parts[2]}-${parts[1]}-${parts[0]}`);
-                      if (!isNaN(date.getTime())) {
-                        value = date.toISOString();
-                      }
-                    } else {
-                      // Anta MM/DD/YYYY
-                      const date = new Date(`${parts[2]}-${parts[0]}-${parts[1]}`);
-                      if (!isNaN(date.getTime())) {
-                        value = date.toISOString();
+  export const mapTicketFields = (
+    data: any[], 
+    fieldMapping: Record<string, string>
+  ): any[] => {
+    return data.map(row => {
+      const mappedRow: Record<string, any> = {};
+      
+      // Initialize dynamic fields as an empty object
+      mappedRow.dynamicFields = {};
+      
+      // For each source field, map to target field according to field mapping
+      for (const [sourceField, targetField] of Object.entries(fieldMapping)) {
+        if (targetField && row[sourceField] !== undefined) {
+          let value = row[sourceField];
+          
+          // Type conversion based on target field
+          switch (targetField) {
+            case 'dueDate':
+              // Convert to date
+              if (value && typeof value === 'string') {
+                try {
+                  const date = new Date(value);
+                  if (!isNaN(date.getTime())) {
+                    value = date.toISOString();
+                  } else {
+                    // Try different date formats
+                    const parts = value.split(/[\/\-\.]/);
+                    if (parts.length === 3) {
+                      // Assume MM/DD/YYYY or DD/MM/YYYY
+                      if (parseInt(parts[0]) > 12) {
+                        // Likely DD/MM/YYYY
+                        const date = new Date(`${parts[2]}-${parts[1]}-${parts[0]}`);
+                        if (!isNaN(date.getTime())) {
+                          value = date.toISOString();
+                        }
+                      } else {
+                        // Assume MM/DD/YYYY
+                        const date = new Date(`${parts[2]}-${parts[0]}-${parts[1]}`);
+                        if (!isNaN(date.getTime())) {
+                          value = date.toISOString();
+                        }
                       }
                     }
                   }
+                } catch (error) {
+                  console.warn(`Could not parse date: ${value}`, error);
                 }
-              } catch (error) {
-                // Om vi inte kunde tolka datumet, behåll originalvärdet
-                console.warn(`Kunde inte tolka datum: ${value}`, error);
               }
-            }
-            break;
-            
-          case 'status':
-            // Normalisera status
-            if (typeof value === 'string') {
-              const normalizedStatus = value.toUpperCase().trim();
+              break;
               
-              // Mappa vanliga statusar till systemets statusar
-              const statusMap: Record<string, string> = {
-                'OPEN': 'OPEN',
-                'OPENED': 'OPEN',
-                'NEW': 'OPEN',
-                'NYA': 'OPEN',
-                'ÖPPEN': 'OPEN',
-                'ÖPPET': 'OPEN',
-                'ÖPPNA': 'OPEN',
-                
-                'IN PROGRESS': 'IN_PROGRESS',
-                'INPROGRESS': 'IN_PROGRESS',
-                'IN-PROGRESS': 'IN_PROGRESS',
-                'ONGOING': 'IN_PROGRESS',
-                'PÅGÅR': 'IN_PROGRESS',
-                'PÅGÅENDE': 'IN_PROGRESS',
-                
-                'RESOLVED': 'RESOLVED',
-                'LÖST': 'RESOLVED',
-                'SOLVED': 'RESOLVED',
-                
-                'CLOSED': 'CLOSED',
-                'CLOSE': 'CLOSED',
-                'DONE': 'CLOSED',
-                'COMPLETED': 'CLOSED',
-                'FÄRDIG': 'CLOSED',
-                'KLAR': 'CLOSED',
-                'AVSLUTAD': 'CLOSED',
-                'STÄNGD': 'CLOSED'
-              };
-              
-              value = statusMap[normalizedStatus] || normalizedStatus;
-            }
-            break;
-
-          case 'ticketTypeId':
-            // Konvertera till nummer
-            if (value !== null && value !== undefined) {
+            case 'status':
+              // Normalize status
               if (typeof value === 'string') {
-                // Om det är en sträng med ett namn på ärendetyp, behåll det för senare matchning
-                if (isNaN(Number(value))) {
-                  mappedRow.ticketTypeName = value;
-                  continue; // Hoppa över att sätta detta som ID just nu
-                } else {
-                  // Om det är en numerisk sträng, konvertera till nummer
-                  value = Number(value);
-                }
-              } else if (typeof value === 'number') {
-                // Om det redan är ett nummer, behåll det
-                value = value;
+                const normalizedStatus = value.toUpperCase().trim();
+                
+                // Map common statuses to system statuses
+                const statusMap: Record<string, string> = {
+                  'OPEN': 'OPEN',
+                  'OPENED': 'OPEN',
+                  'NEW': 'OPEN',
+                  'NYA': 'OPEN',
+                  'ÖPPEN': 'OPEN',
+                  'ÖPPET': 'OPEN',
+                  'ÖPPNA': 'OPEN',
+                  
+                  'IN PROGRESS': 'IN_PROGRESS',
+                  'INPROGRESS': 'IN_PROGRESS',
+                  'IN-PROGRESS': 'IN_PROGRESS',
+                  'ONGOING': 'IN_PROGRESS',
+                  'PÅGÅR': 'IN_PROGRESS',
+                  'PÅGÅENDE': 'IN_PROGRESS',
+                  
+                  'RESOLVED': 'RESOLVED',
+                  'LÖST': 'RESOLVED',
+                  'SOLVED': 'RESOLVED',
+                  
+                  'CLOSED': 'CLOSED',
+                  'CLOSE': 'CLOSED',
+                  'DONE': 'CLOSED',
+                  'COMPLETED': 'CLOSED',
+                  'FÄRDIG': 'CLOSED',
+                  'KLAR': 'CLOSED',
+                  'AVSLUTAD': 'CLOSED',
+                  'STÄNGD': 'CLOSED'
+                };
+                
+                value = statusMap[normalizedStatus] || normalizedStatus;
               }
-            }
-            break;
-            
-          case 'customerId':
-            // Konvertera till nummer
-            if (value !== null && value !== undefined) {
-              value = Number(value) || null;
-            }
-            break;
+              break;
 
-          case 'dynamicFields':
-            // Kontrollera om värdet redan är ett objekt
-            if (typeof value === 'object' && value !== null) {
-              // Om det är ett objekt, använd det
-              Object.assign(mappedRow.dynamicFields, value);
-              continue; // Hoppa över att lägga till i mappedRow
-            } else if (typeof value === 'string') {
-              // Försök parsa som JSON om det är en sträng
-              try {
-                const parsedValue = JSON.parse(value);
-                if (typeof parsedValue === 'object' && parsedValue !== null) {
-                  Object.assign(mappedRow.dynamicFields, parsedValue);
-                  continue; // Hoppa över att lägga till i mappedRow
+            case 'ticketTypeId':
+              // Convert to number
+              if (value !== null && value !== undefined) {
+                if (typeof value === 'string') {
+                  // If it's a string with a ticket type name, keep for later matching
+                  if (isNaN(Number(value))) {
+                    mappedRow.ticketTypeName = value;
+                    continue; // Skip setting this as ID for now
+                  } else {
+                    // If it's a numeric string, convert to number
+                    value = Number(value);
+                  }
+                } else if (typeof value === 'number') {
+                  // If it's already a number, keep it
+                  value = value;
                 }
-              } catch (e) {
-                // Om parsning misslyckas, lägg till som en sträng i dynamicFields
-                // VIKTIGT: Kontrollera att dynamicFields existerar innan vi lägger till något
-                if (mappedRow.dynamicFields) {
-                  mappedRow.dynamicFields['rawValue'] = value;
+              }
+              break;
+              
+            case 'customerId':
+              // Convert to number
+              if (value !== null && value !== undefined) {
+                value = Number(value) || null;
+              }
+              break;
+
+            case 'dynamicFields':
+              // Check if value is already an object
+              if (typeof value === 'object' && value !== null) {
+                // If it's an object, use it
+                Object.assign(mappedRow.dynamicFields, value);
+                continue; // Skip adding to mappedRow
+              } else if (typeof value === 'string') {
+                // Try to parse as JSON if it's a string
+                try {
+                  const parsedValue = JSON.parse(value);
+                  if (typeof parsedValue === 'object' && parsedValue !== null) {
+                    Object.assign(mappedRow.dynamicFields, parsedValue);
+                    continue; // Skip adding to mappedRow
+                  }
+                } catch (e) {
+                  // If parsing fails, add as a string in dynamicFields
+                  if (mappedRow.dynamicFields) {
+                    mappedRow.dynamicFields['rawValue'] = value;
+                  }
+                  continue; // Skip adding to mappedRow
                 }
-                continue; // Hoppa över att lägga till i mappedRow
               }
-            }
-            break;
-          
-          default:
-            // Specialhantering för fält som börjar med "fält_"
-            if (targetField.startsWith('fält_')) {
-              // Extrahera fältnamnet (efter prefixet)
-              const fieldName = targetField.substring(5); // "fält_".length = 5
-              // Lägg till i dynamiska fält istället för i rotnivån
-              // VIKTIGT: Kontrollera att dynamicFields existerar
-              if (mappedRow.dynamicFields) {
-                mappedRow.dynamicFields[fieldName] = value;
-              }
-              continue; // Hoppa över att lägga till i mappedRow
-            }
+              break;
             
-            // Standardkonvertering för textvärden
-            if (value === null) {
-              value = undefined;
-            } else if (typeof value !== 'string' && typeof value !== 'number') {
-              value = String(value);
-            }
-            break;
-        }
-        
-        // Lägg till i mappedRow
-        mappedRow[targetField] = value;
-      }
-    }
-    
-    // Efter att ha gått igenom alla mappad fält, gå igenom eventuella fält med 'fält_' prefix
-    // som inte har kopplats till dynamicFields via mappningen
-    for (const key in row) {
-      if (key.startsWith('fält_') && !Object.keys(fieldMapping).includes(key)) {
-        const fieldName = key.substring(5); // Ta bort "fält_" prefixet
-        if (row[key] !== undefined && row[key] !== null) {
-          // Säkerställ att dynamicFields är initierat
-          if (!mappedRow.dynamicFields) {
-            mappedRow.dynamicFields = {};
+            default:
+              // Special handling for field_* prefixed fields
+              if (targetField.startsWith('field_')) {
+                // Extract field name (after prefix)
+                const fieldName = targetField.substring(5); // "field_".length = 5
+                // Add to dynamic fields instead of root level
+                if (mappedRow.dynamicFields) {
+                  mappedRow.dynamicFields[fieldName] = value;
+                }
+                continue; // Skip adding to mappedRow
+              }
+              
+              // Standard conversion for text values
+              if (value === null) {
+                value = undefined;
+              } else if (typeof value !== 'string' && typeof value !== 'number') {
+                value = String(value);
+              }
+              break;
           }
-          mappedRow.dynamicFields[fieldName] = row[key];
+          
+          // Add to mappedRow
+          mappedRow[targetField] = value;
         }
       }
-    }
-    
-    return mappedRow;
-  });
-};
+      
+      // Process any unmapped field_* fields (from imported data)
+      for (const key in row) {
+        if (key.startsWith('field_') && !Object.keys(fieldMapping).includes(key)) {
+          const fieldName = key.substring(5); // Remove "field_" prefix
+          if (row[key] !== undefined && row[key] !== null && row[key] !== '') {
+            // Ensure dynamicFields is initialized
+            if (!mappedRow.dynamicFields) {
+              mappedRow.dynamicFields = {};
+            }
+            mappedRow.dynamicFields[fieldName] = row[key];
+          }
+        }
+      }
+      
+      // Also check for legacy TicketType_ prefixed fields
+      // (for backwards compatibility with older exports)
+      if (row.ticketTypeName) {
+        const safeTypeName = row.ticketTypeName
+          .replace(/[^a-zA-Z0-9åäöÅÄÖ]/g, '')
+          .trim();
+          
+        if (safeTypeName) {
+          for (const key in row) {
+            if (key.startsWith(`${safeTypeName}_`) && !key.endsWith('_type')) {
+              const fieldName = key.substring(safeTypeName.length + 1); // +1 for the underscore
+              if (row[key] !== undefined && row[key] !== null && row[key] !== '') {
+                // Ensure dynamicFields is initialized
+                if (!mappedRow.dynamicFields) {
+                  mappedRow.dynamicFields = {};
+                }
+                mappedRow.dynamicFields[fieldName] = row[key];
+              }
+            }
+          }
+        }
+      }
+      
+      return mappedRow;
+    });
+  };
   
-  /**
-   * Generisk funktion för att exportera data
-   */
+  // Förbered data för export
+
   export const prepareDataForExport = (
     data: any[],
     exportType: 'customers' | 'tickets' | 'all',
     includeRelations: boolean = false
   ): any[] => {
+    console.log(`Running updated prepareDataForExport with type: ${exportType}`);
     if (!Array.isArray(data) || data.length === 0) {
       return [];
     }
     
-    // För varje exporttyp, formatera data på lämpligt sätt
+    // For each export type, format data appropriately
     switch (exportType) {
       case 'customers':
         return data.map(customer => {
           const exportedCustomer = {
-            // Baskundinformation
+            // Basic customer information
             id: customer.id,
             firstName: customer.firstName || '',
             lastName: customer.lastName || '',
@@ -394,13 +409,13 @@ export const mapTicketFields = (
             newsletter: customer.newsletter || false,
             loyal: customer.loyal || false,
             
-            // Relationer
+            // Relations
             ...(includeRelations && customer.tickets ? {
               ticketCount: customer.tickets.length
             } : {})
           };
           
-          // Lägg till dynamiska fält om de finns
+          // Add dynamic fields if they exist
           if (customer.dynamicFields && typeof customer.dynamicFields === 'object') {
             Object.entries(customer.dynamicFields).forEach(([key, value]) => {
               exportedCustomer[`custom_${key}`] = value;
@@ -411,9 +426,20 @@ export const mapTicketFields = (
         });
         
       case 'tickets':
+        // First collect all dynamic field names
+        const allDynamicFields = new Set<string>();
+        
+        data.forEach(ticket => {
+          if (ticket.dynamicFields && typeof ticket.dynamicFields === 'object') {
+            Object.keys(ticket.dynamicFields).forEach(key => {
+              allDynamicFields.add(key);
+            });
+          }
+        });
+        
         return data.map(ticket => {
           const exportedTicket = {
-            // Basärendeinformation
+            // Basic ticket information
             id: ticket.id,
             title: ticket.title || '',
             description: ticket.description || '',
@@ -422,33 +448,54 @@ export const mapTicketFields = (
             updatedAt: ticket.updatedAt ? new Date(ticket.updatedAt).toISOString().split('T')[0] : '',
             dueDate: ticket.dueDate ? new Date(ticket.dueDate).toISOString().split('T')[0] : '',
             
-            // Kopplingar
+            // Connections
             customerId: ticket.customerId,
             customerEmail: ticket.customer?.email || '',
+            customerName: ticket.customer ? `${ticket.customer.firstName || ''} ${ticket.customer.lastName || ''}`.trim() : '',
             ticketTypeId: ticket.ticketTypeId,
             ticketTypeName: ticket.ticketType?.name || '',
           };
           
-          // Lägg till anpassad status om det finns
+          // Add custom status if it exists
           if (ticket.customStatus) {
             exportedTicket.customStatus = ticket.customStatus.name;
           }
           
-          // Lägg till dynamiska fält
+          // ADD ONLY field_ PREFIX FORMAT - NOT ticket type prefixed fields
+          
+          // First add all possible dynamic fields with empty values
+          Array.from(allDynamicFields).forEach(fieldName => {
+            exportedTicket[`field_${fieldName}`] = '';
+          });
+          
+          // Then add this ticket's actual dynamic field values
           if (ticket.dynamicFields && typeof ticket.dynamicFields === 'object') {
             Object.entries(ticket.dynamicFields).forEach(([key, value]) => {
-              exportedTicket[`field_${key}`] = value;
+              exportedTicket[`field_${key}`] = value !== null && value !== undefined ? value : '';
             });
           }
           
-          // Lägg till relationer om de önskas
+          // Add relations if desired
           if (includeRelations) {
             if (ticket.messages && Array.isArray(ticket.messages)) {
               exportedTicket.messageCount = ticket.messages.length;
-            }
-            
-            if (ticket.customer) {
-              exportedTicket.customerName = `${ticket.customer.firstName || ''} ${ticket.customer.lastName || ''}`.trim();
+              
+              // Add last message date if available
+              if (ticket.messages.length > 0) {
+                const sortedMessages = [...ticket.messages].sort((a, b) => 
+                  new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+                );
+                if (sortedMessages[0]?.createdAt) {
+                  exportedTicket.lastMessageDate = new Date(sortedMessages[0].createdAt).toISOString().split('T')[0];
+                } else {
+                  exportedTicket.lastMessageDate = '';
+                }
+              } else {
+                exportedTicket.lastMessageDate = '';
+              }
+            } else {
+              exportedTicket.messageCount = 0;
+              exportedTicket.lastMessageDate = '';
             }
           }
           
@@ -456,7 +503,7 @@ export const mapTicketFields = (
         });
         
       case 'all':
-        // För 'all' exporterar vi både kunder och ärenden i samma struktur
+        // For 'all' we export both customers and tickets in the same structure
         return {
           customers: prepareDataForExport(data.customers || [], 'customers', includeRelations),
           tickets: prepareDataForExport(data.tickets || [], 'tickets', includeRelations)

@@ -3,9 +3,10 @@ import { Spinner, Card, CardBody } from '@heroui/react';
 
 interface ExportStatusIndicatorProps {
   status: 'idle' | 'loading' | 'success' | 'error';
+  errorMessage?: string | null;
 }
 
-const ExportStatusIndicator: React.FC<ExportStatusIndicatorProps> = ({ status }) => {
+const ExportStatusIndicator: React.FC<ExportStatusIndicatorProps> = ({ status, errorMessage }) => {
   if (status === 'idle') {
     return null;
   }
@@ -46,7 +47,7 @@ const ExportStatusIndicator: React.FC<ExportStatusIndicatorProps> = ({ status })
             </svg>
           ),
           title: 'Export misslyckades',
-          message: 'Ett fel inträffade vid export. Försök igen eller kontakta support om problemet kvarstår.'
+          message: errorMessage || 'Ett fel inträffade vid export. Försök igen eller kontakta support om problemet kvarstår.'
         };
       default:
         return {
