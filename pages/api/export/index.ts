@@ -131,7 +131,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       });
       
       // Lägg även till fält från ärendetypsdefinitionerna
-      // Detta fångar upp fält som kanske inte används av nuvarande ärenden men som ändå är definierade
       allTicketTypes.forEach(ticketType => {
         if (ticketType.fields && Array.isArray(ticketType.fields)) {
           ticketType.fields.forEach(field => {
@@ -143,16 +142,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       });
       
       console.log('Alla dynamiska fält som kommer att exporteras:', Array.from(allDynamicFields));
-
-      // Samla alla ärendetyper för typspecifika kolumner
-      const allTicketTypeNames = new Set<string>();
-      allTicketTypes.forEach(type => {
-        if (type.name) {
-          allTicketTypeNames.add(type.name);
-        }
-      });
-      
-      console.log('Alla ärendetyper som kommer att exporteras:', Array.from(allTicketTypeNames));
 
       // Transformera ärendedata för export
       data.tickets = tickets.map(ticket => {
@@ -179,31 +168,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           exportedTicket.customStatusColor = ticket.customStatus.color;
         }
 
-        // Förbättring 3: Inkludera ALLA dynamiska fält från ALLA ärendetyper
-        // Detta är nyckeln till att lösa problemet med saknade kolumner
+        // Lägg till ALLA dynamiska fält från alla ärendetyper
+        // Använd endast field_* formatet för konsekvent namngivning
         allDynamicFields.forEach(fieldName => {
           const fieldValue = ticket.dynamicFields && typeof ticket.dynamicFields === 'object' 
             ? (ticket.dynamicFields as any)[fieldName] 
             : '';
-          // Använd konsekvent namngivning för dynamiska fält
           exportedTicket[`field_${fieldName}`] = fieldValue !== undefined ? fieldValue : '';
         });
-
-        // Förbättring 4: Lägg till typspecifika kolumner för varje dynamiskt fält som finns i detta ärende
-        if (ticket.ticketType?.name && ticket.dynamicFields) {
-          const typeName = ticket.ticketType.name;
-          Object.entries(ticket.dynamicFields as object).forEach(([key, value]) => {
-            exportedTicket[`${typeName}_${key}`] = value;
-            
-            // Lägg till typinformation om vi har fältdefinitioner
-            const fieldDef = ticket.ticketType?.fields?.find(f => f.name === key);
-            if (fieldDef) {
-              exportedTicket[`${typeName}_${key}_type`] = fieldDef.fieldType;
-            } else {
-              exportedTicket[`${typeName}_${key}_type`] = typeName;
-            }
-          });
-        }
         
         // Lägg till relationer om de önskas
         if (withRelations) {

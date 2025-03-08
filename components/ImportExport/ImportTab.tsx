@@ -17,6 +17,9 @@ import {
 import Papa from 'papaparse';
 import ExcelJS from 'exceljs';
 
+// Importera nya FieldMatcher
+import { FieldMatcher } from '@/utils/field-matcher';
+
 // Importera undermappar
 import FileUploader from './ImportComponents/FileUploader';
 import FieldMappingModal from './ImportComponents/FieldMappingModal';
@@ -26,9 +29,7 @@ import ImportSummary from './ImportComponents/ImportSummary';
 import { 
   mapCustomerFields, 
   mapTicketFields, 
-  detectFileType,
-  validateImport,
-  normalizeFieldName
+  detectFileType
 } from '@/utils/import-export';
 
 interface FieldMapping {
@@ -62,6 +63,9 @@ const ImportTab = () => {
     batchSize: 10
   });
   const fileInputRef = useRef<HTMLInputElement>(null);
+  
+  // Skapa en instans av FieldMatcher för att återanvända
+  const fieldMatcher = useRef(new FieldMatcher());
 
   // Hämta de tillgängliga ärendetyperna när komponenten laddas
   useEffect(() => {
@@ -102,7 +106,7 @@ const ImportTab = () => {
         const selectedType = ticketTypes.find(type => type.id === selectedTicketType);
         if (selectedType && selectedType.fields) {
           selectedType.fields.forEach((field: any) => {
-            // Lägg till ärendetypspecifika fält
+            // Lägg till ärendetypspecifika fält med field_ prefix
             baseFields.push(`field_${field.name}`);
           });
         }
@@ -111,6 +115,53 @@ const ImportTab = () => {
       setTargetFields(baseFields);
     }
   }, [importTarget, selectedTicketType, ticketTypes]);
+  
+  // Funktion för autodetektering av datatyp baserat på kolumninnehåll
+  const detectDataTypeFromColumns = (data: any[]): 'customers' | 'tickets' => {
+    if (!data || data.length === 0) return importTarget;
+
+    // Hämta kolumnnamnen från första raden
+    const columns = Object.keys(data[0]);
+    
+    // Poängsättning för att avgöra datatyp
+    let customerScore = 0;
+    let ticketScore = 0;
+    
+    // Kontrollera vanliga kolumnnamn för kunder
+    const customerColumns = ['email', 'firstname', 'lastname', 'phone', 'address', 'city', 'postal'];
+    const ticketColumns = ['title', 'description', 'status', 'customeremail', 'duedate', 'tickettype'];
+    
+    // Räkna poäng baserat på kolumnnamn
+    columns.forEach(col => {
+      const normalizedCol = col.toLowerCase();
+      
+      // Kontrollera kundfält
+      for (const customerCol of customerColumns) {
+        if (normalizedCol.includes(customerCol)) {
+          customerScore += 1;
+          break;
+        }
+      }
+      
+      // Kontrollera ärendefält
+      for (const ticketCol of ticketColumns) {
+        if (normalizedCol.includes(ticketCol)) {
+          ticketScore += 1;
+          break;
+        }
+      }
+      
+      // Ge extra poäng för field_ prefix för ärenden
+      if (normalizedCol.startsWith('field_')) {
+        ticketScore += 0.5;
+      }
+    });
+    
+    console.log(`Datatyp-detektion: kundscore ${customerScore}, ärendescore ${ticketScore}`);
+    
+    // Returnera den datatyp som fick högst poäng
+    return customerScore > ticketScore ? 'customers' : 'tickets';
+  };
 
   // När en fil väljs, analysera den och försök identifiera fält
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -135,15 +186,31 @@ const ImportTab = () => {
       reader.onload = async (event) => {
         try {
           let data: any[] = [];
+          let headers: string[] = [];
+          
           if (type === 'csv') {
-            // Parsa CSV med PapaParse
+            // Parsa CSV med PapaParse med förbättrade inställningar
             const result = Papa.parse(event.target?.result as string, {
               header: true,
               skipEmptyLines: true,
               dynamicTyping: true,
+              // Förbättrad hantering av CSV-format
+              transformHeader: (header) => {
+                // Behåll originalrubriken inklusive versaler/gemener och specialtecken
+                return header.trim();
+              },
+              // Gissa olika avskiljare för att hantera både komma, semikolon och tab
+              delimitersToGuess: [',', ';', '\t', '|'],
             });
+            
             data = result.data;
-            setAvailableFields(result.meta.fields || []);
+            headers = result.meta.fields || [];
+            
+            // Loggning för felsökning
+            console.log('CSV headers:', headers);
+            console.log('First row of data:', data[0]);
+            
+            setAvailableFields(headers);
           } else if (type === 'excel') {
             // Parsa Excel med ExcelJS
             const buffer = event.target?.result as ArrayBuffer;
@@ -157,13 +224,16 @@ const ImportTab = () => {
             
             // Konvertera till JSON
             data = [];
-            const headers: string[] = [];
+            headers = [];
             
             // Extrahera rubriker (första raden)
             worksheet.getRow(1).eachCell((cell, colNumber) => {
-              headers[colNumber - 1] = cell.value?.toString() || `Column${colNumber}`;
+              // Behåll originalrubriken inklusive versaler/gemener och specialtecken
+              const headerText = cell.value?.toString().trim() || `Column${colNumber}`;
+              headers[colNumber - 1] = headerText;
             });
             
+            console.log('Excel headers:', headers);
             setAvailableFields(headers);
             
             // Läs alla rader (börja från rad 2)
@@ -181,6 +251,8 @@ const ImportTab = () => {
                 data.push(rowData);
               }
             });
+            
+            console.log('First row of Excel data:', data[0]);
           } else if (type === 'json') {
             // Parsa JSON
             data = JSON.parse(event.target?.result as string);
@@ -198,82 +270,46 @@ const ImportTab = () => {
             }
             
             if (data.length > 0) {
-              setAvailableFields(Object.keys(data[0]));
+              headers = Object.keys(data[0]);
+              setAvailableFields(headers);
             }
+            
+            console.log('JSON headers:', headers);
+            console.log('First row of JSON data:', data[0]);
           }
 
-          setFileData(data);
-          setPreviewData(data.slice(0, 5)); // Visa de första 5 raderna som förhandsvisning
-          
-          // Försök att automatiskt mappa fält baserat på namn
-          const autoMapping: Record<string, string> = {};
-          
-          if (availableFields.length > 0 && data.length > 0) {
-            availableFields.forEach(sourceField => {
-              // Normalisera fältnamnet för enklare matchning
-              const normalizedField = normalizeFieldName(sourceField);
-              
-              // Hitta bästa matchning i targetFields
-              let bestMatch = '';
-              let bestMatchScore = 0;
-              
-              targetFields.forEach(targetField => {
-                const normalizedTarget = normalizeFieldName(targetField);
-                
-                // Exakta matchningar
-                if (
-                  normalizedField === normalizedTarget ||
-                  normalizedField === normalizedTarget.replace(/[^a-z0-9åäö]/g, '')
-                ) {
-                  bestMatch = targetField;
-                  bestMatchScore = 100;
-                } 
-                // Partiella matchningar
-                else if (
-                  normalizedField.includes(normalizedTarget) || 
-                  normalizedTarget.includes(normalizedField)
-                ) {
-                  // Om vi redan har en exakt matchning, hoppa över
-                  if (bestMatchScore < 100) {
-                    const score = Math.min(normalizedField.length, normalizedTarget.length) / 
-                                  Math.max(normalizedField.length, normalizedTarget.length) * 90;
-                    
-                    if (score > bestMatchScore) {
-                      bestMatch = targetField;
-                      bestMatchScore = score;
-                    }
-                  }
-                }
-                
-                // Särskilda matchningar för dynamiska fält
-                if (targetField === 'dynamicFields' && 
-                    (sourceField.includes('custom') || sourceField.includes('anpassad') || 
-                     sourceField.includes('extra') || sourceField.includes('field'))) {
-                  if (bestMatchScore < 90) {
-                    bestMatch = targetField;
-                    bestMatchScore = 85;
-                  }
-                }
-                
-                // Särskilda matchningar för ärendetypsspecifika fält
-                if (importTarget === 'tickets' && targetField.startsWith('field_')) {
-                  const fieldName = targetField.replace('field_', '').toLowerCase();
-                  if (normalizedField.includes(fieldName)) {
-                    bestMatch = targetField;
-                    bestMatchScore = 95;
-                  }
-                }
-              });
-              
-              // Om vi hittade en matchning med poäng över 70, använd den
-              if (bestMatchScore > 70) {
-                autoMapping[sourceField] = bestMatch;
-              }
+          // Om data lästes framgångsrikt
+          if (data.length > 0) {
+            setFileData(data);
+            setPreviewData(data.slice(0, 5)); // Visa de första 5 raderna som förhandsvisning
+            
+            // Automatiskt upptäcka om detta är kund- eller ärendedata
+            const detectedDataType = detectDataTypeFromColumns(data);
+            if (detectedDataType !== importTarget) {
+              console.log(`Automatisk detektion av datatyp: ${detectedDataType}`);
+              setImportTarget(detectedDataType);
+            }
+            
+            // Använd FieldMatcher för att skapa en automatisk mapping
+            const autoMapping = fieldMatcher.current.createMapping(
+              headers, 
+              targetFields, 
+              importTarget
+            );
+            
+            console.log('Automatisk fältmapping:', autoMapping);
+            setFieldMapping(autoMapping);
+            
+            // Öppna mappningsmodalen automatiskt
+            setShowMappingModal(true);
+          } else {
+            addToast({
+              title: 'Varning',
+              description: 'Ingen data hittades i filen. Kontrollera att filen innehåller giltiga data.',
+              color: 'warning',
+              variant: 'flat'
             });
           }
-          
-          setFieldMapping(autoMapping);
-          setShowMappingModal(true);
         } catch (error) {
           console.error('Fel vid parsning av fil:', error);
           addToast({
@@ -322,6 +358,30 @@ const ImportTab = () => {
       [sourceField]: targetField
     }));
   };
+  
+  // Automatisk mappning med den nya FieldMatcher
+  const autoMapRemainingFields = () => {
+    // Hämta alla omappade källfält
+    const unmappedSourceFields = availableFields.filter(sourceField => !fieldMapping[sourceField]);
+    
+    // Hämta alla omappade målfält
+    const mappedTargetFields = Object.values(fieldMapping).filter(Boolean);
+    const unmappedTargetFields = targetFields.filter(field => !mappedTargetFields.includes(field));
+    
+    // Använd FieldMatcher för att skapa mapping endast för de omappade fälten
+    const partialMapping = fieldMatcher.current.createMapping(
+      unmappedSourceFields, 
+      unmappedTargetFields, 
+      importTarget
+    );
+    
+    // Uppdatera fieldMapping med de nya mappningarna
+    Object.entries(partialMapping).forEach(([source, target]) => {
+      if (target) {
+        updateFieldMapping(source, target);
+      }
+    });
+  };
 
   // Starta importprocessen
   const handleImport = async () => {
@@ -340,25 +400,6 @@ const ImportTab = () => {
     setImportSummary(null);
 
     try {
-      // Validera data för måltypen
-      const validationResult = validateImport(fileData, fieldMapping, importTarget);
-      if (!validationResult.valid) {
-        addToast({
-          title: 'Valideringsfel',
-          description: validationResult.message || 'Data kunde inte valideras.',
-          color: 'danger',
-          variant: 'flat'
-        });
-        setImportSummary({
-          total: fileData.length,
-          success: 0,
-          failed: fileData.length,
-          errors: [validationResult.message || 'Okänt valideringsfel']
-        });
-        setLoading(false);
-        return;
-      }
-
       // Förbered data för import baserat på importmål
       let mappedData;
       if (importTarget === 'customers') {
@@ -379,26 +420,6 @@ const ImportTab = () => {
             return item;
           });
         }
-        
-        // Hantera ärendetypspecifika fält - flytta dessa till dynamicFields
-        mappedData = mappedData.map(item => {
-          const dynamicFields = item.dynamicFields || {};
-          
-          // Leta efter fält som börjar med field_
-          for (const [key, value] of Object.entries(item)) {
-            if (key.startsWith('field_') && value !== undefined) {
-              const fieldName = key.replace('field_', '');
-              dynamicFields[fieldName] = value;
-              // Ta bort från root-objektet
-              delete item[key];
-            }
-          }
-          
-          return {
-            ...item,
-            dynamicFields
-          };
-        });
       }
 
       // Starta importen
@@ -410,7 +431,7 @@ const ImportTab = () => {
       };
 
       // Importera stegvis
-      const batchSize = importOptions.batchSize; // Mindre batchstorlek för att undvika överbelastning
+      const batchSize = importOptions.batchSize; // Batchstorlek för att undvika överbelastning
       const totalBatches = Math.ceil(mappedData.length / batchSize);
       
       for (let batchIndex = 0; batchIndex < totalBatches; batchIndex++) {
@@ -454,12 +475,12 @@ const ImportTab = () => {
             const error = await response.json();
             console.error('API-fel:', error);
             results.failed += batch.length;
-            results.errors.push(`Batch ${batchIndex + 1}: ${error.message || 'Okänt fel'}`);
+            results.errors.push(`Batch ${batchIndex + 1} (rad ${start+1}-${end}): ${error.message || 'Okänt fel'}`);
           }
         } catch (error) {
           console.error('Fel vid import av batch:', error);
           results.failed += batch.length;
-          results.errors.push(`Batch ${batchIndex + 1}: ${error instanceof Error ? error.message : 'Okänt fel'}`);
+          results.errors.push(`Batch ${batchIndex + 1} (rad ${start+1}-${end}): ${error instanceof Error ? error.message : 'Okänt fel'}`);
         }
 
         // Uppdatera framsteg efter varje batch

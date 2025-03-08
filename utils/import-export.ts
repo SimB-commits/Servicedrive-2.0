@@ -186,6 +186,18 @@ export const detectFileType = (filename: string): string | null => {
         if (targetField && row[sourceField] !== undefined) {
           let value = row[sourceField];
           
+          // Specialhantering för field_* prefixade fält
+          if (targetField.startsWith('field_')) {
+            // Extrahera fältnamnet utan prefix
+            const fieldName = targetField.substring(6); // 'field_'.length = 6
+            
+            // Spara värdet i dynamicFields med rätt namn
+            if (mappedRow.dynamicFields) {
+              mappedRow.dynamicFields[fieldName] = value;
+            }
+            continue; // Hoppa över att lägga till i root-objektet
+          }
+          
           // Type conversion based on target field
           switch (targetField) {
             case 'dueDate':
@@ -260,7 +272,7 @@ export const detectFileType = (filename: string): string | null => {
                 value = statusMap[normalizedStatus] || normalizedStatus;
               }
               break;
-
+  
             case 'ticketTypeId':
               // Convert to number
               if (value !== null && value !== undefined) {
@@ -286,7 +298,7 @@ export const detectFileType = (filename: string): string | null => {
                 value = Number(value) || null;
               }
               break;
-
+  
             case 'dynamicFields':
               // Check if value is already an object
               if (typeof value === 'object' && value !== null) {
@@ -312,17 +324,6 @@ export const detectFileType = (filename: string): string | null => {
               break;
             
             default:
-              // Special handling for field_* prefixed fields
-              if (targetField.startsWith('field_')) {
-                // Extract field name (after prefix)
-                const fieldName = targetField.substring(5); // "field_".length = 5
-                // Add to dynamic fields instead of root level
-                if (mappedRow.dynamicFields) {
-                  mappedRow.dynamicFields[fieldName] = value;
-                }
-                continue; // Skip adding to mappedRow
-              }
-              
               // Standard conversion for text values
               if (value === null) {
                 value = undefined;
@@ -337,39 +338,22 @@ export const detectFileType = (filename: string): string | null => {
         }
       }
       
-      // Process any unmapped field_* fields (from imported data)
+      // Specialhantering för field_* prefix i importdata
       for (const key in row) {
-        if (key.startsWith('field_') && !Object.keys(fieldMapping).includes(key)) {
-          const fieldName = key.substring(5); // Remove "field_" prefix
+        // Hoppa över redan mappade fält
+        if (Object.keys(fieldMapping).includes(key)) {
+          continue;
+        }
+        
+        // Hantera field_* prefixade kolumner automatiskt
+        if (key.startsWith('field_')) {
+          const fieldName = key.substring(6); // Remove "field_" prefix
           if (row[key] !== undefined && row[key] !== null && row[key] !== '') {
             // Ensure dynamicFields is initialized
             if (!mappedRow.dynamicFields) {
               mappedRow.dynamicFields = {};
             }
             mappedRow.dynamicFields[fieldName] = row[key];
-          }
-        }
-      }
-      
-      // Also check for legacy TicketType_ prefixed fields
-      // (for backwards compatibility with older exports)
-      if (row.ticketTypeName) {
-        const safeTypeName = row.ticketTypeName
-          .replace(/[^a-zA-Z0-9åäöÅÄÖ]/g, '')
-          .trim();
-          
-        if (safeTypeName) {
-          for (const key in row) {
-            if (key.startsWith(`${safeTypeName}_`) && !key.endsWith('_type')) {
-              const fieldName = key.substring(safeTypeName.length + 1); // +1 for the underscore
-              if (row[key] !== undefined && row[key] !== null && row[key] !== '') {
-                // Ensure dynamicFields is initialized
-                if (!mappedRow.dynamicFields) {
-                  mappedRow.dynamicFields = {};
-                }
-                mappedRow.dynamicFields[fieldName] = row[key];
-              }
-            }
           }
         }
       }
@@ -526,6 +510,12 @@ export const detectFileType = (filename: string): string | null => {
    * Normalisera fältnamn för automatisk mappning
    */
   export const normalizeFieldName = (fieldName: string): string => {
+    // Behåll ursprungligt field_ prefix om det finns
+    if (fieldName.startsWith('field_')) {
+      return fieldName.toLowerCase();
+    }
+    
+    // Normalisera fältnamnet för jämförelse
     return fieldName
       .toLowerCase()
       .replace(/[^a-z0-9åäö]/g, '')
@@ -545,5 +535,12 @@ export const detectFileType = (filename: string): string | null => {
       .replace(/titel|title/, 'title')
       .replace(/beskrivning|description/, 'description')
       .replace(/status/, 'status')
-      .replace(/deadline|duedate|due/, 'dueDate');
+      .replace(/deadline|duedate|due/, 'dueDate')
+      .replace(/sulm(a|å)tt|solm(a|å)tt|width/, 'sulmått') // Lägg till för sulbredd/sulmått
+      .replace(/skidor?|ski/, 'skida')
+      .replace(/pj(a|ä)x(a|or)|boot/, 'pjäxa')
+      .replace(/binding|bindings/, 'bindning')
+      .replace(/servicetyp|service/, 'servicetyp')
+      .replace(/kommentar|comments?|note|notes?/, 'kommentar')
+      .replace(/monterings?punkt/, 'monteringspunkt');
   };

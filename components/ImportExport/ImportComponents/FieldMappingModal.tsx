@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   Modal,
   ModalContent,
@@ -19,8 +19,12 @@ import {
   Chip,
   Input,
   Tabs,
-  Tab
+  Tab,
+  Badge
 } from '@heroui/react';
+
+// Importera FieldMatcher
+import { FieldMatcher, getStringSimilarity } from '@/utils/field-matcher';
 
 interface FieldMappingModalProps {
   isOpen: boolean;
@@ -30,6 +34,7 @@ interface FieldMappingModalProps {
   fieldMapping: Record<string, string>;
   updateFieldMapping: (sourceField: string, targetField: string) => void;
   previewData: any[] | null;
+  importTarget?: 'customers' | 'tickets';
 }
 
 const FieldMappingModal: React.FC<FieldMappingModalProps> = ({
@@ -39,10 +44,53 @@ const FieldMappingModal: React.FC<FieldMappingModalProps> = ({
   targetFields,
   fieldMapping,
   updateFieldMapping,
-  previewData
+  previewData,
+  importTarget = 'customers'
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [activeTab, setActiveTab] = useState<string>('all');
+  
+  // Skapa en instans av FieldMatcher
+  const fieldMatcher = useMemo(() => new FieldMatcher(), []);
+  
+  // Alternativa målförslag för varje fält
+  const [alternativeSuggestions, setAlternativeSuggestions] = useState<Record<string, Array<{field: string, score: number}>>>({});
+  
+  // Generera alternativa förslag för fält
+  useEffect(() => {
+    if (!isOpen) return; // Beräkna bara när modalen är öppen
+    
+    const suggestions: Record<string, Array<{field: string, score: number}>> = {};
+    
+    availableFields.forEach(sourceField => {
+      const fieldSuggestions: Array<{field: string, score: number}> = [];
+      
+      // Använd endast målfält som inte redan används av andra källfält
+      const usedTargets = new Set(Object.values(fieldMapping).filter(Boolean));
+      const availableTargets = targetFields.filter(field => 
+        field !== fieldMapping[sourceField] && !usedTargets.has(field)
+      );
+      
+      // Hitta de 3 bästa förslagen för detta fält
+      availableTargets.forEach(targetField => {
+        const similarity = getStringSimilarity(sourceField, targetField);
+        if (similarity > 0.5) { // Endast förslag med rimlig likhet
+          fieldSuggestions.push({ field: targetField, score: similarity });
+        }
+      });
+      
+      // Sortera och begränsa till top 3
+      const sortedSuggestions = fieldSuggestions
+        .sort((a, b) => b.score - a.score)
+        .slice(0, 3);
+      
+      if (sortedSuggestions.length > 0) {
+        suggestions[sourceField] = sortedSuggestions;
+      }
+    });
+    
+    setAlternativeSuggestions(suggestions);
+  }, [isOpen, availableFields, targetFields, fieldMapping, fieldMatcher, importTarget]);
 
   // Beräkna statistik över mappning
   const mappingStats = useMemo(() => {
@@ -51,9 +99,16 @@ const FieldMappingModal: React.FC<FieldMappingModalProps> = ({
     const percent = total > 0 ? Math.round((mapped / total) * 100) : 0;
     
     // Identifiera viktiga fält som saknas mappning
+    const importantFieldsByType = {
+      'customers': ['email', 'firstName', 'lastName'],
+      'tickets': ['customerEmail', 'title', 'field_Kommentar']
+    };
+    
+    const importantFields = importantFieldsByType[importTarget] || ['email', 'customerEmail'];
+    
     const missingImportantFields = targetFields
       .filter(field => !Object.values(fieldMapping).includes(field))
-      .filter(field => ['email', 'customerEmail', 'firstName', 'lastName'].includes(field));
+      .filter(field => importantFields.includes(field));
     
     return {
       total,
@@ -61,7 +116,7 @@ const FieldMappingModal: React.FC<FieldMappingModalProps> = ({
       percent,
       missingImportantFields
     };
-  }, [fieldMapping, availableFields, targetFields]);
+  }, [fieldMapping, availableFields, targetFields, importTarget]);
 
   // Filtrera fält baserat på sökning
   const filteredFields = useMemo(() => {
@@ -87,7 +142,7 @@ const FieldMappingModal: React.FC<FieldMappingModalProps> = ({
     }
   }, [filteredFields, fieldMapping, activeTab]);
 
-  // Funktion för att mappa alla icke-mappade fält automatiskt (baserat på namn)
+  // Funktion för att mappa alla icke-mappade fält automatiskt med FieldMatcher
   const autoMapRemainingFields = () => {
     // Hämta alla omappade källfält
     const unmappedSourceFields = availableFields.filter(sourceField => !fieldMapping[sourceField]);
@@ -96,51 +151,16 @@ const FieldMappingModal: React.FC<FieldMappingModalProps> = ({
     const mappedTargetFields = Object.values(fieldMapping).filter(Boolean);
     const unmappedTargetFields = targetFields.filter(field => !mappedTargetFields.includes(field));
     
-    // Gå igenom omappade källfält och försök hitta en passande matchning
-    const newMappings: Record<string, string> = { ...fieldMapping };
+    // Använd FieldMatcher för att skapa mapping endast för de omappade fälten
+    const partialMapping = fieldMatcher.createMapping(
+      unmappedSourceFields, 
+      unmappedTargetFields, 
+      importTarget
+    );
     
-    unmappedSourceFields.forEach(sourceField => {
-      // Normalisera namnet för enklare matchning (ta bort specialtecken, gör lowercase)
-      const normalizedSource = sourceField.toLowerCase().replace(/[^a-zåäö0-9]/g, '');
-      
-      // Hitta bästa matchning i omappade målfält
-      let bestMatch = '';
-      let bestMatchScore = 0;
-      
-      unmappedTargetFields.forEach(targetField => {
-        const normalizedTarget = targetField.toLowerCase().replace(/[^a-zåäö0-9]/g, '');
-        
-        // Exakt matchning
-        if (normalizedSource === normalizedTarget) {
-          bestMatch = targetField;
-          bestMatchScore = 100;
-        } 
-        // Partiell matchning
-        else if (normalizedSource.includes(normalizedTarget) || normalizedTarget.includes(normalizedSource)) {
-          const score = Math.min(normalizedSource.length, normalizedTarget.length) / 
-                        Math.max(normalizedSource.length, normalizedTarget.length) * 90;
-          
-          if (score > bestMatchScore) {
-            bestMatch = targetField;
-            bestMatchScore = score;
-          }
-        }
-      });
-      
-      // Om vi hittade en tillräckligt bra matchning, använd den
-      if (bestMatchScore > 65) {
-        newMappings[sourceField] = bestMatch;
-        // Ta bort från listan över omappade målfält
-        const index = unmappedTargetFields.indexOf(bestMatch);
-        if (index > -1) {
-          unmappedTargetFields.splice(index, 1);
-        }
-      }
-    });
-    
-    // Uppdatera alla mappningar på en gång
-    Object.entries(newMappings).forEach(([source, target]) => {
-      if (target && !fieldMapping[source]) {
+    // Uppdatera fieldMapping med de nya mappningarna
+    Object.entries(partialMapping).forEach(([source, target]) => {
+      if (target) {
         updateFieldMapping(source, target);
       }
     });
@@ -153,6 +173,17 @@ const FieldMappingModal: React.FC<FieldMappingModalProps> = ({
         updateFieldMapping(field, '');
       }
     });
+  };
+
+  // Hjälpfunktion för att visa matchningsgrad
+  const renderMatchIndicator = (score: number) => {
+    if (score >= 0.9) {
+      return <Badge color="success" content="Hög" variant="flat" size="sm" />;
+    } else if (score >= 0.7) {
+      return <Badge color="warning" content="Medium" variant="flat" size="sm" />;
+    } else {
+      return <Badge color="default" content="Låg" variant="flat" size="sm" />;
+    }
   };
 
   return (
@@ -187,6 +218,19 @@ const FieldMappingModal: React.FC<FieldMappingModalProps> = ({
                   Viktiga fält saknas: {mappingStats.missingImportantFields.join(', ')}
                 </Chip>
               )}
+            </div>
+            
+            {/* Importtyp-indikator */}
+            <div>
+              <Chip
+                color={importTarget === 'customers' ? "primary" : "secondary"}
+                variant="flat"
+              >
+                Importerar: {importTarget === 'customers' ? 'Kunder' : 'Ärenden'}
+              </Chip>
+              <p className="text-xs text-default-500 mt-1">
+                Datatypen detekterades automatiskt baserat på filens innehåll
+              </p>
             </div>
             
             {/* Sökfunktion och knappar */}
@@ -294,6 +338,7 @@ const FieldMappingModal: React.FC<FieldMappingModalProps> = ({
                 <TableHeader>
                   <TableColumn>Kolumn i filen</TableColumn>
                   <TableColumn>Fält i systemet</TableColumn>
+                  <TableColumn>Alternativ</TableColumn>
                   <TableColumn>Exempel</TableColumn>
                 </TableHeader>
                 <TableBody>
@@ -335,6 +380,27 @@ const FieldMappingModal: React.FC<FieldMappingModalProps> = ({
                               </DropdownMenu>
                             </Dropdown>
                           </TableCell>
+                          <TableCell>
+                            {alternativeSuggestions[field] && alternativeSuggestions[field].length > 0 ? (
+                              <div className="flex flex-wrap gap-1">
+                                {alternativeSuggestions[field].map((suggestion, i) => (
+                                  <Button 
+                                    key={i} 
+                                    size="sm" 
+                                    variant="light" 
+                                    color="default"
+                                    onPress={() => updateFieldMapping(field, suggestion.field)}
+                                    className="px-2 py-0 text-xs"
+                                  >
+                                    {suggestion.field}
+                                    {renderMatchIndicator(suggestion.score)}
+                                  </Button>
+                                ))}
+                              </div>
+                            ) : (
+                              <span className="text-default-400 text-xs">Inga förslag</span>
+                            )}
+                          </TableCell>
                           <TableCell className="text-default-500">
                             {exampleValue}
                           </TableCell>
@@ -343,7 +409,7 @@ const FieldMappingModal: React.FC<FieldMappingModalProps> = ({
                     })
                   ) : (
                     <TableRow>
-                      <TableCell colSpan={3} className="text-center py-4">
+                      <TableCell colSpan={4} className="text-center py-4">
                         Inga kolumner matchar filtret
                       </TableCell>
                     </TableRow>
