@@ -40,5 +40,4 @@ Betalnivå 3
 - Skapa egna mail och smsmallar för personlig kundkontakt
 - Tidsbokning via widget på din hemsida
 - Statistik för hur ärenden hanteras
-- Tilldela medarbetare olika roller
-- AI chatfunktion via en widget på din hemsida 
+- Tilldela medarbetare olika roller 
