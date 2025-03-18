@@ -1,4 +1,5 @@
-// pages/api/import/customers.ts
+// Förbättrad version av hela pages/api/import/customers.ts som är mer robust mot oväntade data
+
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { PrismaClient } from '@prisma/client';
 import { getServerSession } from 'next-auth/next';
@@ -19,6 +20,18 @@ function checkUTF8Validity(data: any): boolean {
     return Object.values(data).every(value => checkUTF8Validity(value));
   }
   return true; // För tal, boolean osv.
+}
+
+// Hjälpfunktion för att extrahera externt ID från olika möjliga fältnamn
+function extractExternalId(data: any): number | undefined {
+  const externalIdValue = 
+    data.externalId || 
+    data.external_id || 
+    data.customer_id || 
+    data.kundnummer ||
+    data.externt_id;
+  
+  return externalIdValue ? Number(externalIdValue) : undefined;
 }
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -63,6 +76,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       });
     }
 
+    // Logga det totala datat för felsökning
+    console.log(`Importerar ${importData.length} kunder med alternativ:`, options);
+
     // Initialisera resultaträknare
     const results = {
       success: 0,
@@ -89,41 +105,138 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           continue; // Hoppa över denna kund och fortsätt med nästa
         }
         
+        // Extrahera externt ID från olika möjliga fält
+        const externalIdValue = extractExternalId(customerData);
+        
+        // Logga det extraherade externa ID:t för felsökning
+        if (externalIdValue) {
+          console.log(`Rad ${i + 1}: Hittade externt ID ${externalIdValue}`);
+        }
+
         // Kontrollera om e-postadressen redan existerar (om skipExisting=true)
-        if (options.skipExisting && customerData.email) {
+        if (parseResult.data.email) {
           const existingCustomer = await prisma.customer.findFirst({
             where: {
-              email: customerData.email,
+              email: parseResult.data.email,
               storeId: session.user.storeId
             }
           });
           
           if (existingCustomer) {
-            // Hoppa över befintliga kunder men räkna dem som lyckat importerade
-            results.success++;
-            continue;
+            if (options.updateExisting) {
+              // Uppdatera befintlig kund om e-post matchar
+              await prisma.customer.update({
+                where: { id: existingCustomer.id },
+                data: {
+                  firstName: parseResult.data.firstName ?? existingCustomer.firstName,
+                  lastName: parseResult.data.lastName ?? existingCustomer.lastName,
+                  phoneNumber: parseResult.data.phoneNumber ?? existingCustomer.phoneNumber,
+                  address: parseResult.data.address ?? existingCustomer.address,
+                  postalCode: parseResult.data.postalCode ?? existingCustomer.postalCode,
+                  city: parseResult.data.city ?? existingCustomer.city,
+                  country: parseResult.data.country ?? existingCustomer.country,
+                  dateOfBirth: parseResult.data.dateOfBirth ? new Date(parseResult.data.dateOfBirth) : existingCustomer.dateOfBirth,
+                  newsletter: parseResult.data.newsletter ?? existingCustomer.newsletter,
+                  loyal: parseResult.data.loyal ?? existingCustomer.loyal,
+                  dynamicFields: parseResult.data.dynamicFields ?? existingCustomer.dynamicFields,
+                  // Uppdatera externt ID endast om det inte fanns tidigare
+                  externalId: existingCustomer.externalId ?? externalIdValue
+                }
+              });
+              results.success++;
+              continue;
+            } else if (options.skipExisting) {
+              // Hoppa över befintliga kunder men räkna dem som lyckat importerade
+              results.success++;
+              continue;
+            } else {
+              results.failed++;
+              results.errors.push(`Rad ${i + 1}: En kund med denna e-postadress finns redan`);
+              continue;
+            }
           }
         }
         
-        // Anta att customerData kan innehålla ett fält "customer_id" från det externa systemet
-        const validCustomerData = {
-          ...parseResult.data,
-          storeId: session.user.storeId,
-          // Spara det externa id:t om det finns med
-          externalId: customerData.customer_id ? Number(customerData.customer_id) : undefined,
-          dynamicFields: customerData.dynamicFields || {},
-          dateOfBirth: customerData.dateOfBirth ? new Date(customerData.dateOfBirth) : null
+        // Kontrollera om externalId redan finns
+        if (externalIdValue) {
+          const existingCustomerWithExternalId = await prisma.customer.findFirst({
+            where: {
+              externalId: externalIdValue,
+              storeId: session.user.storeId
+            }
+          });
+          
+          if (existingCustomerWithExternalId) {
+            if (options.updateExisting) {
+              // Uppdatera befintlig kund om externt ID matchar
+              await prisma.customer.update({
+                where: { id: existingCustomerWithExternalId.id },
+                data: {
+                  firstName: parseResult.data.firstName ?? existingCustomerWithExternalId.firstName,
+                  lastName: parseResult.data.lastName ?? existingCustomerWithExternalId.lastName,
+                  email: parseResult.data.email ?? existingCustomerWithExternalId.email,
+                  phoneNumber: parseResult.data.phoneNumber ?? existingCustomerWithExternalId.phoneNumber,
+                  address: parseResult.data.address ?? existingCustomerWithExternalId.address,
+                  postalCode: parseResult.data.postalCode ?? existingCustomerWithExternalId.postalCode,
+                  city: parseResult.data.city ?? existingCustomerWithExternalId.city,
+                  country: parseResult.data.country ?? existingCustomerWithExternalId.country,
+                  dateOfBirth: parseResult.data.dateOfBirth ? new Date(parseResult.data.dateOfBirth) : existingCustomerWithExternalId.dateOfBirth,
+                  newsletter: parseResult.data.newsletter ?? existingCustomerWithExternalId.newsletter,
+                  loyal: parseResult.data.loyal ?? existingCustomerWithExternalId.loyal,
+                  dynamicFields: parseResult.data.dynamicFields ?? existingCustomerWithExternalId.dynamicFields
+                }
+              });
+              results.success++;
+              continue;
+            } else if (options.skipExisting) {
+              // Hoppa över men räkna som framgång
+              results.success++;
+              continue;
+            } else {
+              // Rapportera som fel
+              results.failed++;
+              results.errors.push(`Rad ${i + 1}: En kund med externt ID ${externalIdValue} finns redan`);
+              continue;
+            }
+          }
+        }
+        
+        // Förbered data för att skapa ny kund - endast inkludera fält som finns i Prisma-schemat
+        const customerDataForPrisma = {
+          firstName: parseResult.data.firstName,
+          lastName: parseResult.data.lastName,
+          email: parseResult.data.email,
+          phoneNumber: parseResult.data.phoneNumber,
+          address: parseResult.data.address,
+          postalCode: parseResult.data.postalCode,
+          city: parseResult.data.city,
+          country: parseResult.data.country,
+          dateOfBirth: parseResult.data.dateOfBirth ? new Date(parseResult.data.dateOfBirth) : null,
+          newsletter: parseResult.data.newsletter || false,
+          loyal: parseResult.data.loyal || false,
+          dynamicFields: parseResult.data.dynamicFields || {},
+          storeId: session.user.storeId
         };
-
+        
+        // Lägg till externt ID om det finns
+        if (externalIdValue) {
+          customerDataForPrisma.externalId = externalIdValue;
+        }
+        
+        // Logga data som skapas för felsökning
+        console.log(`Rad ${i + 1}: Skapa kund med data:`, JSON.stringify(customerDataForPrisma));
         
         // Skapa kunden i databasen
         await prisma.customer.create({
-          data: validCustomerData
+          data: customerDataForPrisma
         });
         
         results.success++;
       } catch (error: any) {
         results.failed++;
+        
+        // Logga hela felet för djupare felsökning
+        console.error(`Fel vid import av kund (rad ${i + 1}):`, error);
         
         // Hantera specifika databasfel
         if (error.code === 'P2002') {

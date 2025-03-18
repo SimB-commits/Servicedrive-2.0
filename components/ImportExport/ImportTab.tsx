@@ -95,14 +95,16 @@ const ImportTab = () => {
   useEffect(() => {
     if (importTarget === 'customers') {
       setTargetFields([
+        'externalId',
         'firstName', 'lastName', 'email', 'phoneNumber', 'address', 
         'postalCode', 'city', 'country', 'dateOfBirth', 'newsletter', 'loyal',
         'dynamicFields' // För anpassade kundfält
       ]);
     } else {
       const baseFields = [
-        'title', 'description', 'status', 'dueDate', 'customerEmail',
-        'ticketTypeId', 'ticketTypeName', 'priority', 'dynamicFields' // För anpassade ärendefält
+        'title', 'description', 'status', 'dueDate', 
+        'customerEmail', 'customer_external_id',
+        'ticketTypeId', 'ticketTypeName', 'priority', 'dynamicFields'
       ];
   
       // Samla in ALLA dynamiska fält från ALLA ärendetyper

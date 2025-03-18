@@ -217,7 +217,7 @@ export const importCustomerSchema = z.object({
   dateOfBirth: z.union([z.string(), z.date()]).optional().nullable(),
   email: z.string().email('Ogiltig email-adress'), // Email är fortfarande obligatoriskt
   phoneNumber: z.union([z.string(), z.number()]).optional().nullable()
-    .transform(val => val ? String(val) : null), // Konvertera till sträng
+    .transform(val => val ? String(val) : null),
   newsletter: z.union([z.boolean(), z.string(), z.number()]).optional()
     .transform(val => {
       if (typeof val === 'string') {
@@ -239,6 +239,23 @@ export const importCustomerSchema = z.object({
       return Boolean(val);
     }),
   dynamicFields: z.record(z.any()).optional().nullable(),
+  
+  // VIKTIGT: Det följande används för upptäckt av externa ID, men sparas INTE i resultatet
+  externalId: z.union([z.string(), z.number()]).optional(),
+  external_id: z.union([z.string(), z.number()]).optional().transform(() => undefined), // Rensa detta fält
+  customer_id: z.union([z.string(), z.number()]).optional().transform(() => undefined), // Rensa detta fält
+  kundnummer: z.union([z.string(), z.number()]).optional().transform(() => undefined)   // Rensa detta fält
+}).transform(data => {
+  // Ta bort de extra fälten från det slutliga objektet
+  // Detta säkerställer att endast de fält som matchar Prisma-schemat skickas till databasen
+  const result = { ...data };
+  
+  // Ta bort fält som vi endast använder för upptäckt men inte vill skicka till Prisma
+  delete result.external_id;
+  delete result.customer_id;
+  delete result.kundnummer;
+  
+  return result;
 });
 
 // Schema för ärendeimport med flexiblare valideringsregler
@@ -248,13 +265,29 @@ export const importTicketSchema = z.object({
   status: z.string().optional().nullable(),
   dueDate: z.union([z.string(), z.date()]).optional().nullable(),
   customerId: z.number().optional().nullable(),
-  customerEmail: z.string().email('Ogiltig email-adress').optional().nullable(), // Antingen customerId eller customerEmail måste anges
+  customerEmail: z.string().email('Ogiltig email-adress').optional().nullable(), 
+  // Externa kund-ID fält
+  customer_external_id: z.union([z.string(), z.number()]).optional()
+    .transform(val => val !== undefined ? String(val) : undefined),
+  external_id: z.union([z.string(), z.number()]).optional()
+    .transform(val => val !== undefined ? String(val) : undefined),
+  customer_id: z.union([z.string(), z.number()]).optional()
+    .transform(val => val !== undefined ? String(val) : undefined),
+  kundnummer: z.union([z.string(), z.number()]).optional()
+    .transform(val => val !== undefined ? String(val) : undefined),
   ticketTypeId: z.number().optional().nullable(),
   dynamicFields: z.record(z.any()).optional().nullable(),
-}).refine(data => data.customerId || data.customerEmail, {
-  message: "Antingen customerId eller customerEmail måste anges",
-  path: ["customerEmail"],
-});
+}).refine(data => 
+  data.customerId || 
+  data.customerEmail || 
+  data.customer_external_id || 
+  data.external_id || 
+  data.customer_id || 
+  data.kundnummer, {
+    message: "En kundidentifierare måste anges (customerId, customerEmail eller externt ID)",
+    path: ["customerEmail"],
+  }
+);
 
 // Typ för importdata
 export type ImportCustomerData = z.infer<typeof importCustomerSchema>;

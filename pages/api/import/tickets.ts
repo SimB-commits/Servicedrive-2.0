@@ -81,58 +81,67 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           continue; // Hoppa över detta ärende och fortsätt med nästa
         }
         
-        // Hitta kunden baserat på external_id, internt id eller e-post
         let customerId: number | undefined;
 
-        // Först: om ett externt id finns med, använd det
-        if (ticketData.customer_external_id) {
-          const customer = await prisma.customer.findUnique({
-            where: { 
-              externalId_storeId: {
-                externalId: Number(ticketData.customer_external_id),
-                storeId: session.user.storeId
-              } },
-          });
-          if (!customer) {
-            results.failed++;
-            results.errors.push(
-              `Rad ${i + 1}: Kunde inte hitta kund med external id ${ticketData.customer_external_id}`
-            );
-            continue;
+      // Normalize external ID fields - look for various common field names
+      const customerExternalId = ticketData.customer_external_id || 
+                                ticketData.external_id || 
+                                ticketData.customer_id ||
+                                ticketData.kundnummer;
+
+      // Först: om ett externt id finns med, använd det
+      if (customerExternalId) {
+        const externalId = Number(customerExternalId);
+        
+        // Använd findFirst för att hitta kund med externt ID
+        const customer = await prisma.customer.findFirst({
+          where: { 
+            externalId: externalId,
+            storeId: session.user.storeId
           }
-          customerId = customer.id;
-        }
-
-        // Om inget externt id användes, kolla om ett internt id skickats med
-        if (!customerId && ticketData.customerId) {
-          customerId = Number(ticketData.customerId);
-        }
-
-        // Om det fortfarande saknas, försök att hitta kunden via e-post
-        if (!customerId && ticketData.customerEmail) {
-          const customer = await prisma.customer.findFirst({
-            where: {
-              email: ticketData.customerEmail,
-              storeId: session.user.storeId,
-            },
-          });
-          if (!customer) {
-            results.failed++;
-            results.errors.push(
-              `Rad ${i + 1}: Kunde inte hitta kund med e-post ${ticketData.customerEmail}`
-            );
-            continue;
-          }
-          customerId = customer.id;
-        }
-
-        if (!customerId) {
+        });
+        
+        if (!customer) {
           results.failed++;
           results.errors.push(
-            `Rad ${i + 1}: Ingen kund angiven (varken external id, internt id eller e-post)`
+            `Rad ${i + 1}: Kunde inte hitta kund med externt id ${externalId}`
           );
           continue;
         }
+        customerId = customer.id;
+      }
+
+      // Om inget externt id användes, kolla om ett internt id skickats med
+      if (!customerId && ticketData.customerId) {
+        customerId = Number(ticketData.customerId);
+      }
+
+      // Om det fortfarande saknas, försök att hitta kunden via e-post
+      if (!customerId && ticketData.customerEmail) {
+        const customer = await prisma.customer.findFirst({
+          where: {
+            email: ticketData.customerEmail,
+            storeId: session.user.storeId,
+          },
+        });
+        
+        if (!customer) {
+          results.failed++;
+          results.errors.push(
+            `Rad ${i + 1}: Kunde inte hitta kund med e-post ${ticketData.customerEmail}`
+          );
+          continue;
+        }
+        customerId = customer.id;
+      }
+
+      if (!customerId) {
+        results.failed++;
+        results.errors.push(
+          `Rad ${i + 1}: Ingen kund angiven (varken externt id, internt id eller e-post)`
+        );
+        continue;
+      }
 
         
         // Välj ärendetyp, antingen från data eller ta första tillgängliga

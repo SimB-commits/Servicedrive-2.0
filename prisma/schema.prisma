@@ -120,6 +120,7 @@ model Customer {
   updatedAt      DateTime @updatedAt
 
   @@unique([email, storeId])
+  @@unique([externalId, storeId], name: "externalId_storeId")
 }
 
 model CustomerCard {
