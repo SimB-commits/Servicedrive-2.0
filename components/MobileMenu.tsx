@@ -52,91 +52,100 @@ const MobileMenu = () => {
         placement="top"
         scrollBehavior="inside"
         size="full"
+        hideCloseButton
       >
         <ModalContent>
-          <ModalHeader className="flex justify-between items-center">
-            <span className="text-lg font-bold">Meny</span>
-            <Button
-              isIconOnly
-              variant="light"
-              aria-label="Stäng meny"
-              onPress={() => setIsOpen(false)}
-            >
-              <CloseIcon className="w-5 h-5" />
-            </Button>
-          </ModalHeader>
-          
-          <ModalBody className="p-0">
-            <div className="px-4 py-2">
-              <StoreSelector fullWidth />
-            </div>
-            
-            <Divider className="my-2" />
-            
-            <div className="flex flex-col space-y-1">
-              {siteConfig.navItems.map((item) => (
+          {(onClose) => (
+            <>
+              <ModalHeader className="flex justify-between items-center">
+                <span className="text-lg font-bold">Meny</span>
                 <Button
-                  key={item.href}
-                  className={`justify-start rounded-none px-4 py-6 ${isActive(item.href) ? 'bg-primary-50 text-primary border-l-4 border-primary' : ''}`}
+                  isIconOnly
                   variant="light"
-                  size="lg"
-                  onPress={() => handleNavigation(item.href)}
+                  aria-label="Stäng meny"
+                  onPress={onClose}
                 >
-                  {item.label}
+                  <CloseIcon className="w-5 h-5" />
                 </Button>
-              ))}
-            </div>
-            
-            <Divider className="my-2" />
-            
-            <div className="px-4 py-2">
-              <p className="text-small text-default-500 font-medium mb-2">Inställningar</p>
-              <div className="flex flex-col space-y-1">
-                {siteConfig.navMenuItems.map((item) => (
-                  <Button
-                    key={item.href}
-                    className={`justify-start rounded-none px-4 py-3 ${isActive(item.href) ? 'bg-primary-50 text-primary' : ''}`}
-                    variant="light"
-                    size="sm"
-                    onPress={() => handleNavigation(item.href)}
-                  >
-                    {item.label}
-                  </Button>
-                ))}
-              </div>
-            </div>
-          </ModalBody>
-          
-          <ModalFooter className="border-t">
-            {session ? (
-              <div className="w-full">
-                <div className="flex items-center justify-between mb-4">
-                  <div>
-                    <p className="font-medium">{session.user?.firstName || 'Användare'}</p>
-                    <p className="text-xs text-default-500">{session.user?.email || ''}</p>
+              </ModalHeader>
+              
+              <ModalBody className="p-0">
+                {/* StoreSelector tydligt synlig i mobilmenyn */}
+                <div className="px-4 py-3 bg-default-50">
+                  <p className="text-small text-default-500 font-medium mb-2">Aktiv butik</p>
+                  <StoreSelector fullWidth />
+                </div>
+                
+                <Divider className="my-2" />
+                
+                <div className="flex flex-col space-y-1">
+                  {siteConfig.navItems.filter(item => item.href).map((item) => (
+                    <Button
+                      key={item.href}
+                      className={`justify-start rounded-none px-4 py-6 ${isActive(item.href) ? 'bg-primary-50 text-primary border-l-4 border-primary' : ''}`}
+                      variant="light"
+                      size="lg"
+                      onPress={() => router.push(item.href)}
+                    >
+                      {item.label}
+                    </Button>
+                  ))}
+                </div>
+                
+                <Divider className="my-2" />
+                
+                <div className="px-4 py-2">
+                  <p className="text-small text-default-500 font-medium mb-2">Inställningar</p>
+                  <div className="flex flex-col space-y-1">
+                    {siteConfig.navMenuItems
+                      .filter(item => !siteConfig.navItems.some(navItem => navItem.href === item.href))
+                      .map((item) => (
+                        <Button
+                          key={item.href}
+                          className={`justify-start rounded-none px-4 py-3 ${isActive(item.href) ? 'bg-primary-50 text-primary' : ''}`}
+                          variant="light"
+                          size="sm"
+                          onPress={() => router.push(item.href)}
+                        >
+                          {item.label}
+                        </Button>
+                      ))}
                   </div>
                 </div>
-                <Button 
-                  color="danger" 
-                  variant="flat" 
-                  startContent={<LogoutIcon />}
-                  className="w-full"
-                  onPress={handleLogout}
-                >
-                  Logga ut
-                </Button>
-              </div>
-            ) : (
-              <Button 
-                as={NextLink} 
-                href="/auth/login" 
-                color="primary"
-                className="w-full"
-              >
-                Logga in
-              </Button>
-            )}
-          </ModalFooter>
+              </ModalBody>
+              
+              <ModalFooter className="border-t">
+                {session ? (
+                  <div className="w-full">
+                    <div className="flex items-center justify-between mb-4">
+                      <div>
+                        <p className="font-medium">{session.user?.firstName || 'Användare'}</p>
+                        <p className="text-xs text-default-500">{session.user?.email || ''}</p>
+                      </div>
+                    </div>
+                    <Button 
+                      color="danger" 
+                      variant="flat" 
+                      startContent={<LogoutIcon />}
+                      className="w-full"
+                      onPress={handleLogout}
+                    >
+                      Logga ut
+                    </Button>
+                  </div>
+                ) : (
+                  <Button 
+                    as={NextLink} 
+                    href="/auth/login" 
+                    color="primary"
+                    className="w-full"
+                  >
+                    Logga in
+                  </Button>
+                )}
+              </ModalFooter>
+            </>
+          )}
         </ModalContent>
       </Modal>
     </>

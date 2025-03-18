@@ -1,13 +1,10 @@
+// config/site.ts
 export type SiteConfig = typeof siteConfig;
 
 export const siteConfig = {
   name: "Servicedrive",
   description: "Hantera ärenden och kunder smidigt och enkelt.",
   navItems: [
-    {
-      label: "Meny",
-      
-    },
     {
       label: "Dashboard",
       href: "/dashboard",
@@ -17,11 +14,13 @@ export const siteConfig = {
       href: "/nytt-arende",
     },
     {
-      label: "Ärendelista",
+      label: "Ärenden",
       href: "/arenden",
     },
-    
-    
+    {
+      label: "Kunder",
+      href: "/kunder",
+    },
   ],
   navMenuItems: [
     {

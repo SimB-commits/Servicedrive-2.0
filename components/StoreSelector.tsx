@@ -1,3 +1,4 @@
+// components/StoreSelector.tsx
 import React, { useState, useEffect } from "react";
 import {
   Dropdown,
@@ -14,6 +15,7 @@ import { ChevronDownIcon, StoreIcon } from "@/components/icons";
 interface Store {
   id: number;
   name: string;
+  company?: string;
 }
 
 interface StoreSelectorProps {
@@ -21,7 +23,7 @@ interface StoreSelectorProps {
 }
 
 const StoreSelector: React.FC<StoreSelectorProps> = ({ fullWidth = false }) => {
-  const { data: session } = useSession();
+  const { data: session, update } = useSession();
   const router = useRouter();
   const [stores, setStores] = useState<Store[]>([]);
   const [selectedStore, setSelectedStore] = useState<Store | null>(null);
@@ -33,29 +35,23 @@ const StoreSelector: React.FC<StoreSelectorProps> = ({ fullWidth = false }) => {
       
       try {
         setLoading(true);
-        // I en riktig implementation skulle detta vara ett API-anrop
-        // för att hämta alla butiker som användaren har åtkomst till
+        const res = await fetch('/api/stores');
         
-        // Simulerat API-anrop
-        setTimeout(() => {
-          // Demo-data - i en verklig app hämtas detta från API
-          const mockStores = [
-            { id: 1, name: "Huvudkontor" },
-            { id: 2, name: "Filial Stockholm" },
-            { id: 3, name: "Filial Göteborg" }
-          ];
+        if (res.ok) {
+          const data = await res.json();
+          setStores(data);
           
-          setStores(mockStores);
-          
-          // Sätt den aktuella butiken baserat på session eller första butik som default
-          const currentStoreId = session?.user?.storeId || mockStores[0]?.id;
-          const currentStore = mockStores.find(store => store.id === currentStoreId) || mockStores[0];
+          // Sätt den aktuella butiken baserat på session
+          const currentStoreId = session?.user?.storeId;
+          const currentStore = data.find(store => store.id === currentStoreId) || data[0];
           setSelectedStore(currentStore);
-          
-          setLoading(false);
-        }, 500);
+        } else {
+          console.error("Failed to fetch stores:", await res.text());
+        }
+        
+        setLoading(false);
       } catch (error) {
-        console.error("Failed to fetch stores:", error);
+        console.error("Error fetching stores:", error);
         setLoading(false);
       }
     };
@@ -68,20 +64,36 @@ const StoreSelector: React.FC<StoreSelectorProps> = ({ fullWidth = false }) => {
     const store = stores.find(s => s.id === storeId);
     if (!store) return;
     
-    setSelectedStore(store);
+    setLoading(true);
     
-    // I en verklig implementation skulle vi uppdatera användarens session
-    // med det nya storeId via ett API-anrop och sedan uppdatera sidan
-    
-    // Exempel:
-    // await fetch('/api/user/update-store', {
-    //   method: 'POST',
-    //   headers: { 'Content-Type': 'application/json' },
-    //   body: JSON.stringify({ storeId })
-    // });
-    
-    // Ladda om sidan eller bara uppdatera data baserat på den nya butiken
-    router.reload();
+    try {
+      // Anropa API för att byta aktiv butik
+      const res = await fetch('/api/stores/switch', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ storeId }),
+      });
+
+      if (res.ok) {
+        // Uppdatera session med nytt storeId
+        await update({ storeId });
+        
+        // Visuellt uppdatera vald butik
+        setSelectedStore(store);
+        
+        // Force-omladda sidan för att alla komponenter ska uppdateras med data från den nya butiken
+        router.reload();
+      } else {
+        const data = await res.json();
+        console.error("Failed to switch store:", data);
+      }
+    } catch (error) {
+      console.error("Error switching store:", error);
+    } finally {
+      setLoading(false);
+    }
   };
 
   if (loading) {
@@ -98,8 +110,19 @@ const StoreSelector: React.FC<StoreSelectorProps> = ({ fullWidth = false }) => {
     );
   }
 
+  // Dölj helt om det inte finns några butiker eller bara finns en butik
   if (!selectedStore || stores.length <= 1) {
-    return null; // Visa inte selektorn om det bara finns en butik
+    return (
+      <Button
+        variant="flat" 
+        size="sm"
+        disabled
+        className={fullWidth ? "w-full opacity-70" : "opacity-70"}
+        startContent={<StoreIcon className="text-primary" />}
+      >
+        {selectedStore?.name || "Ingen butik vald"}
+      </Button>
+    );
   }
 
   return (
@@ -108,7 +131,7 @@ const StoreSelector: React.FC<StoreSelectorProps> = ({ fullWidth = false }) => {
         <Button
           variant="flat"
           size="sm"
-          className={`${fullWidth ? "w-full" : ""} flex items-center gap-1`}
+          className={`${fullWidth ? "w-full justify-between" : ""} flex items-center gap-1`}
           endContent={<ChevronDownIcon className="text-xs" />}
           startContent={<StoreIcon className="text-primary" />}
         >

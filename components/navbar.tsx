@@ -1,3 +1,4 @@
+// components/navbar.tsx
 import React, { useState, useEffect } from "react";
 import { useRouter } from "next/router";
 import {
@@ -22,6 +23,7 @@ import { siteConfig } from "@/config/site";
 import { ThemeSwitch } from "@/components/theme-switch";
 import { SearchIcon, Logo } from "@/components/icons";
 import MobileMenu from "./MobileMenu";
+import StoreSelector from "./StoreSelector";
 
 // Importera ikoner manuellt då vi inte har uppdaterat icons.tsx ännu
 const BellIcon = ({ size = 24, ...props }) => (
@@ -112,15 +114,15 @@ export const Navbar = () => {
           </NextLink>
         </NavbarBrand>
 
-        {/* Main navigation - desktop */}
+        {/* Main navigation - desktop only */}
         <div className="hidden md:flex gap-1">
-          {siteConfig.navItems.map((item, index) => (
+          {siteConfig.navItems.filter(item => item.href).map((item) => (
             <Button
-              key={item.href || `nav-item-${index}`}
+              key={item.href}
               as={NextLink}
-              href={item.href || "/"}
-              variant={isActive(item.href || "/") ? "flat" : "light"}
-              color={isActive(item.href || "/") ? "primary" : "default"}
+              href={item.href}
+              variant={isActive(item.href) ? "flat" : "light"}
+              color={isActive(item.href) ? "primary" : "default"}
               className="px-3 font-medium"
               size="sm"
             >
@@ -130,9 +132,9 @@ export const Navbar = () => {
         </div>
       </NavbarContent>
 
-      {/* Center section: Search bar when expanded */}
+      {/* Center section: Store selector (on desktop) */}
       <NavbarContent className="flex-1 justify-center">
-        {showSearchBar && (
+        {showSearchBar ? (
           <div className="w-full max-w-xl">
             <form onSubmit={handleSearch}>
               <Input
@@ -156,6 +158,10 @@ export const Navbar = () => {
                 className="w-full"
               />
             </form>
+          </div>
+        ) : (
+          <div className="hidden md:flex justify-center">
+            <StoreSelector />
           </div>
         )}
       </NavbarContent>
