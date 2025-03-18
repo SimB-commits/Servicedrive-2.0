@@ -46,20 +46,38 @@ export const authOptions: NextAuthOptions = {
           // Hitta användaren i databasen
           const user = await prisma.user.findUnique({
             where: { email: credentials.email },
-            include: { stores: true },
+            include: { 
+              stores: true,
+              preference: true 
+            },
           });
-
+      
           if (user && await bcrypt.compare(credentials.password, user.password)) {
-            const store = user.stores[0] || null;
-            const storeId = store ? store.storeId : null;
-
+            let storeId = null;
+            
+            // Check if the user has a preferred store
+            if (user.preference?.selectedStoreId) {
+              // Verify the user still has access to this store
+              const hasAccess = user.stores.some(store => 
+                store.storeId === user.preference?.selectedStoreId
+              );
+              
+              if (hasAccess) {
+                storeId = user.preference.selectedStoreId;
+              }
+            }
+            
+            // If no valid preference, fall back to the first store
+            if (storeId === null && user.stores.length > 0) {
+              storeId = user.stores[0].storeId;
+            }
+      
             return {
               id: user.id,
               email: user.email,
               role: user.role,
               storeId: storeId,
               firstName: user.firstName,
-              
             };
           }
 
@@ -103,18 +121,22 @@ export const authOptions: NextAuthOptions = {
         session.user.role = token.role;
         session.user.storeId = token.storeId;
         session.user.firstName = token.firstName;
-        
       }
       return session;
     },
-    async jwt({ token, user }) {
+    async jwt({ token, user, trigger, session }) {
       if (user) {
         token.id = user.id;
         token.role = user.role;
         token.storeId = user.storeId;
         token.firstName = user.firstName;
-        
       }
+      
+      // Handle updates from client side (store switching)
+      if (trigger === "update" && session?.storeId) {
+        token.storeId = session.storeId;
+      }
+      
       return token;
     },
   },

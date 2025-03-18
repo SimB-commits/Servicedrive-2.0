@@ -22,6 +22,14 @@ enum TicketStatus {
   CLOSED
 }
 
+model UserPreference {
+  userId          String   @id
+  selectedStoreId Int?
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
 model User {
   id              String      @id @default(uuid())
   firstName       String      @default("")
@@ -33,6 +41,7 @@ model User {
   createdTickets  Ticket[]    @relation("CreatedTickets")
   assignedTickets Ticket[]    @relation("AssignedTickets")
   messages        Message[]   @relation("UserMessages")
+  preference      UserPreference?
   createdAt       DateTime    @default(now())
   updatedAt       DateTime    @updatedAt
   accounts        Account[]

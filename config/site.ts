@@ -45,6 +45,10 @@ export const siteConfig = {
       href: "/installningar",
     },
     {
+      label: "Butiker",
+      href: "/installningar/butiker",
+    },
+    {
       label: "Logga ut",
       href: "/auth/logout",
     },

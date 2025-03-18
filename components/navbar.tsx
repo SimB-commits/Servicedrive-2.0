@@ -1,143 +1,268 @@
+import React, { useState, useEffect } from "react";
+import { useRouter } from "next/router";
 import {
   Navbar as HeroUINavbar,
   NavbarContent,
-  NavbarMenu,
-  NavbarMenuToggle,
   NavbarBrand,
   NavbarItem,
-  NavbarMenuItem,
-  Link,
   Button,
-  Input,
   Dropdown,
   DropdownTrigger,
   DropdownMenu,
-  DropdownItem
+  DropdownItem,
+  Avatar,
+  Input,
+  Badge
 } from "@heroui/react";
-import { Kbd } from "@heroui/kbd";
-import { link as linkStyles } from "@heroui/theme";
 import NextLink from "next/link";
+import { useSession } from "next-auth/react";
 import clsx from "clsx";
 
 import { siteConfig } from "@/config/site";
 import { ThemeSwitch } from "@/components/theme-switch";
-import { SearchIcon, Logo, ChevronDown } from "@/components/icons";
+import { SearchIcon, Logo } from "@/components/icons";
+import MobileMenu from "./MobileMenu";
+
+// Importera ikoner manuellt då vi inte har uppdaterat icons.tsx ännu
+const BellIcon = ({ size = 24, ...props }) => (
+  <svg 
+    height={size} 
+    viewBox="0 0 24 24" 
+    width={size} 
+    fill="none" 
+    stroke="currentColor" 
+    strokeWidth="2" 
+    strokeLinecap="round" 
+    strokeLinejoin="round" 
+    {...props}
+  >
+    <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+    <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+  </svg>
+);
+
+const LogoutIcon = ({ size = 24, ...props }) => (
+  <svg 
+    height={size}
+    viewBox="0 0 24 24" 
+    width={size} 
+    fill="none" 
+    stroke="currentColor" 
+    strokeWidth="2" 
+    strokeLinecap="round" 
+    strokeLinejoin="round" 
+    {...props}
+  >
+    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+    <polyline points="16 17 21 12 16 7" />
+    <line x1="21" y1="12" x2="9" y2="12" />
+  </svg>
+);
 
 export const Navbar = () => {
-  const searchInput = (
-    <Input
-      aria-label="Search"
-      classNames={{
-        inputWrapper: "bg-default-100",
-        input: "text-sm",
-      }}
-      labelPlacement="outside"
-      placeholder="Search..."
-      startContent={
-        <SearchIcon className="text-base text-default-400 pointer-events-none flex-shrink-0" />
-      }
-      type="search"
-    />
-  );
+  const router = useRouter();
+  const { data: session } = useSession();
+  const [showSearchBar, setShowSearchBar] = useState(false);
+  const [notificationCount, setNotificationCount] = useState(0);
+  const [scrolled, setScrolled] = useState(false);
+
+  // Detect scroll for visual effects
+  useEffect(() => {
+    const handleScroll = () => {
+      setScrolled(window.scrollY > 10);
+    };
+    window.addEventListener("scroll", handleScroll);
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
+
+  // Mock function to fetch notification count
+  useEffect(() => {
+    // I en verklig app skulle detta vara ett API-anrop
+    setNotificationCount(3);
+  }, []);
+
+  // Check if the current route is active
+  const isActive = (href: string) => {
+    return router.pathname === href;
+  };
+
+  // Navigate to search page or handle search
+  const handleSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    // Handle search logic here
+    setShowSearchBar(false);
+  };
 
   return (
-    <HeroUINavbar maxWidth="md" position="sticky" isBordered>
-      <NavbarContent className="basis-1/5 sm:basis-full" justify="center">
-        <NavbarBrand className="gap-3 max-w-fit">
-          <NextLink className="flex justify-center items-center gap-1" href="/">
-            <Logo />
-            <p className="font-bold text-inherit">Servicedrive</p>
+    <HeroUINavbar 
+      maxWidth="xl"
+      position="sticky"
+      className={clsx(
+        "transition-all duration-200",
+        scrolled ? "shadow-md bg-background/90 backdrop-blur-md py-1" : "py-2"
+      )}
+      isBordered={!scrolled}
+    >
+      {/* Left section: Logo and main navigation */}
+      <NavbarContent className="gap-6">
+        <NavbarBrand>
+          <NextLink href="/" className="flex items-center gap-2">
+            <Logo className="text-primary h-8 w-8" />
+            <span className="font-bold text-xl text-inherit hidden sm:block">Servicedrive</span>
           </NextLink>
         </NavbarBrand>
-        <div className="hidden lg:flex gap-4 justify-center">
-          {siteConfig.navItems.map((item, index) => {
-            if (index === 0) {
-              return (
-                <Dropdown key={item.href}>
-                  <DropdownTrigger>
-                    <NavbarItem>
-                      <button
-                        type="button"
-                        className={clsx(
-                          linkStyles({ color: "foreground" }),
-                          "data-[active=true]:text-primary data-[active=true]:font-medium"
-                        )}
-                      >
-                        <span className="flex items-center">
-                          {item.label}
-                          <ChevronDown className="ml-1 text-xs" />
-                        </span>
-                      </button>
-                    </NavbarItem>
-                  </DropdownTrigger>
-                  <DropdownMenu>
-                    {siteConfig.navMenuItems.map((dropdownItem) => (
-                      <DropdownItem key={dropdownItem.href}>
-                        <NextLink
-                          className={clsx(
-                            linkStyles({ color: "foreground" }),
-                            "data-[active=true]:text-primary data-[active=true]:font-medium"
-                          )}
-                          color="foreground"
-                          href={dropdownItem.href}
-                        >
-                          {dropdownItem.label}
-                        </NextLink>
-                      </DropdownItem>
-                    ))}
-                  </DropdownMenu>
-                </Dropdown>
-              );
-            }
-            return (
-              <NavbarItem key={item.href}>
-                <NextLink
-                  className={clsx(
-                    linkStyles({ color: "foreground" }),
-                    "data-[active=true]:text-primary data-[active=true]:font-medium"
-                  )}
-                  color="foreground"
-                  href={item.href}
-                >
-                  {item.label}
-                </NextLink>
-              </NavbarItem>
-            );
-          })}
-        </div>
-      </NavbarContent>
 
-      <NavbarContent className="hidden sm:flex basis-1/5 sm:basis-full" justify="center">
-        <NavbarItem className="hidden lg:flex">{searchInput}</NavbarItem>
-      </NavbarContent>
-
-      <NavbarContent className="sm:hidden basis-1 pl-4" justify="end">
-        <NavbarMenuToggle />
-      </NavbarContent>
-
-      <NavbarMenu>
-        {searchInput}
-        <div className="mx-4 mt-2 flex flex-col gap-2">
-          {siteConfig.navMenuItems.map((item, index) => (
-            <NavbarMenuItem key={`${item}-${index}`}>
-              <Link
-                color={
-                  index === 2
-                    ? "primary"
-                    : index === siteConfig.navMenuItems.length - 1
-                      ? "danger"
-                      : "foreground"
-                }
-                href="#"
-                size="lg"
-              >
-                {item.label}
-              </Link>
-            </NavbarMenuItem>
+        {/* Main navigation - desktop */}
+        <div className="hidden md:flex gap-1">
+          {siteConfig.navItems.map((item, index) => (
+            <Button
+              key={item.href || `nav-item-${index}`}
+              as={NextLink}
+              href={item.href || "/"}
+              variant={isActive(item.href || "/") ? "flat" : "light"}
+              color={isActive(item.href || "/") ? "primary" : "default"}
+              className="px-3 font-medium"
+              size="sm"
+            >
+              {item.label}
+            </Button>
           ))}
         </div>
-      </NavbarMenu>
+      </NavbarContent>
+
+      {/* Center section: Search bar when expanded */}
+      <NavbarContent className="flex-1 justify-center">
+        {showSearchBar && (
+          <div className="w-full max-w-xl">
+            <form onSubmit={handleSearch}>
+              <Input
+                classNames={{
+                  inputWrapper: "bg-default-100 shadow-sm",
+                  input: "text-sm"
+                }}
+                placeholder="Sök efter ärenden, kunder eller inställningar..."
+                startContent={<SearchIcon className="text-default-400" />}
+                endContent={
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="light"
+                    onClick={() => setShowSearchBar(false)}
+                  >
+                    Avbryt
+                  </Button>
+                }
+                autoFocus
+                className="w-full"
+              />
+            </form>
+          </div>
+        )}
+      </NavbarContent>
+
+      {/* Right section: Actions and user menu */}
+      <NavbarContent className="gap-2" justify="end">
+        {!showSearchBar && (
+          <>
+            <NavbarItem>
+              <Button
+                isIconOnly
+                variant="light"
+                aria-label="Sök"
+                onClick={() => setShowSearchBar(true)}
+              >
+                <SearchIcon />
+              </Button>
+            </NavbarItem>
+            
+            <NavbarItem>
+              <ThemeSwitch />
+            </NavbarItem>
+
+            <NavbarItem>
+              <Dropdown>
+                <DropdownTrigger>
+                  <Button
+                    isIconOnly
+                    variant="light"
+                    aria-label="Notifieringar"
+                  >
+                    <Badge content={notificationCount} color="danger" isInvisible={notificationCount === 0}>
+                      <BellIcon />
+                    </Badge>
+                  </Button>
+                </DropdownTrigger>
+                <DropdownMenu aria-label="Notifieringar">
+                  <DropdownItem key="notification-1">Nytt ärende tilldelat</DropdownItem>
+                  <DropdownItem key="notification-2">Status uppdaterad</DropdownItem>
+                  <DropdownItem key="notification-3">Ny kund registrerad</DropdownItem>
+                  <DropdownItem key="all-notifications">
+                    <Button 
+                      as={NextLink} 
+                      href="/notifieringar" 
+                      className="w-full" 
+                      size="sm"
+                    >
+                      Visa alla notifieringar
+                    </Button>
+                  </DropdownItem>
+                </DropdownMenu>
+              </Dropdown>
+            </NavbarItem>
+
+            <NavbarItem>
+              <Dropdown>
+                <DropdownTrigger>
+                  <Button variant="light" className="p-0">
+                    <Avatar
+                      name={session?.user?.firstName || "User"}
+                      size="sm"
+                      color="primary"
+                      className="transition-transform"
+                    />
+                  </Button>
+                </DropdownTrigger>
+                <DropdownMenu aria-label="Användarmeny">
+                  <DropdownItem key="profile" textValue="Profile">
+                    <div className="flex flex-col gap-1">
+                      <p className="font-semibold">{session?.user?.firstName || "Användare"}</p>
+                      <p className="text-xs text-default-500">{session?.user?.email || ""}</p>
+                    </div>
+                  </DropdownItem>
+                  <DropdownItem key="settings">
+                    <NextLink href="/installningar" className="block w-full">
+                      Inställningar
+                    </NextLink>
+                  </DropdownItem>
+                  <DropdownItem key="analytics">
+                    <NextLink href="/statistik" className="block w-full">
+                      Statistik
+                    </NextLink>
+                  </DropdownItem>
+                  <DropdownItem key="help">
+                    <NextLink href="/hjalp" className="block w-full">
+                      Hjälp & support
+                    </NextLink>
+                  </DropdownItem>
+                  <DropdownItem key="logout" className="text-danger" color="danger">
+                    <NextLink href="/auth/logout" className="block w-full">
+                      <div className="flex items-center gap-2">
+                        <LogoutIcon className="w-4 h-4" />
+                        Logga ut
+                      </div>
+                    </NextLink>
+                  </DropdownItem>
+                </DropdownMenu>
+              </Dropdown>
+            </NavbarItem>
+          </>
+        )}
+
+        {/* Mobile menu button - only visible on small screens */}
+        <div className="md:hidden">
+          <MobileMenu />
+        </div>
+      </NavbarContent>
     </HeroUINavbar>
   );
 };
-
