@@ -249,42 +249,44 @@ export default function StoreManager() {
               </Button>
             </div>
           ) : (
-            <Table aria-label="Dina butiker">
-              <TableHeader>
-                <TableColumn>Butiksnamn</TableColumn>
-                <TableColumn>Företag</TableColumn>
-                <TableColumn>Adress</TableColumn>
-                <TableColumn>Status</TableColumn>
-                <TableColumn>Åtgärder</TableColumn>
-              </TableHeader>
-              <TableBody>
-                {stores.map(store => (
-                  <TableRow key={store.id}>
-                    <TableCell>{store.name}</TableCell>
-                    <TableCell>{store.company}</TableCell>
-                    <TableCell>{store.address}</TableCell>
-                    <TableCell>
-                      {store.id === session?.user.storeId ? (
-                        <span className="text-success font-medium">Aktiv</span>
-                      ) : (
-                        <span className="text-default-500">Inaktiv</span>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      {store.id !== session?.user.storeId && (
-                        <Button 
-                          size="sm"
-                          variant="flat"
-                          onPress={() => handleSwitchStore(store.id)}
-                        >
-                          Aktivera
-                        </Button>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+            <div className="overflow-x-auto">
+              <Table aria-label="Dina butiker">
+                <TableHeader>
+                  <TableColumn>Butiksnamn</TableColumn>
+                  <TableColumn>Företag</TableColumn>
+                  <TableColumn>Adress</TableColumn>
+                  <TableColumn>Status</TableColumn>
+                  <TableColumn>Åtgärder</TableColumn>
+                </TableHeader>
+                <TableBody>
+                  {stores.map(store => (
+                    <TableRow key={store.id}>
+                      <TableCell>{store.name}</TableCell>
+                      <TableCell>{store.company}</TableCell>
+                      <TableCell>{store.address}</TableCell>
+                      <TableCell>
+                        {store.id === session?.user.storeId ? (
+                          <span className="text-success font-medium">Aktiv</span>
+                        ) : (
+                          <span className="text-default-500">Inaktiv</span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {store.id !== session?.user.storeId && (
+                          <Button 
+                            size="sm"
+                            variant="flat"
+                            onPress={() => handleSwitchStore(store.id)}
+                          >
+                            Aktivera
+                          </Button>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
           )}
         </CardBody>
       </Card>

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useRouter } from 'next/router';
 import { useSession } from 'next-auth/react';
 import { 
   Tabs, 
@@ -8,7 +9,8 @@ import {
   Button,
   Input,
   Form,
-  addToast
+  addToast,
+  Spinner
 } from '@heroui/react';
 import { title } from '@/components/primitives';
 
@@ -18,14 +20,30 @@ import KundkortContent from '../kundkort/index';
 import MailmallsContent from '../mailmallar/index';
 import AccountSettings from '@/components/AccountSettings';
 import ImportExportManager from '@/components/ImportExport';
+import StoreManager from '@/components/StoreManager'; // Nytt för butiker
 
 // Typer för att hantera aktiv tab
-type TabKey = 'konto' | 'arendetyper' | 'kundkortsmallar' | 'mailmallar' | 'dataimport';
+type TabKey = 'konto' | 'arendetyper' | 'kundkortsmallar' | 'mailmallar' | 'dataimport' | 'butiker'; // Lagt till 'butiker'
 
 export default function InstallningarPage() {
   const { data: session, status } = useSession();
+  const router = useRouter();
   const [selectedTab, setSelectedTab] = useState<TabKey>('konto');
   const [loading, setLoading] = useState(true);
+
+  // Kontrollera om det finns en tab-query-parameter för att stödja direktnavigering
+  useEffect(() => {
+    const { tab } = router.query;
+    if (tab && typeof tab === 'string') {
+      // Validera att tab är en giltig flik
+      const isValidTab = (tab: string): tab is TabKey => 
+        ['konto', 'arendetyper', 'kundkortsmallar', 'mailmallar', 'dataimport', 'butiker'].includes(tab);
+      
+      if (isValidTab(tab)) {
+        setSelectedTab(tab);
+      }
+    }
+  }, [router.query]);
 
   useEffect(() => {
     if (status !== 'loading') {
@@ -46,6 +64,8 @@ export default function InstallningarPage() {
         return <MailmallsContent />;
       case 'dataimport':
         return <ImportExportManager />;
+      case 'butiker':
+        return <StoreManager />;
       default:
         return <div>Välj en inställningskategori</div>;
     }
@@ -54,6 +74,7 @@ export default function InstallningarPage() {
   if (loading) {
     return (
       <section className="flex flex-col items-center justify-center gap-4 py-8 md:py-10">
+        <Spinner size="lg" />
         <div>Laddar...</div>
       </section>
     );
@@ -75,25 +96,34 @@ export default function InstallningarPage() {
       </div>
       
       <div className="w-full max-w-6xl">
-        <Tabs 
-          aria-label="Inställningar"
-          selectedKey={selectedTab}
-          onSelectionChange={(key) => setSelectedTab(key as TabKey)}
-          color="primary"
-          variant="underlined"
-          classNames={{
-            tabList: "gap-6 w-full relative rounded-none p-0 border-b border-divider",
-            cursor: "w-full bg-primary",
-            tab: "max-w-fit px-2 h-12",
-            tabContent: "group-data-[selected=true]:text-primary"
-          }}
-        >
-          <Tab key="konto" title="Konto" />
-          <Tab key="arendetyper" title="Ärendetyper" />
-          <Tab key="kundkortsmallar" title="Kundkortsmallar" />
-          <Tab key="mailmallar" title="Mailmallar" />
-          <Tab key="dataimport" title="Import/Export" />
-        </Tabs>
+        {/* Uppdaterad med overflow-x-auto för mobilanpassning */}
+        <div className="overflow-x-auto">
+          <Tabs 
+            aria-label="Inställningar"
+            selectedKey={selectedTab}
+            onSelectionChange={(key) => {
+              setSelectedTab(key as TabKey);
+              // Uppdatera URL med query-parametern för att stödja delning av länkar till specifika flikar
+              router.push(`/installningar?tab=${key}`, undefined, { shallow: true });
+            }}
+            color="primary"
+            variant="underlined"
+            classNames={{
+              base: "w-full",
+              tabList: "gap-6 w-full relative rounded-none p-0 border-b border-divider flex-nowrap overflow-x-auto",
+              cursor: "w-full bg-primary",
+              tab: "max-w-fit px-2 h-12 whitespace-nowrap",
+              tabContent: "group-data-[selected=true]:text-primary"
+            }}
+          >
+            <Tab key="konto" title="Konto" />
+            <Tab key="arendetyper" title="Ärendetyper" />
+            <Tab key="kundkortsmallar" title="Kundkortsmallar" />
+            <Tab key="mailmallar" title="Mailmallar" />
+            <Tab key="dataimport" title="Import/Export" />
+            <Tab key="butiker" title="Butiker" />
+          </Tabs>
+        </div>
         
         <div className="mt-4">
           {renderTabContent()}
