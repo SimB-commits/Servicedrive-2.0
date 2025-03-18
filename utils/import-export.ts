@@ -1,6 +1,8 @@
 // utils/import-export.ts
 // Hjälpfunktioner för import/export-funktionalitet
 
+import { parseDate } from "./date-formatter";
+
 /**
  * Identifierar filtyp baserat på filnamn
  */
@@ -201,37 +203,17 @@ export const detectFileType = (filename: string): string | null => {
           // Type conversion based on target field
           switch (targetField) {
             case 'dueDate':
-              // Convert to date
-              if (value && typeof value === 'string') {
-                try {
-                  const date = new Date(value);
-                  if (!isNaN(date.getTime())) {
-                    value = date.toISOString();
-                  } else {
-                    // Try different date formats
-                    const parts = value.split(/[\/\-\.]/);
-                    if (parts.length === 3) {
-                      // Assume MM/DD/YYYY or DD/MM/YYYY
-                      if (parseInt(parts[0]) > 12) {
-                        // Likely DD/MM/YYYY
-                        const date = new Date(`${parts[2]}-${parts[1]}-${parts[0]}`);
-                        if (!isNaN(date.getTime())) {
-                          value = date.toISOString();
-                        }
-                      } else {
-                        // Assume MM/DD/YYYY
-                        const date = new Date(`${parts[2]}-${parts[0]}-${parts[1]}`);
-                        if (!isNaN(date.getTime())) {
-                          value = date.toISOString();
-                        }
-                      }
-                    }
-                  }
-                } catch (error) {
-                  console.warn(`Could not parse date: ${value}`, error);
-                }
+            // Använd den nya parseDate-funktionen för robust datumhantering
+            if (value !== null && value !== undefined) {
+              const parsedDate = parseDate(value);
+              if (parsedDate) {
+                value = parsedDate;
+              } else {
+                console.warn(`Kunde inte tolka dueDate-värde: ${value}`);
+                // Behåll originalvärdet om parsning misslyckas
               }
-              break;
+            }
+            break;
               
             case 'status':
               // Normalize status
@@ -354,6 +336,29 @@ export const detectFileType = (filename: string): string | null => {
               mappedRow.dynamicFields = {};
             }
             mappedRow.dynamicFields[fieldName] = row[key];
+          }
+        }
+        if (mappedRow.dynamicFields) {
+          for (const key in mappedRow.dynamicFields) {
+            // Kontrollera om nyckeln ser ut som ett datum (enkel heuristik)
+            const valueLower = String(mappedRow.dynamicFields[key]).toLowerCase();
+            const keyLower = key.toLowerCase();
+            
+            const isLikelyDateField = 
+              keyLower.includes('date') || 
+              keyLower.includes('datum') || 
+              keyLower.includes('due') || 
+              keyLower.includes('deadline') ||
+              keyLower.includes('förfall') ||
+              keyLower.includes('klar');
+        
+            // Om vi inte redan har ett dueDate och detta fält ser ut som ett datum
+            if (!mappedRow.dueDate && isLikelyDateField) {
+              const parsedDate = parseDate(mappedRow.dynamicFields[key]);
+              if (parsedDate) {
+                mappedRow.dueDate = parsedDate;
+              }
+            }
           }
         }
       }

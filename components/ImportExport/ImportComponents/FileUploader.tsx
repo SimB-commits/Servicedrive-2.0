@@ -93,7 +93,7 @@ const FileUploader: React.FC<FileUploaderProps> = ({
 
   return (
     <div>
-      <h4 className="font-medium mb-2">2. Välj importfil</h4>
+      
       
       {/* Dölj den faktiska file input */}
       <input

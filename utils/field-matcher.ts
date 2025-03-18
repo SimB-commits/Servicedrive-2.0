@@ -123,7 +123,13 @@ export function getStringSimilarity(s1: string, s2: string): number {
         'comment', 'comments', 'kommentar', 'kommentarer', 'note', 'notes', 'anteckningar',
         'customerid', 'customer', 'kund', 'kundid',
         'customeremail', 'customer email', 'kundepost',
-        'tickettypeid', 'tickettype', 'type', 'typ', 'ärendetyp'
+        'tickettypeid', 'tickettype', 'type', 'typ', 'ärendetyp',
+        'created', 'created_at', 'createdat', 'skapad', 'skapad_datum', 'skapaddatum',
+        'skapat', 'skapad_tid', 'created_date', 'createddate', 'creation_date', 'creationdate',
+        'date_created', 'datecreated', 'creation_time', 'creationtime', 'opened', 'opendate',
+        'registered', 'registrerad', 'registreringsdatum', 'registration_date', 'öppnad', 'oppnad',
+        'datumöppnad', 'datumoppnad', 'start_date', 'startdate', 'start', 'startad',
+        'öppningsdatum', 'oppningsdatum', 'inkommet', 'inkom', 'inkommande', 'inkommande_datum'
       ]
     };
     
@@ -347,6 +353,57 @@ export function getStringSimilarity(s1: string, s2: string): number {
             mapping[sourceField] = exactMatch;
             usedTargetFields.add(exactMatch);
             console.log(`Exakt matchning: ${sourceField} -> ${exactMatch}`);
+          }
+
+          // Extra steg för att prioritera dueDate-fält
+          if (targetType === 'tickets') {
+            // Hitta källfält som innehåller vanliga dueDate-termer
+            const possibleDueDateFields = sourceFields
+              .filter(sourceField => !mapping[sourceField]) // Skippa redan mappade
+              .filter(sourceField => {
+                const normalized = sourceField.toLowerCase();
+                return normalized.includes('due') || 
+                      normalized.includes('deadline') || 
+                      normalized.includes('förfallo') || 
+                      normalized.includes('klar') || 
+                      normalized.includes('datum') || 
+                      normalized.includes('date') ||
+                      normalized.includes('senast');
+              });
+            
+            // För dessa fält, försök mappa till 'dueDate' om det inte redan är mappat
+            if (!Object.values(mapping).includes('dueDate') && possibleDueDateFields.length > 0) {
+              // Sortera efter relevans - fält som innehåller "due" eller "deadline" prioriteras
+              const sortedDueDateFields = possibleDueDateFields.sort((a, b) => {
+                const aLower = a.toLowerCase();
+                const bLower = b.toLowerCase();
+                
+                // Prioritera exakta träffar för "due" eller "deadline"
+                const aExact = aLower === 'due' || aLower === 'deadline' || aLower === 'duedate';
+                const bExact = bLower === 'due' || bLower === 'deadline' || bLower === 'duedate';
+                
+                if (aExact && !bExact) return -1;
+                if (!aExact && bExact) return 1;
+                
+                // Annars, prioritera fält som innehåller termerna
+                const aDue = aLower.includes('due');
+                const bDue = bLower.includes('due');
+                const aDeadline = aLower.includes('deadline');
+                const bDeadline = bLower.includes('deadline');
+                
+                if ((aDue || aDeadline) && !(bDue || bDeadline)) return -1;
+                if (!(aDue || aDeadline) && (bDue || bDeadline)) return 1;
+                
+                return 0;
+              });
+              
+              // Använd det mest relevanta fältet
+              if (sortedDueDateFields.length > 0) {
+                mapping[sortedDueDateFields[0]] = 'dueDate';
+                usedTargetFields.add('dueDate');
+                console.log(`Prioriterad dueDate-matchning: ${sortedDueDateFields[0]} -> dueDate`);
+              }
+            }
           }
         });
         

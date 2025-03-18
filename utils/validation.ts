@@ -2,6 +2,7 @@
 
 import { z } from 'zod';
 import { Prisma } from '@prisma/client';
+import { parseDate } from './date-formatter';
 
 const dateOrString = z.preprocess((arg) => {
   // If no value is sent, return as is
@@ -263,9 +264,17 @@ export const importTicketSchema = z.object({
   title: z.string().optional().nullable(),
   description: z.string().optional().nullable(),
   status: z.string().optional().nullable(),
-  dueDate: z.union([z.string(), z.date()]).optional().nullable(),
+  
+  // Använd dateOrString för mer flexibel validering av dueDate
+  dueDate: dateOrString.optional().nullable(),
+
+  // Nya fält för att behålla ursprungsdatum
+  createdAt: z.union([z.string(), z.date()]).optional().nullable(),
+  updatedAt: z.union([z.string(), z.date()]).optional().nullable(),
+  
   customerId: z.number().optional().nullable(),
   customerEmail: z.string().email('Ogiltig email-adress').optional().nullable(), 
+  
   // Externa kund-ID fält
   customer_external_id: z.union([z.string(), z.number()]).optional()
     .transform(val => val !== undefined ? String(val) : undefined),
@@ -275,6 +284,7 @@ export const importTicketSchema = z.object({
     .transform(val => val !== undefined ? String(val) : undefined),
   kundnummer: z.union([z.string(), z.number()]).optional()
     .transform(val => val !== undefined ? String(val) : undefined),
+    
   ticketTypeId: z.number().optional().nullable(),
   dynamicFields: z.record(z.any()).optional().nullable(),
 }).refine(data => 
@@ -287,7 +297,39 @@ export const importTicketSchema = z.object({
     message: "En kundidentifierare måste anges (customerId, customerEmail eller externt ID)",
     path: ["customerEmail"],
   }
-);
+).transform(data => {
+  // Om vi har ett dueDate-fält som är en sträng, försök konvertera det till ett datum
+  if (data.dueDate && typeof data.dueDate === 'string') {
+    const parsedDate = parseDate(data.dueDate);
+    if (parsedDate) {
+      data.dueDate = parsedDate;
+    }
+  }
+  
+  // Kontrollera även dynamiska fält för datum och dueDate relaterade fält
+  if (data.dynamicFields) {
+    Object.keys(data.dynamicFields).forEach(key => {
+      const value = data.dynamicFields?.[key];
+      const keyLower = key.toLowerCase();
+      
+      // Om detta ser ut som ett dueDate-fält och vi inte har ett dueDate redan
+      if (!data.dueDate && 
+         (keyLower.includes('due') || 
+          keyLower.includes('deadline') || 
+          keyLower.includes('date') ||
+          keyLower.includes('datum') ||
+          keyLower.includes('förfall'))) {
+        
+        const parsedDate = parseDate(value);
+        if (parsedDate) {
+          data.dueDate = parsedDate;
+        }
+      }
+    });
+  }
+  
+  return data;
+});
 
 // Typ för importdata
 export type ImportCustomerData = z.infer<typeof importCustomerSchema>;

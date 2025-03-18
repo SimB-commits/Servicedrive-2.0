@@ -5,6 +5,7 @@ import { getServerSession } from 'next-auth/next';
 import { authOptions } from '../auth/authOptions';
 import { importTicketSchema } from '@/utils/validation';
 import rateLimiter from '@/lib/rateLimiterApi';
+import { parseDate } from '@/utils/date-formatter';
 
 const prisma = new PrismaClient();
 
@@ -321,17 +322,19 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
                   // Konvertera till nummer om möjligt
                   dynamicFieldData[fieldName] = Number(dynamicFieldData[fieldName]) || 0;
                   break;
-                case 'DATE':
-                case 'DUE_DATE':
-                  // Konvertera till datum om det inte redan är det
-                  try {
-                    if (typeof dynamicFieldData[fieldName] === 'string') {
-                      dynamicFieldData[fieldName] = new Date(dynamicFieldData[fieldName]).toISOString();
-                    }
-                  } catch (error) {
-                    console.warn(`Kunde inte konvertera ${fieldName} till datum:`, error);
-                  }
-                  break;
+                  case 'DATE':
+                    case 'DUE_DATE':
+                      // Konvertera till datum med den nya parseDate-funktionen
+                      const parsedDate = parseDate(dynamicFieldData[fieldName]);
+                      if (parsedDate) {
+                        dynamicFieldData[fieldName] = parsedDate;
+                        
+                        // Om detta är ett DUE_DATE-fält, sätt även dueDate på ärendet
+                        if (field.fieldType === 'DUE_DATE' && !ticketCreateData.dueDate) {
+                          ticketCreateData.dueDate = new Date(parsedDate);
+                        }
+                      }
+                      break;
                 case 'CHECKBOX':
                   // Konvertera till boolean
                   if (typeof dynamicFieldData[fieldName] === 'string') {
@@ -353,8 +356,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           title: ticketData.title || 'Importerat ärende',
           description: ticketData.description || '',
           status: status,
-          dueDate: ticketData.dueDate ? new Date(ticketData.dueDate) : null,
-          dynamicFields: dynamicFieldData, // Använd de bearbetade dynamiska fälten
+          // Använd den nya parseDate-funktionen för att hantera olika datumformat
+          dueDate: parseDate(ticketData.dueDate) ? new Date(parseDate(ticketData.dueDate) as string) : null,
+          dynamicFields: dynamicFieldData,
           store: {
             connect: { id: session.user.storeId }
           },
