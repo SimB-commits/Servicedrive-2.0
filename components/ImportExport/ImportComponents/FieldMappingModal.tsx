@@ -29,6 +29,7 @@ import {
 
 // Importera FieldMatcher
 import { FieldMatcher, getStringSimilarity } from '@/utils/field-matcher';
+import { parseDate } from '@/utils/date-formatter';
 
 interface FieldMappingModalProps {
   isOpen: boolean;
@@ -189,6 +190,26 @@ const FieldMappingModal: React.FC<FieldMappingModalProps> = ({
       return <Badge color="warning" content="Medium" variant="flat" size="sm" />;
     } else {
       return <Badge color="default" content="Låg" variant="flat" size="sm" />;
+    }
+  };
+
+  const renderDatePreview = (dateValue: any) => {
+    if (!dateValue) return '-';
+    
+    const parsedDate = parseDate(dateValue);
+    if (!parsedDate) return String(dateValue);
+    
+    // Visa datum i läsbart format
+    try {
+      return new Date(parsedDate).toLocaleDateString('sv-SE', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+    } catch (e) {
+      return String(dateValue);
     }
   };
 
@@ -364,6 +385,39 @@ const FieldMappingModal: React.FC<FieldMappingModalProps> = ({
                       ))}
                     </TableBody>
                   </Table>
+                </div>
+              </div>
+            )}
+
+            {importTarget === 'tickets' && (
+              <div className="p-4 border rounded mt-4 bg-success-50">
+                <h5 className="font-medium mb-2">Datumhantering för importerade ärenden</h5>
+                <p className="text-sm text-default-600 mb-2">
+                  Om din importfil innehåller kolumner för när ärenden skapades eller uppdaterades, 
+                  mappa dessa till <strong>createdAt</strong> och <strong>updatedAt</strong> för att 
+                  bevara originaldatum vid import.
+                </p>
+                
+                <div className="flex flex-col gap-1 mt-2">
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 rounded-full bg-success"></div>
+                    <span className="text-sm font-medium">createdAt</span>
+                    <span className="text-xs text-default-500">
+                      {Object.values(fieldMapping).includes('createdAt') 
+                        ? 'Originaldatum kommer att bevaras' 
+                        : 'Inget originaldatum hittat - använder dagens datum'}
+                    </span>
+                  </div>
+                  
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 rounded-full bg-primary"></div>
+                    <span className="text-sm font-medium">updatedAt</span>
+                    <span className="text-xs text-default-500">
+                      {Object.values(fieldMapping).includes('updatedAt') 
+                        ? 'Originaldatum kommer att bevaras' 
+                        : 'Inget originaldatum hittat - använder dagens datum'}
+                    </span>
+                  </div>
                 </div>
               </div>
             )}

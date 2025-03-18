@@ -132,6 +132,96 @@ export function getStringSimilarity(s1: string, s2: string): number {
         'öppningsdatum', 'oppningsdatum', 'inkommet', 'inkom', 'inkommande', 'inkommande_datum'
       ]
     };
+
+    findCreatedAtField(sourceFields: string[]): string | null {
+      const createdAtKeywords = [
+        'created', 'creation', 'skapad', 'skapat', 'register', 'registration', 
+        'oppnat', 'öppnat', 'start', 'inkom', 'inkommande'
+      ];
+      
+      // Exakta matchningar först (t.ex. "created_at")
+      for (const field of sourceFields) {
+        const fieldLower = field.toLowerCase();
+        if (fieldLower === 'created_at' || fieldLower === 'createdat' || 
+            fieldLower === 'createddate' || fieldLower === 'date_created') {
+          return field;
+        }
+      }
+      
+      // Partiella matchningar med datumrelaterade nyckelord
+      return this.findBestFieldMatch(sourceFields, createdAtKeywords, 'date');
+    }
+    
+    /**
+     * Försöker hitta det bästa updatedAt-fältet i tillgängliga källfält
+     */
+    findUpdatedAtField(sourceFields: string[]): string | null {
+      const updatedAtKeywords = [
+        'updated', 'update', 'uppdatera', 'uppdaterad', 'modified', 
+        'modification', 'ändrad', 'andrad', 'changed', 'senast'
+      ];
+      
+      // Exakta matchningar först
+      for (const field of sourceFields) {
+        const fieldLower = field.toLowerCase();
+        if (fieldLower === 'updated_at' || fieldLower === 'updatedat' || 
+            fieldLower === 'updateddate' || fieldLower === 'last_updated') {
+          return field;
+        }
+      }
+      
+      // Partiella matchningar
+      return this.findBestFieldMatch(sourceFields, updatedAtKeywords, 'date');
+    }
+    
+    /**
+     * Hjälpfunktion för att hitta bästa fält som matchar angivna nyckelord
+     */
+    private findBestFieldMatch(
+      sourceFields: string[], 
+      keywords: string[], 
+      supplementaryKeyword?: string
+    ): string | null {
+      // Skapa en mapning av fält till poäng
+      const fieldScores = new Map<string, number>();
+      
+      for (const field of sourceFields) {
+        const fieldLower = field.toLowerCase();
+        let score = 0;
+        
+        // Ge poäng för varje nyckelord som finns i fältnamnet
+        for (const keyword of keywords) {
+          if (fieldLower.includes(keyword.toLowerCase())) {
+            score += 10;
+            
+            // Extra poäng om nyckelordet är i början av fältnamnet
+            if (fieldLower.startsWith(keyword.toLowerCase())) {
+              score += 5;
+            }
+          }
+        }
+        
+        // Ge extra poäng om det supplementära nyckelordet finns
+        if (supplementaryKeyword && fieldLower.includes(supplementaryKeyword.toLowerCase())) {
+          score += 3;
+        }
+        
+        // Undvik falska positiva resultat genom att kräva en minimipoäng
+        if (score > 0) {
+          fieldScores.set(field, score);
+        }
+      }
+      
+      // Om inga fält matchade, returnera null
+      if (fieldScores.size === 0) {
+        return null;
+      }
+      
+      // Sortera fälten efter poäng och returnera det med högst poäng
+      return Array.from(fieldScores.entries())
+        .sort((a, b) => b[1] - a[1])[0][0];
+    }
+
     
     /**
      * Hittar bästa matchning för ett källfält bland målfälten
@@ -514,6 +604,26 @@ export function getStringSimilarity(s1: string, s2: string): number {
               console.log(`Ingen matchning hittades för: ${sourceField}`);
             }
           });
+
+          // Om måltypen är tickets, leta efter createdAt/updatedAt fält
+          if (targetType === 'tickets') {
+            const usedFields = new Set(Object.values(mapping));
+            
+            // Kolla om createdAt/updatedAt finns i målfälten och inte redan är mappade
+            if (targetFields.includes('createdAt') && !usedFields.has('createdAt')) {
+              const createdAtField = this.findCreatedAtField(sourceFields);
+              if (createdAtField && !Object.keys(mapping).includes(createdAtField)) {
+                mapping[createdAtField] = 'createdAt';
+              }
+            }
+            
+            if (targetFields.includes('updatedAt') && !usedFields.has('updatedAt')) {
+              const updatedAtField = this.findUpdatedAtField(sourceFields);
+              if (updatedAtField && !Object.keys(mapping).includes(updatedAtField)) {
+                mapping[updatedAtField] = 'updatedAt';
+              }
+            }
+          }
         
         console.log("Slutlig mappning:", mapping);
         return mapping;

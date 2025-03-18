@@ -228,6 +228,8 @@ const ImportTab = () => {
     return customerScore > ticketScore ? 'customers' : 'tickets';
   };
 
+  
+
   // När en fil väljs, analysera den och försök identifiera fält
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -415,6 +417,31 @@ const ImportTab = () => {
       });
     }
   };
+
+  useEffect(() => {
+    // När filer läses in och mappning skapas
+    if (previewData && previewData.length > 0 && importTarget === 'tickets') {
+      // Kontrollera ifall vi har hittat createdAt/updatedAt i datan
+      const hasCreatedAtMapping = Object.values(fieldMapping).includes('createdAt');
+      const hasUpdatedAtMapping = Object.values(fieldMapping).includes('updatedAt');
+      
+      if (hasCreatedAtMapping || hasUpdatedAtMapping) {
+        // Visa notifiering om att originaldata för datum kommer att bevaras
+        addToast({
+          title: 'Originaldatum hittade',
+          description: `Importerade ärenden kommer att behålla originaldata för ${
+            hasCreatedAtMapping && hasUpdatedAtMapping 
+              ? 'skapandedatum och uppdateringsdatum' 
+              : hasCreatedAtMapping 
+                ? 'skapandedatum' 
+                : 'uppdateringsdatum'
+          }.`,
+          color: 'success',
+          variant: 'flat'
+        });
+      }
+    }
+  }, [importTarget, fileData, previewData, fieldMapping]);
 
   // Uppdatera fältmappningen när användaren väljer ett fält
   const updateFieldMapping = (sourceField: string, targetField: string) => {

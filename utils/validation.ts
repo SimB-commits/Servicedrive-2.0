@@ -268,9 +268,9 @@ export const importTicketSchema = z.object({
   // Använd dateOrString för mer flexibel validering av dueDate
   dueDate: dateOrString.optional().nullable(),
 
-  // Nya fält för att behålla ursprungsdatum
-  createdAt: z.union([z.string(), z.date()]).optional().nullable(),
-  updatedAt: z.union([z.string(), z.date()]).optional().nullable(),
+  // Nya fält för att stödja importerade ärenden med ursprungliga datum
+  createdAt: dateOrString.optional().nullable(),
+  updatedAt: dateOrString.optional().nullable(),
   
   customerId: z.number().optional().nullable(),
   customerEmail: z.string().email('Ogiltig email-adress').optional().nullable(), 
@@ -306,6 +306,21 @@ export const importTicketSchema = z.object({
     }
   }
   
+  // Försök konvertera createdAt/updatedAt om de finns
+  if (data.createdAt) {
+    const parsedDate = parseDate(data.createdAt);
+    if (parsedDate) {
+      data.createdAt = parsedDate;
+    }
+  }
+  
+  if (data.updatedAt) {
+    const parsedDate = parseDate(data.updatedAt);
+    if (parsedDate) {
+      data.updatedAt = parsedDate;
+    }
+  }
+  
   // Kontrollera även dynamiska fält för datum och dueDate relaterade fält
   if (data.dynamicFields) {
     Object.keys(data.dynamicFields).forEach(key => {
@@ -323,6 +338,19 @@ export const importTicketSchema = z.object({
         const parsedDate = parseDate(value);
         if (parsedDate) {
           data.dueDate = parsedDate;
+        }
+      }
+      
+      // Om detta ser ut som ett createdAt-fält och vi inte har createdAt redan
+      if (!data.createdAt &&
+         (keyLower.includes('created') ||
+          keyLower.includes('skapad') ||
+          keyLower.includes('skapades') ||
+          keyLower.includes('creation'))) {
+        
+        const parsedDate = parseDate(value);
+        if (parsedDate) {
+          data.createdAt = parsedDate;
         }
       }
     });

@@ -294,7 +294,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         // och lägg till dem i dynamicFields
         const standardFields = [
           'title', 'description', 'status', 'dueDate', 'ticketTypeId', 
-          'customerId', 'customerEmail', 'dynamicFields'
+          'customerId', 'customerEmail', 'dynamicFields', 'createdAt', 'updatedAt'
         ];
         
         // Identifiera icke-standard fält i inkommande data
@@ -322,19 +322,19 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
                   // Konvertera till nummer om möjligt
                   dynamicFieldData[fieldName] = Number(dynamicFieldData[fieldName]) || 0;
                   break;
-                  case 'DATE':
-                    case 'DUE_DATE':
-                      // Konvertera till datum med den nya parseDate-funktionen
-                      const parsedDate = parseDate(dynamicFieldData[fieldName]);
-                      if (parsedDate) {
-                        dynamicFieldData[fieldName] = parsedDate;
-                        
-                        // Om detta är ett DUE_DATE-fält, sätt även dueDate på ärendet
-                        if (field.fieldType === 'DUE_DATE' && !ticketCreateData.dueDate) {
-                          ticketCreateData.dueDate = new Date(parsedDate);
-                        }
-                      }
-                      break;
+                case 'DATE':
+                case 'DUE_DATE':
+                  // Konvertera till datum med parseDate-funktionen
+                  const parsedDate = parseDate(dynamicFieldData[fieldName]);
+                  if (parsedDate) {
+                    dynamicFieldData[fieldName] = parsedDate;
+                    
+                    // Om detta är ett DUE_DATE-fält, sätt även dueDate på ärendet
+                    if (field.fieldType === 'DUE_DATE' && !ticketCreateData.dueDate) {
+                      ticketCreateData.dueDate = new Date(parsedDate);
+                    }
+                  }
+                  break;
                 case 'CHECKBOX':
                   // Konvertera till boolean
                   if (typeof dynamicFieldData[fieldName] === 'string') {
@@ -356,7 +356,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           title: ticketData.title || 'Importerat ärende',
           description: ticketData.description || '',
           status: status,
-          // Använd den nya parseDate-funktionen för att hantera olika datumformat
+          // Använd parseDate för att hantera olika datumformat
           dueDate: parseDate(ticketData.dueDate) ? new Date(parseDate(ticketData.dueDate) as string) : null,
           dynamicFields: dynamicFieldData,
           store: {
@@ -372,6 +372,36 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             connect: { id: ticketTypeId }
           }
         };
+        
+        // NY FUNKTIONALITET: Hantera createdAt och updatedAt från importerad data
+        
+        // Kontrollera om createdAt finns i importdatan och är giltigt
+        if (ticketData.createdAt) {
+          const parsedCreatedAt = parseDate(ticketData.createdAt);
+          if (parsedCreatedAt) {
+            // Använd raw Prisma query parameter för att kunna sätta createdAt 
+            // Dessa fält är normalt hanterade av Prisma automatiskt
+            ticketCreateData.createdAt = new Date(parsedCreatedAt);
+          }
+        }
+        
+        // Kontrollera om updatedAt finns i importdatan och är giltigt
+        if (ticketData.updatedAt) {
+          const parsedUpdatedAt = parseDate(ticketData.updatedAt);
+          if (parsedUpdatedAt) {
+            // Om både createdAt och updatedAt finns, se till att updatedAt inte är tidigare än createdAt
+            if (ticketCreateData.createdAt && new Date(parsedUpdatedAt) < ticketCreateData.createdAt) {
+              // Ignorera updatedAt om det är tidigare än createdAt
+              console.log(`Rad ${i + 1}: updatedAt (${parsedUpdatedAt}) är tidigare än createdAt (${ticketCreateData.createdAt}), använder createdAt för updatedAt`);
+              ticketCreateData.updatedAt = ticketCreateData.createdAt;
+            } else {
+              ticketCreateData.updatedAt = new Date(parsedUpdatedAt);
+            }
+          }
+        } else if (ticketCreateData.createdAt) {
+          // Om bara createdAt finns, använd det för updatedAt också
+          ticketCreateData.updatedAt = ticketCreateData.createdAt;
+        }
         
         // Validera att nödvändiga datatyper är korrekta innan vi försöker skapa ärendet
         // Detta förhindrar typfel vid skapandet
@@ -400,6 +430,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         
         // Logga data innan vi skapar ärendet (för felsökning)
         console.log(`Rad ${i + 1}: Skapar ärende med ärendetyp ID ${ticketTypeId}`);
+        if (ticketCreateData.createdAt) {
+          console.log(`Rad ${i + 1}: Använder createdAt från importdata: ${ticketCreateData.createdAt}`);
+        }
         
         try {
           // Skapa ärendet i databasen

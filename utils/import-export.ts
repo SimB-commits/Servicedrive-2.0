@@ -203,7 +203,7 @@ export const detectFileType = (filename: string): string | null => {
           // Type conversion based on target field
           switch (targetField) {
             case 'dueDate':
-            // Använd den nya parseDate-funktionen för robust datumhantering
+            // Använd parseDate för robust datumhantering
             if (value !== null && value !== undefined) {
               const parsedDate = parseDate(value);
               if (parsedDate) {
@@ -214,6 +214,21 @@ export const detectFileType = (filename: string): string | null => {
               }
             }
             break;
+            
+            case 'createdAt':
+            case 'updatedAt':
+              // Hantera datum för createdAt och updatedAt
+              if (value !== null && value !== undefined) {
+                const parsedDate = parseDate(value);
+                if (parsedDate) {
+                  value = parsedDate;
+                } else {
+                  console.warn(`Kunde inte tolka ${targetField}-värde: ${value}`);
+                  // Ignorera värdet om parsning misslyckas
+                  continue;
+                }
+              }
+              break;
               
             case 'status':
               // Normalize status
@@ -246,6 +261,7 @@ export const detectFileType = (filename: string): string | null => {
                   'DONE': 'CLOSED',
                   'COMPLETED': 'CLOSED',
                   'FÄRDIG': 'CLOSED',
+                  'FÄRDIGT': 'CLOSED',
                   'KLAR': 'CLOSED',
                   'AVSLUTAD': 'CLOSED',
                   'STÄNGD': 'CLOSED'
@@ -320,7 +336,7 @@ export const detectFileType = (filename: string): string | null => {
         }
       }
       
-      // Specialhantering för field_* prefix i importdata
+      // Specialhantering för field_* prefix i importdata och identifiering av datum
       for (const key in row) {
         // Hoppa över redan mappade fält
         if (Object.keys(fieldMapping).includes(key)) {
@@ -338,26 +354,71 @@ export const detectFileType = (filename: string): string | null => {
             mappedRow.dynamicFields[fieldName] = row[key];
           }
         }
-        if (mappedRow.dynamicFields) {
-          for (const key in mappedRow.dynamicFields) {
-            // Kontrollera om nyckeln ser ut som ett datum (enkel heuristik)
-            const valueLower = String(mappedRow.dynamicFields[key]).toLowerCase();
-            const keyLower = key.toLowerCase();
-            
-            const isLikelyDateField = 
-              keyLower.includes('date') || 
-              keyLower.includes('datum') || 
-              keyLower.includes('due') || 
-              keyLower.includes('deadline') ||
-              keyLower.includes('förfall') ||
-              keyLower.includes('klar');
         
-            // Om vi inte redan har ett dueDate och detta fält ser ut som ett datum
-            if (!mappedRow.dueDate && isLikelyDateField) {
-              const parsedDate = parseDate(mappedRow.dynamicFields[key]);
-              if (parsedDate) {
-                mappedRow.dueDate = parsedDate;
-              }
+        // Leta efter datum som kan vara createdAt/updatedAt
+        const keyLower = key.toLowerCase();
+        
+        // Identifiera potentiella createdAt fält som inte mappats direkt
+        if (!mappedRow.createdAt && 
+           (keyLower.includes('created') || keyLower.includes('skapad') || keyLower.includes('created_at') ||
+            keyLower.includes('creation') || keyLower.includes('creation_date') || keyLower.includes('registreringsdate'))) {
+          
+          const value = row[key];
+          if (value !== undefined && value !== null && value !== '') {
+            const parsedDate = parseDate(value);
+            if (parsedDate) {
+              console.log(`Hittade createdAt från ${key}: ${parsedDate}`);
+              mappedRow.createdAt = parsedDate;
+            }
+          }
+        }
+        
+        // Identifiera potentiella updatedAt fält som inte mappats direkt
+        if (!mappedRow.updatedAt && 
+           (keyLower.includes('updated') || keyLower.includes('uppdaterad') || keyLower.includes('updated_at') ||
+            keyLower.includes('update') || keyLower.includes('senast_ändrad') || keyLower.includes('modified'))) {
+          
+          const value = row[key];
+          if (value !== undefined && value !== null && value !== '') {
+            const parsedDate = parseDate(value);
+            if (parsedDate) {
+              console.log(`Hittade updatedAt från ${key}: ${parsedDate}`);
+              mappedRow.updatedAt = parsedDate;
+            }
+          }
+        }
+      }
+      
+      // Leta efter datum i dynamiska fält
+      if (mappedRow.dynamicFields) {
+        for (const key in mappedRow.dynamicFields) {
+          // Kontrollera om nyckeln ser ut som ett datum (enkel heuristik)
+          const valueLower = String(mappedRow.dynamicFields[key]).toLowerCase();
+          const keyLower = key.toLowerCase();
+          
+          const isLikelyDateField = 
+            keyLower.includes('date') || 
+            keyLower.includes('datum') || 
+            keyLower.includes('due') || 
+            keyLower.includes('deadline') ||
+            keyLower.includes('förfall') ||
+            keyLower.includes('klar');
+          
+          // Om vi inte redan har ett dueDate och detta fält ser ut som ett datum
+          if (!mappedRow.dueDate && isLikelyDateField) {
+            const parsedDate = parseDate(mappedRow.dynamicFields[key]);
+            if (parsedDate) {
+              mappedRow.dueDate = parsedDate;
+            }
+          }
+          
+          // Identifiera createdAt i dynamiska fält
+          if (!mappedRow.createdAt &&
+            (keyLower.includes('created') || keyLower.includes('skapad'))) {
+              
+            const parsedDate = parseDate(mappedRow.dynamicFields[key]);
+            if (parsedDate) {
+              mappedRow.createdAt = parsedDate;
             }
           }
         }
