@@ -91,6 +91,7 @@ export function getStringSimilarity(s1: string, s2: string): number {
     private commonFieldNames: Record<string, string[]> = {
       // Standardfält för kunder
       'customers': [
+        'externalid',
         'email', 'mail',
         'firstname', 'first name', 'fname', 'förnamn', 'given name',
         'lastname', 'last name', 'lname', 'efternamn', 'family name', 'surname',

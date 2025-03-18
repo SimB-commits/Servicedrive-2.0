@@ -8,6 +8,19 @@ import rateLimiter from '@/lib/rateLimiterApi';
 
 const prisma = new PrismaClient();
 
+// Hjälpfunktion som rekursivt kontrollerar att alla strängar i ett objekt inte innehåller ersättningssymbolen �
+function checkUTF8Validity(data: any): boolean {
+  if (typeof data === 'string') {
+    // Om strängen innehåller Unicode-replaceringssymbolen returneras false
+    return !data.includes('\uFFFD');
+  } else if (Array.isArray(data)) {
+    return data.every(item => checkUTF8Validity(item));
+  } else if (typeof data === 'object' && data !== null) {
+    return Object.values(data).every(value => checkUTF8Validity(value));
+  }
+  return true; // För tal, boolean osv.
+}
+
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   try {
     // Rate Limiting
@@ -37,6 +50,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         success: 0,
         failed: 0,
         errors: []
+      });
+    }
+
+    // Kontrollera att data inte innehåller ogiltiga tecken (felaktig kodning)
+    if (!checkUTF8Validity(importData)) {
+      return res.status(400).json({
+        message: 'Filen innehåller ogiltiga tecken. Se till att filen är sparad med UTF-8 encoding.',
+        success: 0,
+        failed: 0,
+        errors: ['Filens teckenkodning är inte giltig UTF-8']
       });
     }
 
@@ -82,15 +105,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           }
         }
         
-        // Förbered data för att skapa kunden
+        // Anta att customerData kan innehålla ett fält "customer_id" från det externa systemet
         const validCustomerData = {
           ...parseResult.data,
           storeId: session.user.storeId,
-          // Hantera dynamiska fält
+          // Spara det externa id:t om det finns med
+          externalId: customerData.customer_id ? Number(customerData.customer_id) : undefined,
           dynamicFields: customerData.dynamicFields || {},
-          // Konvertera datum
           dateOfBirth: customerData.dateOfBirth ? new Date(customerData.dateOfBirth) : null
         };
+
         
         // Skapa kunden i databasen
         await prisma.customer.create({

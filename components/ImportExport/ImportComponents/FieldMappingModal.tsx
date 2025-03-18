@@ -99,8 +99,9 @@ const FieldMappingModal: React.FC<FieldMappingModalProps> = ({
     const percent = total > 0 ? Math.round((mapped / total) * 100) : 0;
     
     // Identifiera viktiga fält som saknas mappning
+    // Nu inkluderar vi även "externalId" för kunder, så att historik kan migreras korrekt
     const importantFieldsByType = {
-      'customers': ['email', 'firstName', 'lastName'],
+      'customers': ['externalId', 'email', 'firstName', 'lastName'],
       'tickets': ['customerEmail', 'title', 'field_Kommentar']
     };
     
@@ -117,6 +118,7 @@ const FieldMappingModal: React.FC<FieldMappingModalProps> = ({
       missingImportantFields
     };
   }, [fieldMapping, availableFields, targetFields, importTarget]);
+
 
   // Filtrera fält baserat på sökning
   const filteredFields = useMemo(() => {

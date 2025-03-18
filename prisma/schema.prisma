@@ -100,6 +100,7 @@ model UserStore {
 
 model Customer {
   id             Int      @id @default(autoincrement())
+  externalId     Int?     @unique
   firstName      String?  
   lastName       String?  
   address        String?  
