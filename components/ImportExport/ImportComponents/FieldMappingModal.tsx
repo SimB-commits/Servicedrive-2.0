@@ -1,4 +1,5 @@
-import React, { useState, useMemo, useEffect } from 'react';
+// components/ImportExport/ImportComponents/FieldMappingModal.tsx
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import {
   Modal,
   ModalContent,
@@ -20,7 +21,10 @@ import {
   Input,
   Tabs,
   Tab,
-  Badge
+  Badge,
+  ScrollShadow,
+  Select,
+  SelectItem
 } from '@heroui/react';
 
 // Importera FieldMatcher
@@ -186,6 +190,37 @@ const FieldMappingModal: React.FC<FieldMappingModalProps> = ({
     } else {
       return <Badge color="default" content="Låg" variant="flat" size="sm" />;
     }
+  };
+
+  // Anpassad dropdown-innehåll för rullningsfunktionalitet
+  const renderDropdownContent = (field: string) => {
+    // Dela upp målfalten i mindre grupper om det finns många
+    // Detta kan hjälpa med prestanda och scrollning
+    
+    // Först lägger vi till alternativet att ignorera
+    const items = [
+      <DropdownItem key="clear" onPress={() => updateFieldMapping(field, '')}>
+        -- Ignorera detta fält --
+      </DropdownItem>
+    ];
+    
+    // Sedan lägger vi till alla målfält
+    // För att förbättra prestanda i dropdown med många alternativ
+    targetFields.forEach((targetField) => {
+      items.push(
+        <DropdownItem 
+          key={targetField} 
+          onPress={() => updateFieldMapping(field, targetField)}
+          // Lägg till textWrap: nowrap för att undvika problem med långa fältnamn
+          textValue={targetField} // För tillgänglighet och sökning
+          className="text-sm whitespace-normal" // Gör att texten kan wrappa
+        >
+          {targetField}
+        </DropdownItem>
+      );
+    });
+    
+    return items;
   };
 
   return (
@@ -357,34 +392,60 @@ const FieldMappingModal: React.FC<FieldMappingModalProps> = ({
                         <TableRow key={field}>
                           <TableCell>{field}</TableCell>
                           <TableCell>
-                            <Dropdown>
-                              <DropdownTrigger>
-                                <Button 
-                                  variant="flat" 
-                                  color={fieldMapping[field] ? "success" : "default"}
-                                  className="w-full justify-start"
+                            {/* Byt från Dropdown till Select-komponenten som har bättre scroll-stöd */}
+                            <Select
+                              items={[
+                                { key: '', label: '-- Ignorera detta fält --' },
+                                ...targetFields.map(f => ({ key: f, label: f }))
+                              ]}
+                              selectedKeys={fieldMapping[field] ? [fieldMapping[field]] : []}
+                              onSelectionChange={(keys) => {
+                                // Convert Set to array and get first item
+                                const selected = Array.from(keys)[0] as string;
+                                updateFieldMapping(field, selected);
+                              }}
+                              classNames={{
+                                trigger: "w-full",
+                                listbox: "max-h-[200px] overflow-y-auto",
+                                // Säkerställ att långa fältnamn visas korrekt i listan
+                                base: "max-w-full",
+                                innerWrapper: "max-w-full",
+                                // Låt texten i items wrappa om behov finns
+                                popover: "max-w-full",
+                                value: "truncate max-w-full", // Visa ... för långa värden i triggern
+                              }}
+                              popoverProps={{
+                                // Definiera en tooltip för att visa fullständig text när användaren hovrar  
+                                classNames: {
+                                  content: "min-w-full"
+                                },
+                              }}
+                              variant="flat"
+                              color={fieldMapping[field] ? "success" : "default"}
+                              aria-label="Välj fält"
+                              placeholder="Välj fält eller ignorera"
+                              size="md"
+                              renderValue={(items) => {
+                                return items.length > 0 ? (
+                                  <div className="flex items-center gap-2">
+                                    <div className="truncate" title={items[0].textValue}>
+                                      {items[0].textValue}
+                                    </div>
+                                  </div>
+                                ) : null;
+                              }}
+                            >
+                              {(item) => (
+                                <SelectItem 
+                                  key={item.key} 
+                                  textValue={item.label}
+                                  className="whitespace-normal text-wrap py-2"
+                                  title={item.label} // Lägger till HTML title attribut för hover tooltip
                                 >
-                                  {fieldMapping[field] || 'Välj fält eller ignorera'}
-                                </Button>
-                              </DropdownTrigger>
-                              <DropdownMenu
-                                classNames={{
-                                  content: "max-h-64 overflow-y-auto"  // Viktigt för scrollning!
-                                }}
-                              >
-                                <DropdownItem key="clear" onPress={() => updateFieldMapping(field, '')}>
-                                  -- Ignorera detta fält --
-                                </DropdownItem>
-                                {targetFields.map((targetField) => (
-                                  <DropdownItem 
-                                    key={targetField} 
-                                    onPress={() => updateFieldMapping(field, targetField)}
-                                  >
-                                    {targetField}
-                                  </DropdownItem>
-                                ))}
-                              </DropdownMenu>
-                            </Dropdown>
+                                  {item.label}
+                                </SelectItem>
+                              )}
+                            </Select>
                           </TableCell>
                           <TableCell>
                             {alternativeSuggestions[field] && alternativeSuggestions[field].length > 0 ? (
