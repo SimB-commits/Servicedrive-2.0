@@ -55,6 +55,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       });
     }
 
+    // Skapa en mappning av ärendetyper för snabb uppslag
+    const ticketTypeById = new Map();
+    const ticketTypeByName = new Map();
+    
+    ticketTypes.forEach(type => {
+      ticketTypeById.set(type.id, type);
+      ticketTypeByName.set(type.name.toLowerCase(), type);
+    });
+
+    // Logga tillgängliga ärendetyper för felsökning
+    console.log('Tillgängliga ärendetyper:', ticketTypes.map(t => ({ id: t.id, name: t.name })));
+
     // Initialisera resultaträknare
     const results = {
       success: 0,
@@ -83,73 +95,121 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         
         let customerId: number | undefined;
 
-      // Normalize external ID fields - look for various common field names
-      const customerExternalId = ticketData.customer_external_id || 
-                                ticketData.external_id || 
-                                ticketData.customer_id ||
-                                ticketData.kundnummer;
+        // Normalize external ID fields - look for various common field names
+        const customerExternalId = ticketData.customer_external_id || 
+                                  ticketData.external_id || 
+                                  ticketData.customer_id ||
+                                  ticketData.kundnummer;
 
-      // Först: om ett externt id finns med, använd det
-      if (customerExternalId) {
-        const externalId = Number(customerExternalId);
-        
-        // Använd findFirst för att hitta kund med externt ID
-        const customer = await prisma.customer.findFirst({
-          where: { 
-            externalId: externalId,
-            storeId: session.user.storeId
+        // Först: om ett externt id finns med, använd det
+        if (customerExternalId) {
+          const externalId = Number(customerExternalId);
+          
+          // Använd findFirst för att hitta kund med externt ID
+          const customer = await prisma.customer.findFirst({
+            where: { 
+              externalId: externalId,
+              storeId: session.user.storeId
+            }
+          });
+          
+          if (!customer) {
+            results.failed++;
+            results.errors.push(
+              `Rad ${i + 1}: Kunde inte hitta kund med externt id ${externalId}`
+            );
+            continue;
           }
-        });
-        
-        if (!customer) {
+          customerId = customer.id;
+        }
+
+        // Om inget externt id användes, kolla om ett internt id skickats med
+        if (!customerId && ticketData.customerId) {
+          customerId = Number(ticketData.customerId);
+          
+          // Verifiera att kunden faktiskt finns
+          const customer = await prisma.customer.findFirst({
+            where: { 
+              id: customerId,
+              storeId: session.user.storeId
+            }
+          });
+          
+          if (!customer) {
+            results.failed++;
+            results.errors.push(
+              `Rad ${i + 1}: Kunde inte hitta kund med id ${customerId}`
+            );
+            continue;
+          }
+        }
+
+        // Om det fortfarande saknas, försök att hitta kunden via e-post
+        if (!customerId && ticketData.customerEmail) {
+          const customer = await prisma.customer.findFirst({
+            where: {
+              email: ticketData.customerEmail,
+              storeId: session.user.storeId,
+            },
+          });
+          
+          if (!customer) {
+            results.failed++;
+            results.errors.push(
+              `Rad ${i + 1}: Kunde inte hitta kund med e-post ${ticketData.customerEmail}`
+            );
+            continue;
+          }
+          customerId = customer.id;
+        }
+
+        if (!customerId) {
           results.failed++;
           results.errors.push(
-            `Rad ${i + 1}: Kunde inte hitta kund med externt id ${externalId}`
+            `Rad ${i + 1}: Ingen kund angiven (varken externt id, internt id eller e-post)`
           );
           continue;
         }
-        customerId = customer.id;
-      }
 
-      // Om inget externt id användes, kolla om ett internt id skickats med
-      if (!customerId && ticketData.customerId) {
-        customerId = Number(ticketData.customerId);
-      }
-
-      // Om det fortfarande saknas, försök att hitta kunden via e-post
-      if (!customerId && ticketData.customerEmail) {
-        const customer = await prisma.customer.findFirst({
-          where: {
-            email: ticketData.customerEmail,
-            storeId: session.user.storeId,
-          },
-        });
+        // Välj ärendetyp baserat på id eller namn
+        let ticketTypeId = null;
+        let resolvedTicketType = null;
         
-        if (!customer) {
-          results.failed++;
-          results.errors.push(
-            `Rad ${i + 1}: Kunde inte hitta kund med e-post ${ticketData.customerEmail}`
-          );
-          continue;
+        // Försök hitta ärendetyp via ID
+        if (ticketData.ticketTypeId) {
+          const typeId = Number(ticketData.ticketTypeId);
+          resolvedTicketType = ticketTypeById.get(typeId);
+          
+          // Om ID:t inte finns i vår databas, logga detta
+          if (!resolvedTicketType) {
+            console.log(`Rad ${i + 1}: Ärendetyp med ID ${typeId} hittades inte i databasen.`);
+          }
         }
-        customerId = customer.id;
-      }
-
-      if (!customerId) {
-        results.failed++;
-        results.errors.push(
-          `Rad ${i + 1}: Ingen kund angiven (varken externt id, internt id eller e-post)`
-        );
-        continue;
-      }
-
         
-        // Välj ärendetyp, antingen från data eller ta första tillgängliga
-        let ticketTypeId = ticketData.ticketTypeId;
-        
-        if (!ticketTypeId) {
-          ticketTypeId = ticketTypes[0].id;
+        // Om ingen ärendetyp hittades via ID, försök med namn
+        if (!resolvedTicketType && ticketData.ticketTypeName) {
+          const typeName = String(ticketData.ticketTypeName).toLowerCase();
+          resolvedTicketType = ticketTypeByName.get(typeName);
+          
+          // Om namnet inte matchar exakt, försök med partiell matchning
+          if (!resolvedTicketType) {
+            for (const [name, type] of ticketTypeByName.entries()) {
+              if (name.includes(typeName) || typeName.includes(name)) {
+                resolvedTicketType = type;
+                console.log(`Rad ${i + 1}: Partiell matchning av ärendetyp: "${typeName}" -> "${name}"`);
+                break;
+              }
+            }
+          }
         }
+        
+        // Om vi fortfarande inte hittat en ärendetyp, använd den första i listan
+        if (!resolvedTicketType) {
+          resolvedTicketType = ticketTypes[0];
+          console.log(`Rad ${i + 1}: Använder default ärendetyp: ${resolvedTicketType.name}`);
+        }
+        
+        ticketTypeId = resolvedTicketType.id;
         
         // Konvertera status om den anges som text
         let status = TicketStatus.OPEN; // Standardvärde
@@ -163,9 +223,19 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             if (statusValue.startsWith('CUSTOM_')) {
               const customStatusId = Number(statusValue.replace('CUSTOM_', ''));
               if (customStatusId) {
-                customStatusObj = {
-                  connect: { id: customStatusId }
-                };
+                // Först kontrollera att status faktiskt finns i databasen
+                const statusExists = await prisma.userTicketStatus.findFirst({
+                  where: { 
+                    id: customStatusId,
+                    storeId: session.user.storeId
+                  }
+                });
+                
+                if (statusExists) {
+                  customStatusObj = {
+                    connect: { id: customStatusId }
+                  };
+                }
               }
             } else {
               // Försök mappa till enum-värden
@@ -197,6 +267,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
                 case 'DONE':
                 case 'COMPLETED':
                 case 'FÄRDIG':
+                case 'FÄRDIGT':
                 case 'KLAR':
                 case 'AVSLUTAD':
                 case 'STÄNGD':
@@ -237,16 +308,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           }
         }
         
-        // Ladda ärendetypen för att hämta fältspecifikation
-        const ticketType = await prisma.ticketType.findUnique({
-          where: { id: ticketTypeId },
-          include: { fields: true }
-        });
-        
-        // Om vi har ärendetypspecifika fält, se till att värden valideras och konverteras korrekt
-        if (ticketType?.fields && ticketType.fields.length > 0) {
+        // Konvertera fältvärden baserat på ärendetypens fältspecifikationer
+        if (resolvedTicketType.fields && resolvedTicketType.fields.length > 0) {
           // Iterera över ärendetypens fält och validera/konvertera värden
-          ticketType.fields.forEach(field => {
+          resolvedTicketType.fields.forEach(field => {
             const fieldName = field.name;
             // Kontrollera om fältet finns i de dynamiska fälten
             if (dynamicFieldData[fieldName] !== undefined) {
@@ -329,12 +394,35 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           ticketCreateData.customStatus = customStatusObj;
         }
         
-        // Skapa ärendet i databasen
-        await prisma.ticket.create({
-          data: ticketCreateData
-        });
+        // Logga data innan vi skapar ärendet (för felsökning)
+        console.log(`Rad ${i + 1}: Skapar ärende med ärendetyp ID ${ticketTypeId}`);
         
-        results.success++;
+        try {
+          // Skapa ärendet i databasen
+          await prisma.ticket.create({
+            data: ticketCreateData
+          });
+          
+          results.success++;
+        } catch (error: any) {
+          results.failed++;
+          
+          // Förbättrad felhantering för Prisma-fel
+          if (error.code === 'P2025') {
+            // Record not found - mer specifikt felmeddelande
+            if (error.message.includes('TicketType')) {
+              results.errors.push(`Rad ${i + 1}: Ärendetypen med ID ${ticketTypeId} hittades inte i databasen. Skapa denna ärendetyp först eller använd en befintlig.`);
+            } else if (error.message.includes('Customer')) {
+              results.errors.push(`Rad ${i + 1}: Kunden med ID ${customerId} hittades inte i databasen.`);
+            } else {
+              results.errors.push(`Rad ${i + 1}: En nödvändig relation hittades inte: ${error.message}`);
+            }
+          } else {
+            // Förenklat felmeddelande
+            const simplifiedError = error.message.split('\n')[0];  // Ta bara första raden av felmeddelandet
+            results.errors.push(`Rad ${i + 1}: ${simplifiedError}`);
+          }
+        }
       } catch (error: any) {
         results.failed++;
         results.errors.push(`Rad ${i + 1}: ${error.message || 'Okänt fel'}`);

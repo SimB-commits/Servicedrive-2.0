@@ -367,7 +367,11 @@ const FieldMappingModal: React.FC<FieldMappingModalProps> = ({
                                   {fieldMapping[field] || 'Välj fält eller ignorera'}
                                 </Button>
                               </DropdownTrigger>
-                              <DropdownMenu>
+                              <DropdownMenu
+                                classNames={{
+                                  content: "max-h-64 overflow-y-auto"  // Viktigt för scrollning!
+                                }}
+                              >
                                 <DropdownItem key="clear" onPress={() => updateFieldMapping(field, '')}>
                                   -- Ignorera detta fält --
                                 </DropdownItem>
