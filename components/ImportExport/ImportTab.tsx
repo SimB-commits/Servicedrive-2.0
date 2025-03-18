@@ -24,6 +24,7 @@ import { FieldMatcher } from '@/utils/field-matcher';
 import FileUploader from './ImportComponents/FileUploader';
 import FieldMappingModal from './ImportComponents/FieldMappingModal';
 import ImportSummary from './ImportComponents/ImportSummary';
+import ImportOptions from './ImportComponents/ImportOptions';
 
 // Importera hjälpfunktioner
 import { 
@@ -104,7 +105,8 @@ const ImportTab = () => {
       const baseFields = [
         'title', 'description', 'status', 'dueDate', 
         'customerEmail', 'customer_external_id',
-        'ticketTypeId', 'ticketTypeName', 'priority', 'dynamicFields'
+        'ticketTypeId', 'ticketTypeName', 'priority', 'dynamicFields',
+        'createdAt', 'updatedAt'
       ];
   
       // Samla in ALLA dynamiska fält från ALLA ärendetyper
@@ -487,11 +489,11 @@ const ImportTab = () => {
       });
       return;
     }
-
+  
     setLoading(true);
     setImportProgress(0);
     setImportSummary(null);
-
+  
     try {
       // Förbered data för import baserat på importmål
       let mappedData;
@@ -501,7 +503,6 @@ const ImportTab = () => {
         // För ärenden, lägg till vald ärendetyp om den inte mappats
         mappedData = mapTicketFields(fileData, fieldMapping);
         
-        // Om en ärendetyp valts och det inte redan finns i mappad data, lägg till
         if (selectedTicketType) {
           mappedData = mappedData.map(item => {
             if (!item.ticketTypeId) {
@@ -514,7 +515,7 @@ const ImportTab = () => {
           });
         }
       }
-
+  
       // Starta importen
       const results = {
         total: mappedData.length,
@@ -522,9 +523,9 @@ const ImportTab = () => {
         failed: 0,
         errors: [] as string[]
       };
-
+  
       // Importera stegvis
-      const batchSize = importOptions.batchSize; // Batchstorlek för att undvika överbelastning
+      const batchSize = importOptions.batchSize;
       const totalBatches = Math.ceil(mappedData.length / batchSize);
       
       for (let batchIndex = 0; batchIndex < totalBatches; batchIndex++) {
@@ -541,7 +542,7 @@ const ImportTab = () => {
             ? '/api/import/customers' 
             : '/api/import/tickets';
           
-          // Skicka hela batchen för importering
+          // Skicka BÅDA importalternativen explicit
           const response = await fetch(endpoint, {
             method: 'POST',
             headers: {
@@ -551,7 +552,8 @@ const ImportTab = () => {
               data: batch,
               options: {
                 skipExisting: importOptions.skipExisting,
-                updateExisting: importOptions.updateExisting
+                updateExisting: importOptions.updateExisting,
+                includeAll: importOptions.includeAll
               }
             }),
           });
@@ -575,11 +577,11 @@ const ImportTab = () => {
           results.failed += batch.length;
           results.errors.push(`Batch ${batchIndex + 1} (rad ${start+1}-${end}): ${error instanceof Error ? error.message : 'Okänt fel'}`);
         }
-
+  
         // Uppdatera framsteg efter varje batch
         setImportProgress(Math.round(((batchIndex + 1) / totalBatches) * 100));
       }
-
+  
       // När importen är klar, visa sammanfattning
       setImportSummary(results);
       
@@ -688,48 +690,15 @@ const ImportTab = () => {
           
           {/* Importalternativ */}
           <div>
-            <h4 className="font-medium mb-2">2. Alternativ</h4>
-            <div className="flex flex-wrap gap-2">
-              <Chip
-                variant={importOptions.skipExisting ? "solid" : "flat"}
-                color={importOptions.skipExisting ? "primary" : "default"}
-                onClose={() => setImportOptions(prev => ({ ...prev, skipExisting: !prev.skipExisting }))}
-              >
-                Hoppa över befintliga
-              </Chip>
-              <Chip
-                variant={importOptions.updateExisting ? "solid" : "flat"}
-                color={importOptions.updateExisting ? "primary" : "default"}
-                onClose={() => setImportOptions(prev => ({ ...prev, updateExisting: !prev.updateExisting }))}
-              >
-                Uppdatera befintliga
-              </Chip>
-              <Chip
-                variant={importOptions.includeAll ? "solid" : "flat"}
-                color={importOptions.includeAll ? "primary" : "default"}
-                onClose={() => setImportOptions(prev => ({ ...prev, includeAll: !prev.includeAll }))}
-              >
-                Inkludera alla fält
-              </Chip>
-              
-              <Dropdown>
-                <DropdownTrigger>
-                  <Button size="sm" variant="flat">
-                    Batchstorlek: {importOptions.batchSize}
-                  </Button>
-                </DropdownTrigger>
-                <DropdownMenu
-                  aria-label="Batchstorlek"
-                  onAction={(key) => setImportOptions(prev => ({ ...prev, batchSize: Number(key) }))}
-                >
-                  <DropdownItem key="5">5 rader per batch</DropdownItem>
-                  <DropdownItem key="10">10 rader per batch</DropdownItem>
-                  <DropdownItem key="20">20 rader per batch</DropdownItem>
-                  <DropdownItem key="50">50 rader per batch</DropdownItem>
-                </DropdownMenu>
-              </Dropdown>
-            </div>
-          </div>
+  <h4 className="font-medium mb-2">2. Alternativ</h4>
+  
+  {/* Ersätt befintliga alternativ med ImportOptions-komponenten */}
+  <ImportOptions 
+    importOptions={importOptions} 
+    setImportOptions={setImportOptions}
+    importTarget={importTarget}
+  />
+</div>
           
           {/* Steg 3: Ladda upp fil med FileUploader-komponenten */}
           <div>

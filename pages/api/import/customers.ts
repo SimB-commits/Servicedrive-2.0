@@ -1,4 +1,4 @@
-// Förbättrad version av hela pages/api/import/customers.ts som är mer robust mot oväntade data
+// Förbättrad version av pages/api/import/customers.ts med fokus på uppdateringsfunktionaliteten
 
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { PrismaClient } from '@prisma/client';
@@ -34,6 +34,12 @@ function extractExternalId(data: any): number | undefined {
   return externalIdValue ? Number(externalIdValue) : undefined;
 }
 
+// Hjälpfunktion för att kontrollera om en email är giltig
+function isValidEmail(email: string): boolean {
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  return emailRegex.test(email);
+}
+
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   try {
     // Rate Limiting
@@ -54,7 +60,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     // Hämta importdata - stöd både enstaka objekt och array
     const importData = Array.isArray(req.body.data) ? req.body.data : [req.body.data];
-    const options = req.body.options || { skipExisting: true };
+    const options = req.body.options || { skipExisting: true, updateExisting: false };
 
     // Validera att det finns data att importera
     if (!importData || importData.length === 0) {
@@ -113,99 +119,151 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           console.log(`Rad ${i + 1}: Hittade externt ID ${externalIdValue}`);
         }
 
-        // Kontrollera om e-postadressen redan existerar (om skipExisting=true)
-        if (parseResult.data.email) {
-          const existingCustomer = await prisma.customer.findFirst({
+        // Kontrollera om e-postadressen är giltig
+        const email = parseResult.data.email;
+        if (!email || !isValidEmail(email)) {
+          results.failed++;
+          results.errors.push(`Rad ${i + 1}: Ogiltig eller saknad e-postadress`);
+          continue;
+        }
+
+        // Sökning efter befintlig kund baserat på e-post eller externt ID
+        let existingCustomer = null;
+        
+        // Först sök efter e-post
+        if (email) {
+          existingCustomer = await prisma.customer.findFirst({
             where: {
-              email: parseResult.data.email,
+              email: email,
               storeId: session.user.storeId
             }
           });
-          
-          if (existingCustomer) {
-            if (options.updateExisting) {
-              // Uppdatera befintlig kund om e-post matchar
-              await prisma.customer.update({
-                where: { id: existingCustomer.id },
-                data: {
-                  firstName: parseResult.data.firstName ?? existingCustomer.firstName,
-                  lastName: parseResult.data.lastName ?? existingCustomer.lastName,
-                  phoneNumber: parseResult.data.phoneNumber ?? existingCustomer.phoneNumber,
-                  address: parseResult.data.address ?? existingCustomer.address,
-                  postalCode: parseResult.data.postalCode ?? existingCustomer.postalCode,
-                  city: parseResult.data.city ?? existingCustomer.city,
-                  country: parseResult.data.country ?? existingCustomer.country,
-                  dateOfBirth: parseResult.data.dateOfBirth ? new Date(parseResult.data.dateOfBirth) : existingCustomer.dateOfBirth,
-                  newsletter: parseResult.data.newsletter ?? existingCustomer.newsletter,
-                  loyal: parseResult.data.loyal ?? existingCustomer.loyal,
-                  dynamicFields: parseResult.data.dynamicFields ?? existingCustomer.dynamicFields,
-                  // Uppdatera externt ID endast om det inte fanns tidigare
-                  externalId: existingCustomer.externalId ?? externalIdValue
-                }
-              });
-              results.success++;
-              continue;
-            } else if (options.skipExisting) {
-              // Hoppa över befintliga kunder men räkna dem som lyckat importerade
-              results.success++;
-              continue;
-            } else {
-              results.failed++;
-              results.errors.push(`Rad ${i + 1}: En kund med denna e-postadress finns redan`);
-              continue;
-            }
-          }
         }
         
-        // Kontrollera om externalId redan finns
-        if (externalIdValue) {
-          const existingCustomerWithExternalId = await prisma.customer.findFirst({
+        // Om ingen kund hittades via e-post, sök med externt ID
+        if (!existingCustomer && externalIdValue) {
+          existingCustomer = await prisma.customer.findFirst({
             where: {
               externalId: externalIdValue,
               storeId: session.user.storeId
             }
           });
-          
-          if (existingCustomerWithExternalId) {
-            if (options.updateExisting) {
-              // Uppdatera befintlig kund om externt ID matchar
-              await prisma.customer.update({
-                where: { id: existingCustomerWithExternalId.id },
-                data: {
-                  firstName: parseResult.data.firstName ?? existingCustomerWithExternalId.firstName,
-                  lastName: parseResult.data.lastName ?? existingCustomerWithExternalId.lastName,
-                  email: parseResult.data.email ?? existingCustomerWithExternalId.email,
-                  phoneNumber: parseResult.data.phoneNumber ?? existingCustomerWithExternalId.phoneNumber,
-                  address: parseResult.data.address ?? existingCustomerWithExternalId.address,
-                  postalCode: parseResult.data.postalCode ?? existingCustomerWithExternalId.postalCode,
-                  city: parseResult.data.city ?? existingCustomerWithExternalId.city,
-                  country: parseResult.data.country ?? existingCustomerWithExternalId.country,
-                  dateOfBirth: parseResult.data.dateOfBirth ? new Date(parseResult.data.dateOfBirth) : existingCustomerWithExternalId.dateOfBirth,
-                  newsletter: parseResult.data.newsletter ?? existingCustomerWithExternalId.newsletter,
-                  loyal: parseResult.data.loyal ?? existingCustomerWithExternalId.loyal,
-                  dynamicFields: parseResult.data.dynamicFields ?? existingCustomerWithExternalId.dynamicFields
-                }
-              });
-              results.success++;
-              continue;
-            } else if (options.skipExisting) {
-              // Hoppa över men räkna som framgång
-              results.success++;
-              continue;
-            } else {
-              // Rapportera som fel
-              results.failed++;
-              results.errors.push(`Rad ${i + 1}: En kund med externt ID ${externalIdValue} finns redan`);
-              continue;
-            }
-          }
         }
         
-        // Förbered data för att skapa ny kund - endast inkludera fält som finns i Prisma-schemat
+        // Vi har hittat en befintlig kund
+        if (existingCustomer) {
+          // Hantera befintlig kund baserat på valda alternativ
+          if (options.updateExisting) {
+            // Uppdatera befintlig kund med nya värden
+            try {
+              // Förbered uppdateringsdata - endast inkludera fält som faktiskt har värden
+              // Detta är viktigt för att inte överskriva befintliga värden med null/undefined
+              const updateData: any = {};
+              
+              // Kontrollera varje fält och lägg bara till dem som har ett definierat värde
+              if (parseResult.data.firstName !== undefined && parseResult.data.firstName !== null) {
+                updateData.firstName = parseResult.data.firstName;
+              }
+              
+              if (parseResult.data.lastName !== undefined && parseResult.data.lastName !== null) {
+                updateData.lastName = parseResult.data.lastName;
+              }
+              
+              if (parseResult.data.phoneNumber !== undefined && parseResult.data.phoneNumber !== null) {
+                updateData.phoneNumber = parseResult.data.phoneNumber;
+              }
+              
+              if (parseResult.data.address !== undefined && parseResult.data.address !== null) {
+                updateData.address = parseResult.data.address;
+              }
+              
+              if (parseResult.data.postalCode !== undefined && parseResult.data.postalCode !== null) {
+                updateData.postalCode = parseResult.data.postalCode;
+              }
+              
+              if (parseResult.data.city !== undefined && parseResult.data.city !== null) {
+                updateData.city = parseResult.data.city;
+              }
+              
+              if (parseResult.data.country !== undefined && parseResult.data.country !== null) {
+                updateData.country = parseResult.data.country;
+              }
+              
+              // Hantera datum särskilt eftersom det kan behöva konverteras
+              if (parseResult.data.dateOfBirth) {
+                updateData.dateOfBirth = new Date(parseResult.data.dateOfBirth);
+              } else if (parseResult.data.dateOfBirth === null) {
+                updateData.dateOfBirth = null; // Tillåt explicit radering av födelsedatum
+              }
+              
+              // Boolean-fält
+              if (parseResult.data.newsletter !== undefined) {
+                updateData.newsletter = parseResult.data.newsletter;
+              }
+              
+              if (parseResult.data.loyal !== undefined) {
+                updateData.loyal = parseResult.data.loyal;
+              }
+              
+              // Hantera dynamiska fält - behåll befintliga fält som inte uppdateras
+              if (parseResult.data.dynamicFields && typeof parseResult.data.dynamicFields === 'object') {
+                // Om kunden har befintliga dynamiska fält, slå ihop dem
+                if (existingCustomer.dynamicFields && typeof existingCustomer.dynamicFields === 'object') {
+                  updateData.dynamicFields = {
+                    ...existingCustomer.dynamicFields,
+                    ...parseResult.data.dynamicFields
+                  };
+                } else {
+                  updateData.dynamicFields = parseResult.data.dynamicFields;
+                }
+              }
+              
+              // Uppdatera externt ID endast om det inte fanns tidigare och det nu tillhandahålls
+              if (externalIdValue && !existingCustomer.externalId) {
+                updateData.externalId = externalIdValue;
+              }
+              
+              // Endast uppdatera om vi har fält att uppdatera
+              if (Object.keys(updateData).length > 0) {
+                // Logga uppdateringen för felsökning
+                console.log(`Rad ${i + 1}: Uppdaterar kund ${existingCustomer.id} med data:`, updateData);
+                
+                // Genomför uppdateringen
+                await prisma.customer.update({
+                  where: { id: existingCustomer.id },
+                  data: updateData
+                });
+                
+                results.success++;
+              } else {
+                // Inget att uppdatera, räkna som framgång ändå
+                console.log(`Rad ${i + 1}: Ingen data att uppdatera för kund ${existingCustomer.id}`);
+                results.success++;
+              }
+            } catch (error: any) {
+              results.failed++;
+              results.errors.push(`Rad ${i + 1}: Fel vid uppdatering av kund - ${error.message || 'Okänt fel'}`);
+            }
+          } else if (options.skipExisting) {
+            // Hoppa över befintliga kunder men räkna dem som lyckat importerade
+            console.log(`Rad ${i + 1}: Hoppar över befintlig kund med e-post ${email}`);
+            results.success++;
+          } else {
+            // Alternativet är att rapportera dem som fel
+            results.failed++;
+            results.errors.push(`Rad ${i + 1}: En kund med denna e-postadress finns redan`);
+          }
+          
+          // Fortsätt med nästa post eftersom vi har hanterat den befintliga kunden
+          continue;
+        }
+        
+        // Om vi kommer hit, ska vi skapa en ny kund
+        // Förbered data för att skapa ny kund
         const customerDataForPrisma = {
           firstName: parseResult.data.firstName,
           lastName: parseResult.data.lastName,
-          email: parseResult.data.email,
+          email: email,
           phoneNumber: parseResult.data.phoneNumber,
           address: parseResult.data.address,
           postalCode: parseResult.data.postalCode,
