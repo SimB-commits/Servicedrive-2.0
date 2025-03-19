@@ -21,12 +21,15 @@ import { Stepper, Step, StepLabel } from '@/components/Stepper';
 export default function DomainVerificationPage() {
   const { data: session, status } = useSession();
   const [domain, setDomain] = useState('');
+  const [subdomain, setSubdomain] = useState('');
+  const [needSubdomain, setNeedSubdomain] = useState(false);
   const [loading, setLoading] = useState(false);
   const [verificationData, setVerificationData] = useState(null);
   const [activeStep, setActiveStep] = useState(0);
   const [verifiedDomains, setVerifiedDomains] = useState([]);
   const [isCheckingStatus, setIsCheckingStatus] = useState(false);
   const [error, setError] = useState('');
+  const [subdomainError, setSubdomainError] = useState('');
 
   // Hämta redan verifierade domäner
   useEffect(() => {
@@ -54,6 +57,7 @@ export default function DomainVerificationPage() {
 
   const handleStartVerification = async () => {
     setError('');
+    setSubdomainError('');
     
     // Validera domän
     if (!domain) {
@@ -64,8 +68,22 @@ export default function DomainVerificationPage() {
     // Enkel validering av domänformat
     const domainRegex = /^([a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$/;
     if (!domainRegex.test(domain)) {
-      setError('Ogiltig domän');
+      setError('Ogiltig domän. Ange ett korrekt domännamn som exempel.se');
       return;
+    }
+    
+    // Validera subdomän om den är angiven
+    if (needSubdomain) {
+      if (!subdomain) {
+        setSubdomainError('Subdomän krävs eftersom denna domän redan är registrerad');
+        return;
+      }
+      
+      const subdomainRegex = /^[a-z0-9][a-z0-9\-]{0,61}[a-z0-9]$/;
+      if (!subdomainRegex.test(subdomain)) {
+        setSubdomainError('Ogiltig subdomän. Använd endast bokstäver (a-z), siffror och bindestreck');
+        return;
+      }
     }
     
     try {
@@ -73,18 +91,31 @@ export default function DomainVerificationPage() {
       const res = await fetch('/api/mail/domains/setup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ domain }),
+        body: JSON.stringify({ 
+          domain,
+          subdomain: needSubdomain ? subdomain : undefined
+        }),
       });
       
       const data = await res.json();
       
       if (!res.ok) {
+        if (data.needSubdomain) {
+          // Om domänen redan finns men kan registreras med en anpassad subdomän
+          setNeedSubdomain(true);
+          setError(data.message || 'Domänen är redan registrerad. Ange en anpassad subdomän.');
+          setLoading(false);
+          return;
+        }
+        
         setError(data.error || 'Kunde inte starta verifieringsprocessen');
+        setLoading(false);
         return;
       }
       
       setVerificationData(data);
       setActiveStep(1);
+      setNeedSubdomain(false);
     } catch (error) {
       console.error('Fel vid start av verifiering:', error);
       setError('Ett fel inträffade vid start av verifieringsprocessen');
@@ -186,16 +217,35 @@ export default function DomainVerificationPage() {
               placeholder="exempel.se"
               value={domain}
               onValueChange={setDomain}
-              isInvalid={!!error}
-              errorMessage={error}
+              isInvalid={!!error && !needSubdomain}
+              errorMessage={!needSubdomain ? error : ''}
               className="max-w-md"
             />
+            
+            {needSubdomain && (
+              <div className="mt-4">
+                <div className="p-4 bg-warning-50 border border-warning-200 rounded-lg mb-4">
+                  <p className="text-sm">{error || 'Denna domän är redan registrerad hos SendGrid. För att kunna använda den behöver du ange en anpassad subdomän.'}</p>
+                </div>
+                
+                <Input
+                  label="Subdomän"
+                  placeholder="mail2"
+                  value={subdomain}
+                  onValueChange={setSubdomain}
+                  description="Exempel: För subdomänen 'mail2' skapas DKIM-posten som 'mail2._domainkey.dindomän.se'"
+                  isInvalid={!!subdomainError}
+                  errorMessage={subdomainError}
+                  className="max-w-md"
+                />
+              </div>
+            )}
             
             <Button
               color="primary"
               onPress={handleStartVerification}
               isLoading={loading}
-              isDisabled={loading || !domain}
+              isDisabled={loading || !domain || (needSubdomain && !subdomain)}
             >
               Starta verifiering
             </Button>
@@ -206,7 +256,9 @@ export default function DomainVerificationPage() {
         return (
           <div className="space-y-6">
             <p className="mb-4">
-              För att verifiera din domän <strong>{domain}</strong>, behöver du lägga till följande DNS-poster hos din DNS-leverantör. 
+              För att verifiera din domän <strong>{domain}</strong>
+              {verificationData?.subdomain && ` (med subdomänen ${verificationData.subdomain})`}, 
+              behöver du lägga till följande DNS-poster hos din DNS-leverantör. 
               Detta bevisar för SendGrid att du äger domänen.
             </p>
             
@@ -302,7 +354,7 @@ export default function DomainVerificationPage() {
                 <Button 
                   color="primary" 
                   variant="flat"
-                  onPress={() => window.location.href = '/installningar/mailmallar'}
+                  onPress={() => window.location.href = '/installningar?tab=mailmallar'}
                 >
                   Gå till Mailmallar
                 </Button>
@@ -322,7 +374,10 @@ export default function DomainVerificationPage() {
                 setActiveStep(0);
                 setVerificationData(null);
                 setDomain('');
+                setSubdomain('');
+                setNeedSubdomain(false);
                 setError('');
+                setSubdomainError('');
               }}
             >
               Verifiera en annan domän

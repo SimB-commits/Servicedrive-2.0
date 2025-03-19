@@ -9,7 +9,7 @@ const BASE_URL = 'https://api.sendgrid.com/v3';
  * Interface för domänautentiseringsdata från SendGrid
  */
 interface DomainAuthenticationData {
-  id: string;
+  id: string; // Ändrat till string för att garantera typkonsekvens
   domain: string;
   subdomain: string;
   username: string;
@@ -93,7 +93,21 @@ const sendGridApiRequest = async <T>(
 
     // Parsa JSON om vi förväntar oss ett svar
     if (response.headers.get('content-type')?.includes('application/json')) {
-      return await response.json();
+      const data = await response.json();
+      
+      // Konvertera id till sträng om det behövs
+      if (data && typeof data.id !== 'string' && data.id !== undefined) {
+        data.id = String(data.id);
+      } else if (Array.isArray(data)) {
+        // Om det är en array av objekt, konvertera id till sträng för varje objekt
+        data.forEach(item => {
+          if (item && typeof item.id !== 'string' && item.id !== undefined) {
+            item.id = String(item.id);
+          }
+        });
+      }
+      
+      return data as T;
     }
     
     return null;

@@ -85,9 +85,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           // I en verklig produktionsmiljö skulle man uppdatera miljövariabeln eller
           // lagra detta på ett annat sätt. För demo syften, vi simulerar en uppdatering.
           logger.info(`Domän ${domainRecord.domain} skulle läggas till i SENDGRID_VERIFIED_DOMAINS`);
-          
-          // OBS: Detta är enbart för demo, i produktion behöver en annan mekanism användas
-          // för att faktiskt uppdatera miljövariabeln eller motsvarande konfiguration.
         }
       }
       

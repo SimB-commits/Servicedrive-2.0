@@ -10,11 +10,14 @@ import { z } from 'zod';
 
 const prisma = new PrismaClient();
 
-// Zod schema för att validera domännamn
+// Zod schema för att validera domännamn med valfri subdomän
 const domainSchema = z.object({
   domain: z.string().min(4).regex(/^([a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$/, {
     message: "Ogiltigt domännamn. Använd ett korrekt formaterat domännamn som exempel.se"
-  })
+  }),
+  subdomain: z.string().regex(/^[a-z0-9][a-z0-9\-]{0,61}[a-z0-9]$/, {
+    message: "Ogiltig subdomän. Använd endast bokstäver (a-z), siffror och bindestreck"
+  }).optional()
 });
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -43,7 +46,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     // Validera inkommande domännamn med Zod
     try {
-      const { domain } = domainSchema.parse(req.body);
+      const { domain, subdomain } = domainSchema.parse(req.body);
       
       // Kontrollera om denna domän redan är registrerad för denna butik
       const existingDomain = await prisma.verifiedDomain.findFirst({
@@ -60,77 +63,98 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         });
       }
       
-      // Skapa en ny domänautentisering i SendGrid
-      const domainAuthResult = await createDomainAuthentication(domain);
+      // Använd antingen den angivna subdomänen eller generera en unik
+      const subdomainToUse = subdomain || `mail${Date.now().toString().slice(-6)}`;
       
-      if (!domainAuthResult) {
-        return res.status(500).json({ error: 'Kunde inte starta domänverifiering' });
-      }
-      
-      // Spara domänen i databasen
-      await prisma.verifiedDomain.create({
-        data: {
-          domain: domain.toLowerCase(),
-          domainId: domainAuthResult.id,
-          storeId: storeId,
-          status: 'pending',
-          createdAt: new Date()
+      try {
+        // Skapa en ny domänautentisering i SendGrid
+        const domainAuthResult = await createDomainAuthentication(domain, subdomainToUse);
+        
+        if (!domainAuthResult) {
+          return res.status(500).json({ error: 'Kunde inte starta domänverifiering' });
         }
-      });
-      
-      // Formatera DNS-records för enklare användning i frontend
-      const dnsRecords = [];
-      
-      // CNAME-record för autentisering
-      if (domainAuthResult.dns?.cname) {
-        const { host, data } = domainAuthResult.dns.cname;
-        dnsRecords.push({
-          type: 'CNAME',
-          host,
-          data,
-          name: 'För domänverifiering'
+        
+        // Konvertera domainId till sträng eftersom Prisma-schemat förväntar sig en String
+        const domainId = String(domainAuthResult.id); 
+        
+        // Spara domänen i databasen
+        await prisma.verifiedDomain.create({
+          data: {
+            domain: domain.toLowerCase(),
+            domainId: domainId,
+            storeId: storeId,
+            status: 'pending',
+            createdAt: new Date()
+          }
         });
-      }
-      
-      // DKIM-records
-      if (domainAuthResult.dns?.dkim1) {
-        const { host, data } = domainAuthResult.dns.dkim1;
-        dnsRecords.push({
-          type: 'CNAME',
-          host,
-          data,
-          name: 'För DKIM-signering (del 1)'
+        
+        // Formatera DNS-records för enklare användning i frontend
+        const dnsRecords = [];
+        
+        // CNAME-record för autentisering
+        if (domainAuthResult.dns?.cname) {
+          const { host, data } = domainAuthResult.dns.cname;
+          dnsRecords.push({
+            type: 'CNAME',
+            host,
+            data,
+            name: 'För domänverifiering'
+          });
+        }
+        
+        // DKIM-records
+        if (domainAuthResult.dns?.dkim1) {
+          const { host, data } = domainAuthResult.dns.dkim1;
+          dnsRecords.push({
+            type: 'CNAME',
+            host,
+            data,
+            name: 'För DKIM-signering (del 1)'
+          });
+        }
+        
+        if (domainAuthResult.dns?.dkim2) {
+          const { host, data } = domainAuthResult.dns.dkim2;
+          dnsRecords.push({
+            type: 'CNAME',
+            host,
+            data,
+            name: 'För DKIM-signering (del 2)'
+          });
+        }
+        
+        // Mail-records om de finns
+        if (domainAuthResult.dns?.mail) {
+          const { host, data } = domainAuthResult.dns.mail;
+          dnsRecords.push({
+            type: 'MX',
+            host,
+            data,
+            priority: 10,
+            name: 'För mailmottagning (endast om du vill använda SendGrid för inkommande e-post)'
+          });
+        }
+        
+        return res.status(200).json({
+          id: domainId,
+          domain: domain,
+          subdomain: subdomainToUse,
+          dnsRecords: dnsRecords,
+          message: 'Domänverifiering har startats'
         });
+      } catch (error) {
+        // Hantera specifika SendGrid-fel
+        if (error.message && error.message.includes("An authenticated domain already exists for this URL")) {
+          // Om domänen redan finns i SendGrid, föreslå att användaren anger en unik subdomän
+          return res.status(400).json({ 
+            error: 'Denna domän är redan registrerad i SendGrid med standardsubdomänen.',
+            needSubdomain: true,
+            message: 'Ange en anpassad subdomän (t.ex. "mail2" eller "support") för att verifiera denna domän.'
+          });
+        }
+        
+        throw error;
       }
-      
-      if (domainAuthResult.dns?.dkim2) {
-        const { host, data } = domainAuthResult.dns.dkim2;
-        dnsRecords.push({
-          type: 'CNAME',
-          host,
-          data,
-          name: 'För DKIM-signering (del 2)'
-        });
-      }
-      
-      // Mail-records om de finns
-      if (domainAuthResult.dns?.mail) {
-        const { host, data } = domainAuthResult.dns.mail;
-        dnsRecords.push({
-          type: 'MX',
-          host,
-          data,
-          priority: 10,
-          name: 'För mailmottagning (endast om du vill använda SendGrid för inkommande e-post)'
-        });
-      }
-      
-      return res.status(200).json({
-        id: domainAuthResult.id,
-        domain: domain,
-        dnsRecords: dnsRecords,
-        message: 'Domänverifiering har startats'
-      });
       
     } catch (error) {
       // Om det är ett Zod-valideringsfel
