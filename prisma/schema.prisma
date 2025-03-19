@@ -82,18 +82,19 @@ model VerificationToken {
 }
 
 model Store {
-  id            Int             @id @default(autoincrement())
-  name          String
-  company       String
-  address       String
-  users         UserStore[]
-  customers     Customer[]
-  tickets       Ticket[]
-  ticketTypes   TicketType[]
-  CustomerCards CustomerCard[]
-  createdAt     DateTime        @default(now())
-  updatedAt     DateTime        @updatedAt
-  SenderAddress SenderAddress[]
+  id             Int              @id @default(autoincrement())
+  name           String
+  company        String
+  address        String
+  users          UserStore[]
+  customers      Customer[]
+  tickets        Ticket[]
+  ticketTypes    TicketType[]
+  CustomerCards  CustomerCard[]
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  SenderAddress  SenderAddress[]
+  VerifiedDomain VerifiedDomain[]
 }
 
 model UserStore {
@@ -257,4 +258,19 @@ model SenderAddress {
 
   @@unique([storeId, email])
   @@index([storeId, isDefault])
+}
+
+// Modell för att lagra statusen för verifierade domäner
+model VerifiedDomain {
+  id         Int       @id @default(autoincrement())
+  domain     String
+  domainId   String    @unique // SendGrid-ID för domänen
+  storeId    Int
+  store      Store     @relation(fields: [storeId], references: [id])
+  status     String    @default("pending") // 'pending', 'verified', 'failed'
+  createdAt  DateTime  @default(now())
+  verifiedAt DateTime? // Tidpunkt när domänen verifierades
+  updatedAt  DateTime  @updatedAt
+
+  @@unique([domain, storeId])
 }

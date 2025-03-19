@@ -21,6 +21,7 @@ import MailmallsContent from '../mailmallar/index';
 import AccountSettings from '@/components/AccountSettings';
 import ImportExportManager from '@/components/ImportExport';
 import StoreManager from '@/components/StoreManager'; // Nytt för butiker
+import DomainVerificationPage from './domainVerification';
 
 // Typer för att hantera aktiv tab
 type TabKey = 'konto' | 'arendetyper' | 'kundkortsmallar' | 'mailmallar' | 'dataimport' | 'butiker'; // Lagt till 'butiker'
@@ -66,6 +67,8 @@ export default function InstallningarPage() {
         return <ImportExportManager />;
       case 'butiker':
         return <StoreManager />;
+      case 'domainVerification':
+        return <DomainVerificationPage />;  
       default:
         return <div>Välj en inställningskategori</div>;
     }
@@ -122,6 +125,7 @@ export default function InstallningarPage() {
             <Tab key="mailmallar" title="Mailmallar" />
             <Tab key="dataimport" title="Import/Export" />
             <Tab key="butiker" title="Butiker" />
+            <Tab key="domainVerification" title="Domänverifiering" />
           </Tabs>
         </div>
         
