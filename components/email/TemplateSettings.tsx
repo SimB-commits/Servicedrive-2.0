@@ -377,59 +377,7 @@ const TemplateSettings: React.FC<TemplateSettingsProps> = ({ onSettingsUpdated }
             </div>
           </AccordionItem>
           
-          <AccordionItem 
-            key="info" 
-            title={
-              <h3 className="text-md font-medium">Om mailmallsinställningar</h3>
-            }
-            subtitle="Hjälp och förklaringar för hur mailsystemet fungerar"
-          >
-            <div className="prose prose-sm">
-              <h4>Hur mailsystem fungerar</h4>
-              <p>
-                Servicedrive har ett flexibelt system för mailutskick med flera olika delar som 
-                samverkar:
-              </p>
-              
-              <ol>
-                <li>
-                  <strong>Mailmallar</strong> - Innehåller ämne och text som kan innehålla variabler.
-                </li>
-                <li>
-                  <strong>Statusbundna mailmallar</strong> - Kopplingar mellan ärendestatusar och mailmallar,
-                  som skickar mail automatiskt när ett ärende byter status.
-                </li>
-                <li>
-                  <strong>Generella mallinställningar</strong> - Systemövergripande inställningar för
-                  när olika typer av mail ska skickas (inställningarna på denna sida).
-                </li>
-              </ol>
-              
-              <h4>Variabler i mailmallar</h4>
-              <p>
-                Mallar kan använda variabler för att anpassa innehållet. Variabler skrivs i formatet
-                {'{variabelNamn}'} och ersätts automatiskt när mailet skickas.
-              </p>
-              
-              <p>Några användbara variabler är:</p>
-              <ul>
-                <li><code>{'{kundNamn}'}</code> - Kundens fullständiga namn</li>
-                <li><code>{'{kundEmail}'}</code> - Kundens e-postadress</li>
-                <li><code>{'{ärendeID}'}</code> - Ärendets ID-nummer</li>
-                <li><code>{'{ärendeTyp}'}</code> - Typ av ärende</li>
-                <li><code>{'{ärendeStatus}'}</code> - Ärendets aktuella status</li>
-                <li><code>{'{deadline}'}</code> - Ärendets deadline, om satt</li>
-                <li><code>{'{handläggare}'}</code> - Namnet på handläggaren</li>
-                <li><code>{'{gammalStatus}'}</code> - Ärendets tidigare status (vid statusändringar)</li>
-                <li><code>{'{företagsNamn}'}</code> - Företagsnamnet</li>
-                <li><code>{'{aktuellDatum}'}</code> - Dagens datum</li>
-              </ul>
-              
-              <p>
-                Dynamiska fält från ärendet är också tillgängliga som variabler med samma namn som fältet.
-              </p>
-            </div>
-          </AccordionItem>
+          
         </Accordion>
 
         <div className="flex justify-end mt-6">
