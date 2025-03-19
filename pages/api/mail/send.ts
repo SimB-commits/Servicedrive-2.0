@@ -6,6 +6,7 @@ import { authOptions } from '../auth/authOptions';
 import rateLimiter from '@/lib/rateLimiterApi';
 import { sendCustomEmail } from '@/utils/mail-service';
 import { logger } from '@/utils/logger';
+import { validateSenderEmail } from '@/utils/sendgrid';
 import { TemplateVariables } from '@/utils/sendgrid';
 
 const prisma = new PrismaClient();
@@ -44,7 +45,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       templateId,
       ticketId,
       toEmail, 
-      customVariables 
+      customVariables,
+      fromEmail,
+      fromName
     } = req.body;
 
     // Kontrollera obligatoriska fält
@@ -62,6 +65,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (toEmail && !/^\S+@\S+\.\S+$/.test(toEmail)) {
       logger.warn(`Invalid email format`, { requestId });
       return res.status(400).json({ error: 'Ogiltig e-postadress' });
+    }
+    
+    // Validera avsändaradress om den är angiven
+    if (fromEmail) {
+      const validation = validateSenderEmail(fromEmail);
+      if (!validation.valid) {
+        logger.warn(`Invalid sender email format`, { requestId, reason: validation.reason });
+        return res.status(400).json({ error: `Ogiltig avsändaradress: ${validation.reason}` });
+      }
     }
     
     // Validera anpassade variabler är i rätt format
@@ -149,19 +161,42 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       recipientEmail = toEmail;
     }
 
+    // Hämta avsändaradress från databasen om ett ID är angivet
+    let senderEmail = fromEmail;
+    let senderName = fromName;
+
+    if (!senderEmail && session.user.storeId) {
+      // Försök hitta standardavsändaren för denna butik
+      const defaultSender = await prisma.senderAddress.findFirst({
+        where: {
+          storeId: session.user.storeId,
+          isDefault: true
+        }
+      });
+
+      if (defaultSender) {
+        senderEmail = defaultSender.email;
+        senderName = defaultSender.name || undefined;
+      }
+    }
+
     // Skicka emailet via vår service
     logger.info(`Sending email via API request`, { 
       requestId,
       templateId,
       ticketId: ticketId || null,
-      userId: session.user.id
+      userId: session.user.id,
+      fromEmail: senderEmail ? senderEmail.split('@')[0].substring(0, 2) + '***@' + senderEmail.split('@')[1] : 'default',
+      hasFromName: !!senderName
     });
     
     const response = await sendCustomEmail(
       Number(templateId),
       recipientEmail,
       variables,
-      categories
+      categories,
+      senderEmail,
+      senderName
     );
     
     // Lagra information om mailet i databasen (om önskat)
