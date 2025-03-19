@@ -88,6 +88,12 @@ export const sendTicketStatusEmail = async (
         isDefault: true
       }
     });
+
+    // Logga vilken avsändaradress som används för spårning
+    logger.debug(`Använder avsändaradress för mail till ärende #${ticket.id}`, { 
+      useDefaultSender: !!senderAddress,
+      senderEmail: senderAddress?.email ? `${senderAddress.email.substring(0, 2)}***@${senderAddress.email.split('@')[1]}` : 'default'
+    });
     
     // Bygg variabeldata från ärendet
     const variables = buildTicketVariables(ticket);

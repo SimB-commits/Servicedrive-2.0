@@ -1,3 +1,4 @@
+// pages/mailmallar/index.tsx
 import React, { useState, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
 import {
@@ -16,12 +17,15 @@ import {
   TableCell,
   TableColumn,
   Input,
-  Textarea
+  Textarea,
+  Tabs,
+  Tab
 } from '@heroui/react';
 import { title } from '@/components/primitives';
 import { DeleteIcon, EditIcon } from '@/components/icons';
 import MailTemplateTest from '@/components/MailTemplateTest';
 import TemplateSettings from '@/components/email/TemplateSettings';
+import DefaultSenderAddressManager from '@/components/email/DefaultSenderAddressManager';
 
 interface MailTemplate {
   id: number;
@@ -38,6 +42,7 @@ export default function MailmallsPage() {
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<MailTemplate | null>(null);
+  const [activeTab, setActiveTab] = useState('templates');
 
   // Form values
   const [templateName, setTemplateName] = useState('');
@@ -310,69 +315,89 @@ export default function MailmallsPage() {
       <div className="inline-block max-w-lg text-center">
         <h1 className={title({ size: 'sm' })}>Mailmallar</h1>
         <p className="mb-4">Skapa och hantera mailmallar för automatiserade utskick</p>
-        <div className="w-full max-w-6xl mb-8">
-        <TemplateSettings onSettingsUpdated={() => fetchTemplates()} />
       </div>
-        <Button 
-          type="button" 
-          onPress={() => setCreateModalOpen(true)} 
+        
+      <div className="w-full max-w-6xl">
+        <Tabs 
+          aria-label="Mailkonfiguration"
+          selectedKey={activeTab}
+          onSelectionChange={(key) => setActiveTab(key as string)}
+          variant="underlined"
           color="primary"
-          variant="flat"
         >
-          Skapa ny mailmall
-        </Button>
-      </div>
-
-      {/* Templates Table */}
-      <div className="w-full max-w-6xl mt-8">
-        <h2 className="text-lg font-semibold mb-4">Dina mailmallar</h2>
-        {templates.length === 0 ? (
-          <div className="text-center p-4 border rounded">
-            Inga mailmallar skapade ännu. Klicka på "Skapa ny mailmall" för att komma igång.
-          </div>
-        ) : (
-          <Table aria-label="Mail templates">
-            <TableHeader>
-              <TableColumn>Namn</TableColumn>
-              <TableColumn>Ämne</TableColumn>
-              <TableColumn>Innehåll</TableColumn>
-              <TableColumn>Skapad</TableColumn>
-              <TableColumn>Åtgärder</TableColumn>
-            </TableHeader>
-            <TableBody>
-              {templates.map(template => (
-                <TableRow key={template.id}>
-                  <TableCell>{template.name}</TableCell>
-                  <TableCell>{truncateText(template.subject, 30)}</TableCell>
-                  <TableCell>{truncateText(template.body, 50)}</TableCell>
-                  <TableCell>{formatDate(template.createdAt)}</TableCell>
-                  <TableCell>
-                  <div className="flex items-center gap-2">
-                    <MailTemplateTest />
-                    <Button 
-                      type="button" 
-                      variant="flat" 
-                      isIconOnly
-                      onPress={() => handleEditTemplate(template)}
-                    >
-                      <EditIcon />
-                    </Button>
-                    <Button 
-                      type="button" 
-                      variant="flat" 
-                      isIconOnly
-                      color="danger"
-                      onPress={() => handleDeleteTemplate(template.id)}
-                    >
-                      <DeleteIcon />
-                    </Button>
+          <Tab key="templates" title="Mailmallar">
+            <div className="max-w-6xl mx-auto mt-4">
+              <div className="flex justify-between items-center mb-6">
+                <TemplateSettings onSettingsUpdated={() => fetchTemplates()} />
+                <Button 
+                  type="button" 
+                  onPress={() => setCreateModalOpen(true)} 
+                  color="primary"
+                >
+                  Skapa ny mailmall
+                </Button>
+              </div>
+              
+              {/* Templates Table */}
+              <div className="mt-8">
+                <h2 className="text-lg font-semibold mb-4">Dina mailmallar</h2>
+                {templates.length === 0 ? (
+                  <div className="text-center p-4 border rounded">
+                    Inga mailmallar skapade ännu. Klicka på "Skapa ny mailmall" för att komma igång.
                   </div>
-                </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        )}
+                ) : (
+                  <Table aria-label="Mail templates">
+                    <TableHeader>
+                      <TableColumn>Namn</TableColumn>
+                      <TableColumn>Ämne</TableColumn>
+                      <TableColumn>Innehåll</TableColumn>
+                      <TableColumn>Skapad</TableColumn>
+                      <TableColumn>Åtgärder</TableColumn>
+                    </TableHeader>
+                    <TableBody>
+                      {templates.map(template => (
+                        <TableRow key={template.id}>
+                          <TableCell>{template.name}</TableCell>
+                          <TableCell>{truncateText(template.subject, 30)}</TableCell>
+                          <TableCell>{truncateText(template.body, 50)}</TableCell>
+                          <TableCell>{formatDate(template.createdAt)}</TableCell>
+                          <TableCell>
+                          <div className="flex items-center gap-2">
+                            <MailTemplateTest templateId={template.id} />
+                            <Button 
+                              type="button" 
+                              variant="flat" 
+                              isIconOnly
+                              onPress={() => handleEditTemplate(template)}
+                            >
+                              <EditIcon />
+                            </Button>
+                            <Button 
+                              type="button" 
+                              variant="flat" 
+                              isIconOnly
+                              color="danger"
+                              onPress={() => handleDeleteTemplate(template.id)}
+                            >
+                              <DeleteIcon />
+                            </Button>
+                          </div>
+                        </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )}
+              </div>
+            </div>
+          </Tab>
+          
+          <Tab key="settings" title="Avsändarinställningar">
+            <div className="max-w-6xl mx-auto mt-4">
+              <DefaultSenderAddressManager />
+            </div>
+          </Tab>
+        </Tabs>
       </div>
 
       {/* Create Template Modal */}

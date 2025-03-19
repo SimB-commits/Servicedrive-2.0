@@ -34,6 +34,7 @@ export interface EmailData {
 
 // Interface för sändaradress
 export interface SenderAddress {
+  id?: number;
   email: string;
   name?: string;
   default?: boolean;
@@ -84,7 +85,7 @@ export const validateSenderEmail = (email: string): { valid: boolean; reason?: s
   }
   
   // Om vi är i utvecklingsläge och inga domäner är konfigurerade, godkänn alla
-  if (sendgridConfig.debugMode && sendgridConfig.verifiedDomains.length === 0) {
+  if (process.env.NODE_ENV !== 'production' && (!sendgridConfig.verifiedDomains || sendgridConfig.verifiedDomains.length === 0)) {
     logger.warn(`Avsändarverifiering kringgås i utvecklingsläge för: ${email}`);
     return { valid: true };
   }
@@ -120,6 +121,7 @@ export const getVerifiedSenderAddresses = async (storeId: number): Promise<Sende
     // Om butiken har konfigurerade adresser, returnera dem
     if (senderAddresses.length > 0) {
       return senderAddresses.map(addr => ({
+        id: addr.id,
         email: addr.email,
         name: addr.name || undefined,
         default: addr.isDefault,

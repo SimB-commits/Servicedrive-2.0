@@ -51,7 +51,7 @@ const MailTemplateTest: React.FC<MailTemplateTestProps> = ({
   const [senderAddresses, setSenderAddresses] = useState<SenderAddress[]>([]);
   const [loadingSenders, setLoadingSenders] = useState<boolean>(false);
   
-  const [selectedTemplateId, setSelectedTemplateId] = useState<string>(templateId?.toString() || '');
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
   const [selectedTicketId, setSelectedTicketId] = useState<string>('');
   const [selectedSenderId, setSelectedSenderId] = useState<string>('');
   const [customSenderEmail, setCustomSenderEmail] = useState<string>('');
@@ -82,7 +82,7 @@ const MailTemplateTest: React.FC<MailTemplateTestProps> = ({
   // Om templateId skickas som prop, använd den
   useEffect(() => {
     if (templateId) {
-      setSelectedTemplateId(templateId.toString());
+      setSelectedTemplateId(String(templateId));
     }
   }, [templateId]);
 
@@ -91,12 +91,14 @@ const MailTemplateTest: React.FC<MailTemplateTestProps> = ({
       const res = await fetch('/api/mail/templates');
       if (res.ok) {
         const data = await res.json();
-        setMailTemplates(data);
+        setMailTemplates(Array.isArray(data) ? data : []);
       } else {
         console.error('Kunde inte hämta mailmallar');
+        setMailTemplates([]);
       }
     } catch (error) {
       console.error('Fel vid hämtning av mailmallar:', error);
+      setMailTemplates([]);
     }
   };
 
@@ -105,12 +107,14 @@ const MailTemplateTest: React.FC<MailTemplateTestProps> = ({
       const res = await fetch('/api/tickets?limit=10');
       if (res.ok) {
         const data = await res.json();
-        setTickets(data);
+        setTickets(Array.isArray(data) ? data : []);
       } else {
         console.error('Kunde inte hämta ärenden');
+        setTickets([]);
       }
     } catch (error) {
       console.error('Fel vid hämtning av ärenden:', error);
+      setTickets([]);
     }
   };
 
@@ -121,20 +125,23 @@ const MailTemplateTest: React.FC<MailTemplateTestProps> = ({
       
       if (res.ok) {
         const data = await res.json();
-        setSenderAddresses(data);
+        const addresses = Array.isArray(data) ? data : [];
+        setSenderAddresses(addresses);
         
         // Välj standard-avsändaren om en sådan finns
-        const defaultAddress = data.find((addr: SenderAddress) => addr.isDefault);
+        const defaultAddress = addresses.find(addr => addr && addr.isDefault === true);
         if (defaultAddress) {
-          setSelectedSenderId(defaultAddress.id.toString());
-        } else if (data.length > 0) {
-          setSelectedSenderId(data[0].id.toString());
+          setSelectedSenderId(String(defaultAddress.id));
+        } else if (addresses.length > 0 && addresses[0]) {
+          setSelectedSenderId(String(addresses[0].id));
         }
       } else {
         console.error('Kunde inte hämta avsändaradresser');
+        setSenderAddresses([]);
       }
     } catch (error) {
       console.error('Fel vid hämtning av avsändaradresser:', error);
+      setSenderAddresses([]);
     } finally {
       setLoadingSenders(false);
     }
@@ -217,7 +224,7 @@ const MailTemplateTest: React.FC<MailTemplateTestProps> = ({
         }
       } else if (selectedSenderId) {
         const selectedSender = senderAddresses.find(
-          addr => addr.id.toString() === selectedSenderId
+          addr => addr && String(addr.id) === selectedSenderId
         );
         
         if (selectedSender) {
@@ -362,10 +369,12 @@ const MailTemplateTest: React.FC<MailTemplateTestProps> = ({
                     isInvalid={!!errors.template}
                     errorMessage={errors.template}
                   >
-                    {mailTemplates.map((template) => (
-                      <SelectItem key={template.id.toString()} value={template.id.toString()}>
-                        {template.name}
-                      </SelectItem>
+                    {(mailTemplates || []).map((template) => (
+                      template && template.id ? (
+                        <SelectItem key={String(template.id)} value={String(template.id)}>
+                          {template.name}
+                        </SelectItem>
+                      ) : null
                     ))}
                   </Select>
                   
@@ -404,10 +413,12 @@ const MailTemplateTest: React.FC<MailTemplateTestProps> = ({
                         isInvalid={!!errors.ticket}
                         errorMessage={errors.ticket}
                       >
-                        {tickets.map((ticket) => (
-                          <SelectItem key={ticket.id.toString()} value={ticket.id.toString()}>
-                            #{ticket.id} - {ticket.customer?.firstName || ''} {ticket.customer?.lastName || ''} ({ticket.customer?.email})
-                          </SelectItem>
+                        {(tickets || []).map((ticket) => (
+                          ticket && ticket.id ? (
+                            <SelectItem key={String(ticket.id)} value={String(ticket.id)}>
+                              #{ticket.id} - {(ticket.customer?.firstName || '')} {(ticket.customer?.lastName || '')} ({ticket.customer?.email || 'Ingen email'})
+                            </SelectItem>
+                          ) : null
                         ))}
                       </Select>
                     )}
@@ -461,7 +472,7 @@ const MailTemplateTest: React.FC<MailTemplateTestProps> = ({
                     </div>
                   ) : (
                     <div>
-                      {senderAddresses.length === 0 ? (
+                      {(!senderAddresses || senderAddresses.length === 0) ? (
                         <div className="bg-warning-50 border border-warning-200 text-warning-700 p-3 text-sm rounded">
                           <p>Inga verifierade avsändaradresser hittades.</p>
                           <p className="mt-1">För att kunna välja avsändaradress behöver du först verifiera en domän under Inställningar &gt; Domänverifiering.</p>
@@ -475,11 +486,13 @@ const MailTemplateTest: React.FC<MailTemplateTestProps> = ({
                           isInvalid={!!errors.sender}
                           errorMessage={errors.sender}
                         >
-                          {senderAddresses.map((address) => (
-                            <SelectItem key={address.id.toString()} value={address.id.toString()}>
-                              {address.name ? `${address.name} <${address.email}>` : address.email}
-                              {address.isDefault && " (Standard)"}
-                            </SelectItem>
+                          {(senderAddresses || []).map((address) => (
+                            address && address.id ? (
+                              <SelectItem key={String(address.id)} value={String(address.id)}>
+                                {address.name ? `${address.name} <${address.email}>` : address.email}
+                                {address.isDefault && " (Standard)"}
+                              </SelectItem>
+                            ) : null
                           ))}
                         </Select>
                       )}
