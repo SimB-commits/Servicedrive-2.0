@@ -31,19 +31,19 @@ model UserPreference {
 }
 
 model User {
-  id              String      @id @default(uuid())
-  firstName       String      @default("")
-  lastName        String      @default("")
-  email           String      @unique
+  id              String          @id @default(uuid())
+  firstName       String          @default("")
+  lastName        String          @default("")
+  email           String          @unique
   password        String
   role            UserRole
   stores          UserStore[]
-  createdTickets  Ticket[]    @relation("CreatedTickets")
-  assignedTickets Ticket[]    @relation("AssignedTickets")
-  messages        Message[]   @relation("UserMessages")
+  createdTickets  Ticket[]        @relation("CreatedTickets")
+  assignedTickets Ticket[]        @relation("AssignedTickets")
+  messages        Message[]       @relation("UserMessages")
   preference      UserPreference?
-  createdAt       DateTime    @default(now())
-  updatedAt       DateTime    @updatedAt
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
   accounts        Account[]
   sessions        Session[]
 }
@@ -82,17 +82,18 @@ model VerificationToken {
 }
 
 model Store {
-  id          Int          @id @default(autoincrement())
-  name        String
-  company     String
-  address     String
-  users       UserStore[]
-  customers   Customer[]
-  tickets     Ticket[]
-  ticketTypes TicketType[]
+  id            Int             @id @default(autoincrement())
+  name          String
+  company       String
+  address       String
+  users         UserStore[]
+  customers     Customer[]
+  tickets       Ticket[]
+  ticketTypes   TicketType[]
   CustomerCards CustomerCard[]
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  SenderAddress SenderAddress[]
 }
 
 model UserStore {
@@ -108,54 +109,54 @@ model UserStore {
 }
 
 model Customer {
-  id             Int      @id @default(autoincrement())
-  externalId     Int?     @unique
-  firstName      String?  
-  lastName       String?  
-  address        String?  
-  postalCode     String?  
-  city           String?  
-  country        String?  
-  dateOfBirth    DateTime? 
-  email          String   // Behåll email som required om du vill kunna identifiera kunden unikt, annars gör även den valfri
-  phoneNumber    String?  
-  newsletter     Boolean  @default(false)
-  loyal          Boolean  @default(false)
-  dynamicFields  Json?    @default("{}")
-  storeId        Int
-  store          Store    @relation(fields: [storeId], references: [id])
-  tickets        Ticket[]
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id            Int       @id @default(autoincrement())
+  externalId    Int?      @unique
+  firstName     String?
+  lastName      String?
+  address       String?
+  postalCode    String?
+  city          String?
+  country       String?
+  dateOfBirth   DateTime?
+  email         String // Behåll email som required om du vill kunna identifiera kunden unikt, annars gör även den valfri
+  phoneNumber   String?
+  newsletter    Boolean   @default(false)
+  loyal         Boolean   @default(false)
+  dynamicFields Json?     @default("{}")
+  storeId       Int
+  store         Store     @relation(fields: [storeId], references: [id])
+  tickets       Ticket[]
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
   @@unique([email, storeId])
   @@unique([externalId, storeId], name: "externalId_storeId")
 }
 
 model CustomerCard {
-  cardName       String?
-  id             Int      @id @default(autoincrement())
-  firstName      String?  
-  lastName       String?  
-  address        String?  
-  postalCode     String?  
-  city           String?  
-  country        String?  
-  dateOfBirth    DateTime?
-  email          String?  
-  phoneNumber    String?
-  newsletter     Boolean  @default(false)
-  loyal          Boolean  @default(false)
+  cardName      String?
+  id            Int       @id @default(autoincrement())
+  firstName     String?
+  lastName      String?
+  address       String?
+  postalCode    String?
+  city          String?
+  country       String?
+  dateOfBirth   DateTime?
+  email         String?
+  phoneNumber   String?
+  newsletter    Boolean   @default(false)
+  loyal         Boolean   @default(false)
   // Dynamiska fält sparas som JSON – använd ett defaultvärde om ingen data skickas
-  dynamicFields  Json?    @default("{}")
+  dynamicFields Json?     @default("{}")
   // Flagga för om detta är kundkortet som ska vara förvalt
-  isDefault      Boolean  @default(false)
-  
-  storeId        Int
-  store          Store    @relation(fields: [storeId], references: [id])
-  
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  isDefault     Boolean   @default(false)
+
+  storeId Int
+  store   Store @relation(fields: [storeId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model TicketType {
@@ -184,10 +185,10 @@ enum FieldType {
 }
 
 model Ticket {
-  id             Int                @id @default(autoincrement())
+  id             Int               @id @default(autoincrement())
   title          String?
   description    String?
-  status         TicketStatus?      @default(OPEN)
+  status         TicketStatus?     @default(OPEN)
   customStatusId Int?
   customerId     Int
   assignedTo     String?
@@ -195,29 +196,29 @@ model Ticket {
   userId         String
   ticketTypeId   Int
   dueDate        DateTime?
-  store          Store              @relation(fields: [storeId], references: [id])
-  user           User               @relation("CreatedTickets", fields: [userId], references: [id])
-  ticketType     TicketType         @relation(fields: [ticketTypeId], references: [id])
+  store          Store             @relation(fields: [storeId], references: [id])
+  user           User              @relation("CreatedTickets", fields: [userId], references: [id])
+  ticketType     TicketType        @relation(fields: [ticketTypeId], references: [id])
   dynamicFields  Json
-  customer       Customer           @relation(fields: [customerId], references: [id])
-  assignedUser   User?              @relation("AssignedTickets", fields: [assignedTo], references: [id])
-  customStatus   UserTicketStatus?  @relation("TicketCustomStatus", fields: [customStatusId], references: [id])
+  customer       Customer          @relation(fields: [customerId], references: [id])
+  assignedUser   User?             @relation("AssignedTickets", fields: [assignedTo], references: [id])
+  customStatus   UserTicketStatus? @relation("TicketCustomStatus", fields: [customStatusId], references: [id])
   messages       Message[]
-  createdAt      DateTime           @default(now())
-  updatedAt      DateTime           @updatedAt
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
 }
 
 model UserTicketStatus {
-  id             Int           @id @default(autoincrement())
-  name           String
-  color          String        @default("#ffffff") // Standardfärg
-  storeId        Int
-  dynamicFields  Json?
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
+  id            Int      @id @default(autoincrement())
+  name          String
+  color         String   @default("#ffffff") // Standardfärg
+  storeId       Int
+  dynamicFields Json?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
   tickets        Ticket[]      @relation("TicketCustomStatus")
-  mailTemplateId Int?          
+  mailTemplateId Int?
   mailTemplate   MailTemplate? @relation(fields: [mailTemplateId], references: [id])
 }
 
@@ -232,29 +233,28 @@ model Message {
 }
 
 model MailTemplate {
-  id         Int                @id @default(autoincrement())
-  name       String
-  subject    String
-  body       String
-  storeId    Int
-  createdAt  DateTime           @default(now())
-  updatedAt  DateTime           @updatedAt
+  id        Int      @id @default(autoincrement())
+  name      String
+  subject   String
+  body      String
+  storeId   Int
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  statuses   UserTicketStatus[]
+  statuses UserTicketStatus[]
 }
 
 // Modell för att lagra verifierade avsändaradresser per butik
 model SenderAddress {
-  id          Int      @id @default(autoincrement())
-  storeId     Int
-  email       String
-  name        String?
-  isDefault   Boolean  @default(false)
-  store       Store    @relation(fields: [storeId], references: [id])
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id        Int      @id @default(autoincrement())
+  storeId   Int
+  email     String
+  name      String?
+  isDefault Boolean  @default(false)
+  store     Store    @relation(fields: [storeId], references: [id])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@unique([storeId, email])
   @@index([storeId, isDefault])
 }
-

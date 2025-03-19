@@ -13,7 +13,8 @@ import {
   Tab,
   Select,
   SelectItem,
-  Divider
+  Divider,
+  addToast
 } from '@heroui/react';
 
 interface SenderAddress {
@@ -150,6 +151,12 @@ export default function TestMailPage() {
         }
       } else {
         setResult(data);
+        addToast({
+          title: 'Framgång',
+          description: 'Testmail skickat!',
+          color: 'success',
+          variant: 'flat'
+        });
       }
     } catch (err) {
       setError('Ett oväntat fel inträffade: ' + (err.message || 'Okänt fel'));
