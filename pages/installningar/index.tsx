@@ -1,3 +1,4 @@
+// pages/installningar/index.tsx
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import { useSession } from 'next-auth/react';
@@ -18,13 +19,14 @@ import { title } from '@/components/primitives';
 import ArendetyperContent from '../arendetyper/index';
 import KundkortContent from '../kundkort/index';
 import MailmallsContent from '../mailmallar/index';
+import ArendestatusarContent from '../arendestatusar/index'; // Ny import för ärendestatusar
 import AccountSettings from '@/components/AccountSettings';
 import ImportExportManager from '@/components/ImportExport';
-import StoreManager from '@/components/StoreManager'; // Nytt för butiker
+import StoreManager from '@/components/StoreManager';
 import DomainVerificationPage from './domainVerification';
 
 // Typer för att hantera aktiv tab
-type TabKey = 'konto' | 'arendetyper' | 'kundkortsmallar' | 'mailmallar' | 'dataimport' | 'butiker'; // Lagt till 'butiker'
+type TabKey = 'konto' | 'arendetyper' | 'kundkortsmallar' | 'mailmallar' | 'dataimport' | 'butiker' | 'arendestatusar' | 'domainVerification';
 
 export default function InstallningarPage() {
   const { data: session, status } = useSession();
@@ -38,7 +40,7 @@ export default function InstallningarPage() {
     if (tab && typeof tab === 'string') {
       // Validera att tab är en giltig flik
       const isValidTab = (tab: string): tab is TabKey => 
-        ['konto', 'arendetyper', 'kundkortsmallar', 'mailmallar', 'dataimport', 'butiker'].includes(tab);
+        ['konto', 'arendetyper', 'kundkortsmallar', 'mailmallar', 'dataimport', 'butiker', 'arendestatusar', 'domainVerification'].includes(tab);
       
       if (isValidTab(tab)) {
         setSelectedTab(tab);
@@ -67,6 +69,8 @@ export default function InstallningarPage() {
         return <ImportExportManager />;
       case 'butiker':
         return <StoreManager />;
+      case 'arendestatusar': // Nytt case för ärendestatusar
+        return <ArendestatusarContent />;
       case 'domainVerification':
         return <DomainVerificationPage />;  
       default:
@@ -121,6 +125,7 @@ export default function InstallningarPage() {
           >
             <Tab key="konto" title="Konto" />
             <Tab key="arendetyper" title="Ärendetyper" />
+            <Tab key="arendestatusar" title="Ärendestatusar" /> {/* Ny flik för ärendestatusar */}
             <Tab key="kundkortsmallar" title="Kundkortsmallar" />
             <Tab key="mailmallar" title="Mailmallar" />
             <Tab key="dataimport" title="Import/Export" />

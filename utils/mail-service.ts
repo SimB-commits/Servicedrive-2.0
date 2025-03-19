@@ -1,5 +1,5 @@
 // utils/mail-service.ts
-import { PrismaClient, Ticket, MailTemplate, UserTicketStatus } from '@prisma/client';
+import { PrismaClient, Ticket, MailTemplate, UserTicketStatus, MailTemplateUsage } from '@prisma/client';
 import { buildEmailFromTemplate, sendEmail, TemplateVariables } from './sendgrid';
 import { logger } from './logger';
 
@@ -31,6 +31,7 @@ const getAnonymizedCustomerName = (customer: any): string => {
  * Skickar mail baserat på ärendets status om det finns en kopplad mailmall
  * @param ticket Ärende med inkluderade relationer (customer, customStatus, etc.)
  * @param oldStatus Tidigare status (om tillgängligt)
+ * @param oldCustomStatusId Tidigare custom status ID (om tillgängligt)
  * @returns Promise med resultat av mailsändning, eller null om ingen mall är kopplad
  */
 export const sendTicketStatusEmail = async (
@@ -41,16 +42,37 @@ export const sendTicketStatusEmail = async (
     user?: any;
     assignedUser?: any;
   },
-  oldStatus?: string
+  oldStatus?: string,
+  oldCustomStatusId?: number | null
 ): Promise<any | null> => {
   try {
-    // Om ärendet har en anpassad status med mailmall
-    const mailTemplate = ticket.customStatus?.mailTemplate;
+    // Om ärendet har en anpassad status med mailmall, använd den
+    let mailTemplate = ticket.customStatus?.mailTemplate;
+    let mailSource = 'custom-status';
     
-    // Om ingen mailmall är kopplad till status, avbryt
+    // Om ingen mailmall är direkt kopplad till status, försök hitta en mall baserad på statustyp
     if (!mailTemplate) {
-      logger.debug(`Ingen mailmall kopplad till status för ärende #${ticket.id}`);
-      return null;
+      // Försök att hitta en mall för generella statusuppdateringar
+      const templateSetting = await prisma.mailTemplateSettings.findUnique({
+        where: {
+          storeId_usage: {
+            storeId: ticket.storeId,
+            usage: 'STATUS_UPDATE'
+          }
+        },
+        include: {
+          template: true
+        }
+      });
+      
+      if (templateSetting?.template) {
+        mailTemplate = templateSetting.template;
+        mailSource = 'template-settings';
+        logger.debug(`Använder generell STATUS_UPDATE-mall för ärende #${ticket.id}`);
+      } else {
+        logger.debug(`Ingen mailmall kopplad till status för ärende #${ticket.id}`);
+        return null;
+      }
     }
     
     // Kontrollera om vi har kundens e-postadress
@@ -62,24 +84,87 @@ export const sendTicketStatusEmail = async (
     // Bygg variabeldata från ärendet
     const variables = buildTicketVariables(ticket);
     
-    // Lägg till gammal status om det finns
+    // Lägg till information om statusändringen
     if (oldStatus) {
       variables.gammalStatus = oldStatus;
     }
     
+    if (oldCustomStatusId && oldCustomStatusId !== ticket.customStatusId) {
+      try {
+        // Hämta namn på den gamla anpassade statusen
+        const oldCustomStatus = await prisma.userTicketStatus.findUnique({
+          where: { id: oldCustomStatusId }
+        });
+        
+        if (oldCustomStatus) {
+          variables.gammalStatusNamn = oldCustomStatus.name;
+        }
+      } catch (error) {
+        // Ignorera fel vid hämtning av gammal status
+        logger.warn(`Kunde inte hämta gammal anpassad status för ärende #${ticket.id}`, { 
+          error: error.message,
+          oldCustomStatusId
+        });
+      }
+    }
+    
+    // Lägg till användbara länkar i variablerna
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || '';
+    if (baseUrl) {
+      variables.ärendeLänk = `${baseUrl}/arenden/${ticket.id}`;
+    }
+    
+    // Lägg till status-specifik text baserad på aktuell status
+    variables.statusText = getStatusSpecificText(ticket.status, ticket.customStatus?.name);
+    
     // Skicka mail med statusmallen
-    return await sendTemplatedEmail(
+    const response = await sendTemplatedEmail(
       ticket.customer.email,
       mailTemplate,
       variables,
-      ['status-update', `ticket-${ticket.id}`]
+      ['status-update', `ticket-${ticket.id}`, `status-${ticket.status || 'custom'}`]
     );
+    
+    // Logga framgångsrikt mail
+    logger.info(`Mail skickat för statusändring på ärende #${ticket.id}`, {
+      ticketId: ticket.id, 
+      status: ticket.status,
+      customStatusId: ticket.customStatusId,
+      mailSource,
+      anonymizedRecipient: getAnonymizedCustomerName(ticket.customer)
+    });
+    
+    return response;
   } catch (error) {
     logger.error(`Fel vid skickande av statusmail för ärende #${ticket.id}`, {
       error: error.message,
-      ticketId: ticket.id
+      ticketId: ticket.id,
+      status: ticket.status,
+      customStatusId: ticket.customStatusId
     });
     throw error;
+  }
+};
+
+/**
+ * Returnerar specifik text baserad på status för användning i mail
+ */
+const getStatusSpecificText = (status?: string, customStatusName?: string): string => {
+  if (customStatusName) {
+    return `Ditt ärende har fått statusen "${customStatusName}".`;
+  }
+  
+  switch(status) {
+    case 'OPEN':
+      return 'Ditt ärende är nu öppet och vi jobbar på att hantera det så snart som möjligt.';
+    case 'IN_PROGRESS':
+      return 'Vi har nu börjat arbeta med ditt ärende.';
+    case 'RESOLVED':
+      return 'Ditt ärende har markerats som löst. Om du fortfarande upplever problem, vänligen kontakta oss.';
+    case 'CLOSED':
+      return 'Ditt ärende är nu avslutat. Tack för att du valde oss!';
+    default:
+      return 'Status på ditt ärende har uppdaterats.';
   }
 };
 
@@ -118,7 +203,7 @@ export const sendNewTicketEmail = async (
       }
     });
     
-    // Om ingen inställning finns eller ingen mall är vald, avbryt
+    // Om ingen inställning finns eller ingen mall är vald, försök med fallback
     if (!mailTemplateSetting?.template) {
       // Fallback till miljövariabel (bakåtkompatibilitet)
       const ticketConfirmationTemplateId = process.env.NEW_TICKET_TEMPLATE_ID;
@@ -144,11 +229,20 @@ export const sendNewTicketEmail = async (
       );
     }
     
+    // Bygg utökade variabler med länkar
+    const variables = buildTicketVariables(ticket);
+    
+    // Lägg till användbara länkar i variablerna
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || '';
+    if (baseUrl) {
+      variables.ärendeLänk = `${baseUrl}/arenden/${ticket.id}`;
+    }
+    
     // Skicka mail med konfigurerad mall
     return await sendTemplatedEmail(
       ticket.customer.email,
       mailTemplateSetting.template,
-      buildTicketVariables(ticket),
+      variables,
       ['new-ticket-confirmation', `ticket-${ticket.id}`]
     );
   } catch (error) {
@@ -177,7 +271,14 @@ export const buildTicketVariables = (ticket: any): TemplateVariables => {
     ärendeStatus: ticket.customStatus?.name || ticket.status || '',
     ärendeDatum: ticket.createdAt,
     företagsNamn: process.env.COMPANY_NAME || '',
-    deadline: ticket.dueDate || '',      
+    deadline: ticket.dueDate || '',
+    // Data om användare som hanterar ärendet, om tillgängligt
+    handläggare: ticket.assignedUser ? 
+      `${ticket.assignedUser.firstName || ''} ${ticket.assignedUser.lastName || ''}`.trim() : 
+      (ticket.user ? `${ticket.user.firstName || ''} ${ticket.user.lastName || ''}`.trim() : ''),
+    handläggareEmail: ticket.assignedUser?.email || ticket.user?.email || '',
+    // Lägg till aktuellt datum
+    aktuellDatum: new Date(),
     ...dynamicFields,
   };
 };
@@ -202,6 +303,18 @@ export const sendTemplatedEmail = async (
     
     // Lägg till kategorier för spårning
     emailData.categories = categories;
+    
+    // Lägg till ett GDPR-footer om det inte redan finns i mallen
+    if (!emailData.html.includes('GDPR') && !emailData.html.includes('dataskydd')) {
+      emailData.html += `
+        <br><hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;">
+        <p style="color: #666; font-size: 12px;">
+          Detta mail har skickats automatiskt från vårt ärendehanteringssystem. 
+          Vi hanterar dina personuppgifter enligt GDPR. För mer information om 
+          hur vi hanterar dina uppgifter, vänligen kontakta oss.
+        </p>
+      `;
+    }
     
     // Skicka emailet
     const [response] = await sendEmail(emailData);

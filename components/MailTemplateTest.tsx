@@ -1,4 +1,4 @@
-// components/MailTemplateTest.tsx
+// components/email/MailTemplateTest.tsx
 import React, { useState, useEffect } from 'react';
 import {
   Button,
@@ -12,8 +12,10 @@ import {
   ModalHeader,
   ModalBody,
   ModalFooter,
+  Spinner,
   addToast
 } from '@heroui/react';
+import MailTemplatePreview from './email/MailTemplatePreview';
 
 interface MailTemplate {
   id: number;
@@ -22,27 +24,28 @@ interface MailTemplate {
   body: string;
 }
 
-interface Ticket {
-  id: number;
-  customer: {
-    firstName?: string;
-    lastName?: string;
-    email: string;
-  };
-  ticketType?: {
-    name: string;
-  };
+interface MailTemplateTestProps {
+  templateId?: number; // Om templateId skickas med, används den mallen direkt
+  buttonText?: string; // Anpassningsbar knapptext
+  variant?: 'primary' | 'flat' | 'light'; // Stil på knappen
+  buttonSize?: 'sm' | 'md' | 'lg'; // Storlek på knappen
 }
 
-const MailTemplateTest: React.FC = () => {
+const MailTemplateTest: React.FC<MailTemplateTestProps> = ({ 
+  templateId,
+  buttonText = 'Testa mailmall',
+  variant = 'flat',
+  buttonSize = 'sm'
+}) => {
   const [mailTemplates, setMailTemplates] = useState<MailTemplate[]>([]);
-  const [tickets, setTickets] = useState<Ticket[]>([]);
-  const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
+  const [tickets, setTickets] = useState<any[]>([]);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string>(templateId?.toString() || '');
   const [selectedTicketId, setSelectedTicketId] = useState<string>('');
   const [customEmail, setCustomEmail] = useState<string>('');
   const [customVariables, setCustomVariables] = useState<string>('');
   const [useCustomEmail, setUseCustomEmail] = useState<boolean>(false);
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
+  const [isPreviewModalOpen, setIsPreviewModalOpen] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -51,6 +54,13 @@ const MailTemplateTest: React.FC = () => {
     fetchMailTemplates();
     fetchRecentTickets();
   }, []);
+
+  // Om templateId skickas som prop, använd den
+  useEffect(() => {
+    if (templateId) {
+      setSelectedTemplateId(templateId.toString());
+    }
+  }, [templateId]);
 
   const fetchMailTemplates = async () => {
     try {
@@ -177,16 +187,42 @@ const MailTemplateTest: React.FC = () => {
     }
   };
 
+  const openPreviewModal = () => {
+    if (!selectedTemplateId) {
+      addToast({
+        title: 'Fel',
+        description: 'Välj en mailmall först',
+        color: 'danger',
+        variant: 'flat'
+      });
+      return;
+    }
+    
+    setIsPreviewModalOpen(true);
+  };
+
   return (
     <>
-      <Button 
-        color="primary" 
-        variant="flat" 
-        size="sm"
-        onPress={() => setIsModalOpen(true)}
-      >
-        Testa mailmall
-      </Button>
+      <div className="flex space-x-2">
+        <Button 
+          color={variant === 'primary' ? 'primary' : 'default'}
+          variant={variant === 'primary' ? 'solid' : variant}
+          size={buttonSize}
+          onPress={() => setIsModalOpen(true)}
+        >
+          {buttonText}
+        </Button>
+        
+        {selectedTemplateId && (
+          <Button
+            variant="flat"
+            size={buttonSize}
+            onPress={openPreviewModal}
+          >
+            Förhandsgranska
+          </Button>
+        )}
+      </div>
 
       <Modal
         isOpen={isModalOpen}
@@ -279,6 +315,15 @@ const MailTemplateTest: React.FC = () => {
             >
               Avbryt
             </Button>
+            {selectedTemplateId && (
+              <Button
+                variant="flat"
+                color="primary"
+                onPress={openPreviewModal}
+              >
+                Förhandsgranska
+              </Button>
+            )}
             <Button
               color="primary"
               onPress={handleSubmit}
@@ -290,6 +335,15 @@ const MailTemplateTest: React.FC = () => {
           </ModalFooter>
         </ModalContent>
       </Modal>
+
+      {/* Förhandsgranskningsmodal */}
+      {isPreviewModalOpen && selectedTemplateId && (
+        <MailTemplatePreview 
+          templateId={Number(selectedTemplateId)} 
+          isOpen={isPreviewModalOpen}
+          onClose={() => setIsPreviewModalOpen(false)}
+        />
+      )}
     </>
   );
 };

@@ -80,9 +80,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             console.log('Validation errors:', errors);
             return res.status(400).json({ message: 'Valideringsfel', errors });
           }
-      
+
           const { title, description, status, dynamicFields, dueDate } = parseResult.data as UpdateTicketInput;
-      
+
           // Hämta Ticket med alla nödvändiga relationer för mailintegrering
           const ticket = await prisma.ticket.findUnique({
             where: { id: ticketId },
@@ -94,12 +94,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
               assignedUser: true,
             }
           });
-      
+
           if (!ticket || ticket.storeId !== session.user.storeId) {
             console.log('Ticket not found or not in user\'s store');
             return res.status(404).json({ error: 'Ticket not found' });
           }
-      
+
           // Spara den gamla statusen för att kunna jämföra senare
           const oldStatus = ticket.status;
           const oldCustomStatusId = ticket.customStatusId;
@@ -111,7 +111,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             dynamicFields: dynamicFields ?? ticket.dynamicFields,
             dueDate: dueDate ?? ticket.dueDate,
           };
-      
+
           // Om status är dynamisk (börjar med "CUSTOM_"), extrahera id:t och uppdatera customStatusId
           if (status && typeof status === "string" && status.startsWith("CUSTOM_")) {
             const customStatusId = Number(status.replace("CUSTOM_", ""));
@@ -128,7 +128,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
               customStatusId: null, // Rensa eventuell tidigare dynamisk status
             };
           }
-      
+
           // Uppdatera ärendets data
           const updatedTicket = await prisma.ticket.update({
             where: { id: ticketId },
@@ -146,20 +146,21 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
               messages: true,
             },
           });
-      
+
           // Importera mailservice
           const { sendTicketStatusEmail } = await import('@/utils/mail-service');
           
           // Kontrollera om status har ändrats (antingen standardstatus eller anpassad status)
           const statusChanged = oldStatus !== updatedTicket.status || oldCustomStatusId !== updatedTicket.customStatusId;
           
-          // Om statusen har ändrats och den nya statusen har en kopplad mailmall, skicka mail
+          // Om statusen har ändrats, skicka mail
           if (statusChanged) {
             try {
-              // Anropa sendTicketStatusEmail med det uppdaterade ärendet och den gamla statusen
+              // Anropa sendTicketStatusEmail med det uppdaterade ärendet, den gamla statusen och den gamla anpassade status-ID:n
               const mailResponse = await sendTicketStatusEmail(
                 updatedTicket,
-                oldStatus
+                oldStatus,
+                oldCustomStatusId
               );
               
               if (mailResponse) {
@@ -170,7 +171,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
               console.error(`Fel vid skickande av statusmail för ärende #${ticketId}:`, mailError);
             }
           }
-      
+
           console.log('Ticket updated:', updatedTicket);
           res.status(200).json(updatedTicket);
         } catch (error) {
