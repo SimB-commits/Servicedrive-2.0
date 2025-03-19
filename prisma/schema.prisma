@@ -22,6 +22,15 @@ enum TicketStatus {
   CLOSED
 }
 
+// Definierar enum för olika användningsområden för mailmallar
+enum MailTemplateUsage {
+  NEW_TICKET        // Bekräftelsemail för nya ärenden
+  STATUS_UPDATE     // Mail vid statusuppdateringar
+  MANUAL            // För manuella utskick
+  REMINDER          // Påminnelser
+  FOLLOW_UP         // Uppföljningsmail
+}
+
 model UserPreference {
   userId          String   @id
   selectedStoreId Int?
@@ -82,19 +91,20 @@ model VerificationToken {
 }
 
 model Store {
-  id             Int              @id @default(autoincrement())
-  name           String
-  company        String
-  address        String
-  users          UserStore[]
-  customers      Customer[]
-  tickets        Ticket[]
-  ticketTypes    TicketType[]
-  CustomerCards  CustomerCard[]
-  createdAt      DateTime         @default(now())
-  updatedAt      DateTime         @updatedAt
-  SenderAddress  SenderAddress[]
-  VerifiedDomain VerifiedDomain[]
+  id                 Int               @id @default(autoincrement())
+  name               String
+  company            String
+  address            String
+  users              UserStore[]
+  customers          Customer[]
+  tickets            Ticket[]
+  ticketTypes        TicketType[]
+  CustomerCards      CustomerCard[]
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+  SenderAddress      SenderAddress[]
+  VerifiedDomain     VerifiedDomain[]
+  templateSettings   MailTemplateSettings[]
 }
 
 model UserStore {
@@ -234,15 +244,32 @@ model Message {
 }
 
 model MailTemplate {
-  id        Int      @id @default(autoincrement())
-  name      String
-  subject   String
-  body      String
-  storeId   Int
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id                   Int                   @id @default(autoincrement())
+  name                 String
+  subject              String
+  body                 String
+  storeId              Int
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+  
+  statuses             UserTicketStatus[]
+  templateSettings     MailTemplateSettings[]
+}
 
-  statuses UserTicketStatus[]
+model MailTemplateSettings {
+  id           Int               @id @default(autoincrement())
+  storeId      Int
+  templateId   Int?
+  usage        MailTemplateUsage
+  
+  store        Store             @relation(fields: [storeId], references: [id])
+  template     MailTemplate?     @relation(fields: [templateId], references: [id])
+  
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+  
+  @@unique([storeId, usage])
+  @@index([storeId, usage])
 }
 
 // Modell för att lagra verifierade avsändaradresser per butik

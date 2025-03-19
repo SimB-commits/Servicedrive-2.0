@@ -21,6 +21,7 @@ import {
 import { title } from '@/components/primitives';
 import { DeleteIcon, EditIcon } from '@/components/icons';
 import MailTemplateTest from '@/components/MailTemplateTest';
+import TemplateSettings from '@/components/email/TemplateSettings';
 
 interface MailTemplate {
   id: number;
@@ -309,6 +310,9 @@ export default function MailmallsPage() {
       <div className="inline-block max-w-lg text-center">
         <h1 className={title({ size: 'sm' })}>Mailmallar</h1>
         <p className="mb-4">Skapa och hantera mailmallar för automatiserade utskick</p>
+        <div className="w-full max-w-6xl mb-8">
+        <TemplateSettings onSettingsUpdated={() => fetchTemplates()} />
+      </div>
         <Button 
           type="button" 
           onPress={() => setCreateModalOpen(true)} 

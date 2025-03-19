@@ -60,64 +60,20 @@ export const sendTicketStatusEmail = async (
     }
     
     // Bygg variabeldata från ärendet
-    const dynamicFields = typeof ticket.dynamicFields === 'object' && ticket.dynamicFields !== null
-      ? ticket.dynamicFields
-      : {};
-
-    const variables: TemplateVariables = {
-      ärendeID: ticket.id,
-      kundNamn: `${ticket.customer.firstName || ''} ${ticket.customer.lastName || ''}`.trim() || ticket.customer.email,
-      kundEmail: ticket.customer.email,
-      ärendeTyp: ticket.ticketType?.name || '',
-      ärendeStatus: ticket.customStatus?.name || ticket.status || '',
-      ärendeDatum: ticket.createdAt,
-      företagsNamn: process.env.COMPANY_NAME || '',
-      deadline: ticket.dueDate || '',
-      gammalStatus: oldStatus || '',
-      // Inkludera alla dynamiska fält (om det är ett objekt)
-      ...dynamicFields,
-    };
+    const variables = buildTicketVariables(ticket);
     
-    // Bygg emailet baserat på mall och variabler
-    const emailData = buildEmailFromTemplate(
+    // Lägg till gammal status om det finns
+    if (oldStatus) {
+      variables.gammalStatus = oldStatus;
+    }
+    
+    // Skicka mail med statusmallen
+    return await sendTemplatedEmail(
+      ticket.customer.email,
       mailTemplate,
       variables,
-      ticket.customer.email,
-      process.env.EMAIL_FROM || 'no-reply@servicedrive.se'
+      ['status-update', `ticket-${ticket.id}`]
     );
-    
-    // Lägg till specifika kategorier för spårning
-    emailData.categories = ['status-update', `ticket-${ticket.id}`];
-    
-    // Skicka emailet
-    const [response] = await sendEmail(emailData);
-    
-    // Logga att vi skickat mailet (GDPR-säkert utan PII)
-    logger.info(`Status-uppdateringsmail skickat för ärende #${ticket.id}`, {
-      ticketId: ticket.id,
-      statusId: ticket.customStatus?.id,
-      statusName: ticket.customStatus?.name,
-      templateId: mailTemplate.id,
-      templateName: mailTemplate.name,
-      anonymous_recipient: getAnonymizedCustomerName(ticket.customer)
-    });
-    
-    // Spara en referens till utskicket i databasen (om önskat)
-    // Detta kan vara användbart för att spåra kommunikationshistorik
-    /* 
-    await prisma.emailLog.create({
-      data: {
-        ticketId: ticket.id,
-        recipientId: ticket.customer.id,
-        emailType: 'STATUS_UPDATE',
-        templateId: mailTemplate.id,
-        sentAt: new Date(),
-        messageId: response.headers['x-message-id'] || undefined
-      }
-    });
-    */
-    
-    return response;
   } catch (error) {
     logger.error(`Fel vid skickande av statusmail för ärende #${ticket.id}`, {
       error: error.message,
@@ -146,68 +102,123 @@ export const sendNewTicketEmail = async (
       return null;
     }
     
-    // Hämta standardmallen för nya ärenden från databasen
-    // Detta antar att du har en mall med ett specifikt ID eller namn för nya ärenden
-    const ticketConfirmationTemplateId = process.env.NEW_TICKET_TEMPLATE_ID;
-    if (!ticketConfirmationTemplateId) {
-      logger.debug('Ingen standardmall för nya ärenden konfigurerad');
-      return null; // Ingen standardmall konfigurerad
-    }
+    // Hämta storeId från ärendet
+    const storeId = ticket.storeId;
     
-    const mailTemplate = await prisma.mailTemplate.findUnique({
-      where: { id: Number(ticketConfirmationTemplateId) },
+    // Hämta mallens inställningar för bekräftelsemail vid nya ärenden
+    const mailTemplateSetting = await prisma.mailTemplateSettings.findUnique({
+      where: {
+        storeId_usage: {
+          storeId,
+          usage: 'NEW_TICKET'
+        }
+      },
+      include: {
+        template: true
+      }
     });
     
-    if (!mailTemplate) {
-      logger.warn(`Ingen standardmall för nya ärenden hittades (ID: ${ticketConfirmationTemplateId})`);
-      return null;
+    // Om ingen inställning finns eller ingen mall är vald, avbryt
+    if (!mailTemplateSetting?.template) {
+      // Fallback till miljövariabel (bakåtkompatibilitet)
+      const ticketConfirmationTemplateId = process.env.NEW_TICKET_TEMPLATE_ID;
+      
+      let fallbackTemplate = null;
+      if (ticketConfirmationTemplateId) {
+        fallbackTemplate = await prisma.mailTemplate.findUnique({
+          where: { id: Number(ticketConfirmationTemplateId) },
+        });
+      }
+      
+      if (!fallbackTemplate) {
+        logger.debug('Ingen mall för nya ärenden konfigurerad', { storeId });
+        return null;
+      }
+      
+      // Använd fallback-mallen om den finns
+      return await sendTemplatedEmail(
+        ticket.customer.email,
+        fallbackTemplate,
+        buildTicketVariables(ticket),
+        ['new-ticket-confirmation', `ticket-${ticket.id}`]
+      );
     }
     
-    // Bygg variabeldata från ärendet
-    const dynamicFields = typeof ticket.dynamicFields === 'object' && ticket.dynamicFields !== null
-      ? ticket.dynamicFields
-      : {};
-
-    const variables: TemplateVariables = {
-      ärendeID: ticket.id,
-      kundNamn: `${ticket.customer.firstName || ''} ${ticket.customer.lastName || ''}`.trim() || ticket.customer.email,
-      kundEmail: ticket.customer.email,
-      ärendeTyp: ticket.ticketType?.name || '',
-      ärendeStatus: ticket.status || '',
-      ärendeDatum: ticket.createdAt,
-      företagsNamn: process.env.COMPANY_NAME || '',
-      deadline: ticket.dueDate || '',      
-      // Inkludera alla dynamiska fält
-      ...dynamicFields,
-    };
-    
-    // Bygg emailet baserat på mall och variabler
-    const emailData = buildEmailFromTemplate(
-      mailTemplate,
-      variables,
+    // Skicka mail med konfigurerad mall
+    return await sendTemplatedEmail(
       ticket.customer.email,
-      process.env.EMAIL_FROM || 'no-reply@servicedrive.se'
+      mailTemplateSetting.template,
+      buildTicketVariables(ticket),
+      ['new-ticket-confirmation', `ticket-${ticket.id}`]
     );
-    
-    // Lägg till specifika kategorier för spårning
-    emailData.categories = ['new-ticket-confirmation', `ticket-${ticket.id}`];
-    
-    // Skicka emailet
-    const [response] = await sendEmail(emailData);
-    
-    // Logga att vi skickat mailet
-    logger.info(`Bekräftelsemail skickat för nytt ärende #${ticket.id}`, {
-      ticketId: ticket.id,
-      templateId: mailTemplate.id,
-      templateName: mailTemplate.name,
-      anonymous_recipient: getAnonymizedCustomerName(ticket.customer)
-    });
-    
-    return response;
   } catch (error) {
     logger.error(`Fel vid skickande av bekräftelsemail för ärende #${ticket.id}`, {
       error: error.message,
       ticketId: ticket.id
+    });
+    throw error;
+  }
+};
+
+/**
+ * Byggfunktion för att skapa variabeldata från ett ärende
+ * Centraliserad funktion för att skapa konsistenta variabler
+ */
+export const buildTicketVariables = (ticket: any): TemplateVariables => {
+  const dynamicFields = typeof ticket.dynamicFields === 'object' && ticket.dynamicFields !== null
+    ? ticket.dynamicFields
+    : {};
+
+  return {
+    ärendeID: ticket.id,
+    kundNamn: `${ticket.customer?.firstName || ''} ${ticket.customer?.lastName || ''}`.trim() || ticket.customer?.email || '',
+    kundEmail: ticket.customer?.email || '',
+    ärendeTyp: ticket.ticketType?.name || '',
+    ärendeStatus: ticket.customStatus?.name || ticket.status || '',
+    ärendeDatum: ticket.createdAt,
+    företagsNamn: process.env.COMPANY_NAME || '',
+    deadline: ticket.dueDate || '',      
+    ...dynamicFields,
+  };
+};
+
+/**
+ * Generell funktion för att skicka mail baserat på en mall och variabler
+ */
+export const sendTemplatedEmail = async (
+  toEmail: string,
+  template: { id: number; name: string; subject: string; body: string },
+  variables: TemplateVariables,
+  categories: string[] = []
+): Promise<any | null> => {
+  try {
+    // Bygg emailet baserat på mall och variabler
+    const emailData = buildEmailFromTemplate(
+      template,
+      variables,
+      toEmail,
+      process.env.EMAIL_FROM || 'no-reply@servicedrive.se'
+    );
+    
+    // Lägg till kategorier för spårning
+    emailData.categories = categories;
+    
+    // Skicka emailet
+    const [response] = await sendEmail(emailData);
+    
+    // Logga att vi skickat mailet (anonymiserad)
+    logger.info(`Mail skickat med mall "${template.name}"`, {
+      templateId: template.id,
+      templateName: template.name,
+      anonymous_recipient: toEmail.split('@')[0].substring(0, 2) + '***@' + toEmail.split('@')[1].split('.')[0],
+      categories
+    });
+    
+    return response;
+  } catch (error) {
+    logger.error(`Fel vid skickande av mail med mall "${template.name}"`, {
+      error: error.message,
+      templateId: template.id
     });
     throw error;
   }
