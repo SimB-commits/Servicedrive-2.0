@@ -62,14 +62,22 @@ const DefaultSenderAddressManager: React.FC<DefaultSenderAddressManagerProps> = 
       
       if (res.ok) {
         const data = await res.json();
-        setSenderAddresses(data);
+        
+        // Filtrera bort eventuella ogiltiga addresses (null/undefined)
+        const validAddresses = Array.isArray(data) 
+          ? data.filter((addr): addr is SenderAddress => 
+              addr !== null && addr !== undefined && typeof addr === 'object' && addr.id !== undefined
+            )
+          : [];
+        
+        setSenderAddresses(validAddresses);
         
         // Välj standardadressen om den finns
-        const defaultAddress = data.find((addr: SenderAddress) => addr.isDefault);
-        if (defaultAddress) {
-          setSelectedAddressId(defaultAddress.id.toString());
-        } else if (data.length > 0) {
-          setSelectedAddressId(data[0].id.toString());
+        const defaultAddress = validAddresses.find(addr => addr && addr.isDefault);
+        if (defaultAddress && defaultAddress.id !== undefined) {
+          setSelectedAddressId(String(defaultAddress.id));
+        } else if (validAddresses.length > 0 && validAddresses[0]?.id !== undefined) {
+          setSelectedAddressId(String(validAddresses[0].id));
         }
       } else {
         const errorData = await res.json();
@@ -93,7 +101,7 @@ const DefaultSenderAddressManager: React.FC<DefaultSenderAddressManagerProps> = 
       
       // Hitta den valda adressen
       const selectedAddress = senderAddresses.find(
-        addr => addr.id.toString() === selectedAddressId
+        addr => addr && addr.id !== undefined && String(addr.id) === selectedAddressId
       );
       
       if (!selectedAddress) {
@@ -237,6 +245,11 @@ const DefaultSenderAddressManager: React.FC<DefaultSenderAddressManagerProps> = 
     }
   };
 
+  // Filtrerar bort ogiltiga adresser för rendering
+  const validSenderAddresses = senderAddresses.filter(
+    address => address && address.id !== undefined && address.email
+  );
+
   return (
     <Card className={className}>
       <CardHeader>
@@ -265,7 +278,7 @@ const DefaultSenderAddressManager: React.FC<DefaultSenderAddressManagerProps> = 
             )}
             
             {/* Om inga avsändaradresser finns */}
-            {senderAddresses.length === 0 ? (
+            {validSenderAddresses.length === 0 ? (
               <div className="bg-warning-50 border border-warning-200 p-4 rounded">
                 <p className="text-warning-700">
                   Inga verifierade avsändaradresser hittades. Lägg till en för att använda den för automatiska utskick.
@@ -299,10 +312,10 @@ const DefaultSenderAddressManager: React.FC<DefaultSenderAddressManagerProps> = 
                     onChange={(e) => setSelectedAddressId(e.target.value)}
                     className="max-w-md"
                   >
-                    {senderAddresses.map((address) => (
+                    {validSenderAddresses.map((address) => (
                       <SelectItem 
-                        key={address.id.toString()} 
-                        value={address.id.toString()}
+                        key={String(address.id)} 
+                        value={String(address.id)}
                         textValue={address.name ? `${address.name} <${address.email}>` : address.email}
                       >
                         <div className="flex justify-between items-center">
@@ -324,8 +337,8 @@ const DefaultSenderAddressManager: React.FC<DefaultSenderAddressManagerProps> = 
                       color="primary"
                       onPress={handleSetDefaultAddress}
                       isLoading={saving}
-                      isDisabled={saving || !selectedAddressId || senderAddresses.find(
-                        addr => addr.id.toString() === selectedAddressId && addr.isDefault
+                      isDisabled={saving || !selectedAddressId || validSenderAddresses.some(
+                        addr => addr && String(addr.id) === selectedAddressId && addr.isDefault
                       )}
                     >
                       Sätt som standard
@@ -344,9 +357,9 @@ const DefaultSenderAddressManager: React.FC<DefaultSenderAddressManagerProps> = 
                 <div className="mt-6">
                   <h4 className="text-md font-medium mb-3">Dina avsändaradresser</h4>
                   <div className="grid gap-2">
-                    {senderAddresses.map((address) => (
+                    {validSenderAddresses.map((address) => (
                       <div 
-                        key={address.id}
+                        key={String(address.id)}
                         className={`p-3 rounded-md border ${
                           address.isDefault 
                             ? 'border-primary bg-primary-50' 
