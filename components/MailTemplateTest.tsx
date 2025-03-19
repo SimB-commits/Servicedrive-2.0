@@ -3,7 +3,6 @@ import React, { useState, useEffect } from 'react';
 import {
   Button,
   Input,
-  Form,
   Select,
   SelectItem,
   Textarea,
@@ -185,7 +184,6 @@ const MailTemplateTest: React.FC<MailTemplateTestProps> = ({
     return Object.keys(newErrors).length === 0;
   };
 
-  // Fix: Ändrat funktionssignatur för att hantera både event och direkt anrop
   const handleSubmit = async (e?: React.FormEvent) => {
     // Förhindra sidomladdning endast om det är ett event
     if (e && typeof e.preventDefault === 'function') {

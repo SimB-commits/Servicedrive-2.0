@@ -81,6 +81,14 @@ export const sendTicketStatusEmail = async (
       return null;
     }
     
+    // Hämta den anpassade avsändaradressen för denna butik om den finns
+    const senderAddress = await prisma.senderAddress.findFirst({
+      where: {
+        storeId: ticket.storeId,
+        isDefault: true
+      }
+    });
+    
     // Bygg variabeldata från ärendet
     const variables = buildTicketVariables(ticket);
     
@@ -122,7 +130,9 @@ export const sendTicketStatusEmail = async (
       ticket.customer.email,
       mailTemplate,
       variables,
-      ['status-update', `ticket-${ticket.id}`, `status-${ticket.status || 'custom'}`]
+      ['status-update', `ticket-${ticket.id}`, `status-${ticket.status || 'custom'}`],
+      senderAddress?.email,
+      senderAddress?.name
     );
     
     // Logga framgångsrikt mail
@@ -190,7 +200,7 @@ export const sendNewTicketEmail = async (
     // Hämta storeId från ärendet
     const storeId = ticket.storeId;
     
-    // Hämta mallens inställningar för bekräftelsemail vid nya ärenden
+    // Hämta mailmallens inställningar för bekräftelsemail vid nya ärenden
     const mailTemplateSetting = await prisma.mailTemplateSettings.findUnique({
       where: {
         storeId_usage: {
@@ -200,6 +210,14 @@ export const sendNewTicketEmail = async (
       },
       include: {
         template: true
+      }
+    });
+    
+    // Hämta den anpassade avsändaradressen för denna butik om den finns
+    const senderAddress = await prisma.senderAddress.findFirst({
+      where: {
+        storeId: ticket.storeId,
+        isDefault: true
       }
     });
     
@@ -225,7 +243,9 @@ export const sendNewTicketEmail = async (
         ticket.customer.email,
         fallbackTemplate,
         buildTicketVariables(ticket),
-        ['new-ticket-confirmation', `ticket-${ticket.id}`]
+        ['new-ticket-confirmation', `ticket-${ticket.id}`],
+        senderAddress?.email,
+        senderAddress?.name
       );
     }
     
@@ -243,7 +263,9 @@ export const sendNewTicketEmail = async (
       ticket.customer.email,
       mailTemplateSetting.template,
       variables,
-      ['new-ticket-confirmation', `ticket-${ticket.id}`]
+      ['new-ticket-confirmation', `ticket-${ticket.id}`],
+      senderAddress?.email,
+      senderAddress?.name
     );
   } catch (error) {
     logger.error(`Fel vid skickande av bekräftelsemail för ärende #${ticket.id}`, {
@@ -285,20 +307,33 @@ export const buildTicketVariables = (ticket: any): TemplateVariables => {
 
 /**
  * Generell funktion för att skicka mail baserat på en mall och variabler
+ * @param toEmail Mottagarens e-postadress
+ * @param template Mailmallen som ska användas
+ * @param variables Variabler att använda i mallen
+ * @param categories Kategorier för spårning (valfri)
+ * @param fromEmail Avsändarens e-postadress (valfri)
+ * @param fromName Avsändarens visningsnamn (valfri)
+ * @returns Promise med resultat av mailsändning
  */
 export const sendTemplatedEmail = async (
   toEmail: string,
   template: { id: number; name: string; subject: string; body: string },
   variables: TemplateVariables,
-  categories: string[] = []
+  categories: string[] = [],
+  fromEmail?: string,
+  fromName?: string
 ): Promise<any | null> => {
   try {
+    // Använd angiven avsändare eller fall tillbaka på standardvärdet
+    const senderEmail = fromEmail || process.env.EMAIL_FROM || 'no-reply@servicedrive.se';
+    
     // Bygg emailet baserat på mall och variabler
     const emailData = buildEmailFromTemplate(
       template,
       variables,
       toEmail,
-      process.env.EMAIL_FROM || 'no-reply@servicedrive.se'
+      senderEmail,
+      fromName
     );
     
     // Lägg till kategorier för spårning
@@ -324,7 +359,8 @@ export const sendTemplatedEmail = async (
       templateId: template.id,
       templateName: template.name,
       anonymous_recipient: toEmail.split('@')[0].substring(0, 2) + '***@' + toEmail.split('@')[1].split('.')[0],
-      categories
+      categories,
+      sender: senderEmail.split('@')[0].substring(0, 2) + '***@' + senderEmail.split('@')[1]
     });
     
     return response;
@@ -343,13 +379,17 @@ export const sendTemplatedEmail = async (
  * @param toEmail Mottagarens e-postadress
  * @param variables Variabler att använda i mallen
  * @param categories Kategorier för spårning (optional)
+ * @param fromEmail Avsändarens e-postadress (valfri)
+ * @param fromName Avsändarens visningsnamn (valfri)
  * @returns Promise med resultat av mailsändning
  */
 export const sendCustomEmail = async (
   templateId: number,
   toEmail: string,
   variables: TemplateVariables,
-  categories: string[] = ['custom-email']
+  categories: string[] = ['custom-email'],
+  fromEmail?: string,
+  fromName?: string
 ): Promise<any> => {
   try {
     // Hämta mallen från databasen
@@ -361,12 +401,16 @@ export const sendCustomEmail = async (
       throw new Error(`Mailmall med ID ${templateId} hittades inte`);
     }
     
+    // Använd angiven avsändare eller fall tillbaka på standardvärdet
+    const senderEmail = fromEmail || process.env.EMAIL_FROM || 'no-reply@servicedrive.se';
+    
     // Bygg emailet baserat på mall och variabler
     const emailData = buildEmailFromTemplate(
       mailTemplate,
       variables,
       toEmail,
-      process.env.EMAIL_FROM || 'no-reply@servicedrive.se'
+      senderEmail,
+      fromName
     );
     
     // Lägg till kategorier för spårning
@@ -379,7 +423,8 @@ export const sendCustomEmail = async (
     logger.info(`Anpassat mail skickat med mall "${mailTemplate.name}"`, {
       templateId: mailTemplate.id,
       templateName: mailTemplate.name,
-      anonymous_recipient: toEmail.split('@')[0].charAt(0) + '***@' + toEmail.split('@')[1].split('.')[0]
+      anonymous_recipient: toEmail.split('@')[0].charAt(0) + '***@' + toEmail.split('@')[1].split('.')[0],
+      sender: senderEmail.split('@')[0].charAt(0) + '***@' + senderEmail.split('@')[1]
     });
     
     return response;
