@@ -732,7 +732,7 @@ export default function CreateTicketPage() {
                             <div
                               key={customer.id}
                               className="px-4 py-3 border-b last:border-b-0 hover:bg-gray-100 cursor-pointer transition-colors"
-                              onClick={() => handleSelectCustomer(customer)}
+                              onPress={() => handleSelectCustomer(customer)}
                             >
                               <div className="font-medium">{customer.name}</div>
                               {customer.email && <div className="text-sm text-gray-500">{customer.email}</div>}

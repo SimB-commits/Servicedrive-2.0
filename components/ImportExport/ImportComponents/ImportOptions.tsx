@@ -82,7 +82,7 @@ const ImportOptions: React.FC<ImportOptionsProps> = ({
                 <Chip
                   variant={importOptions.skipExisting ? "solid" : "flat"}
                   color={importOptions.skipExisting ? "primary" : "default"}
-                  onClick={() => toggleOption('skipExisting')}
+                  onPress={() => toggleOption('skipExisting')}
                   className="cursor-pointer"
                 >
                   Hoppa över befintliga
@@ -100,7 +100,7 @@ const ImportOptions: React.FC<ImportOptionsProps> = ({
                 <Chip
                   variant={importOptions.updateExisting ? "solid" : "flat"}
                   color={importOptions.updateExisting ? "primary" : "default"}
-                  onClick={() => toggleOption('updateExisting')}
+                  onPress={() => toggleOption('updateExisting')}
                   className="cursor-pointer"
                 >
                   Uppdatera befintliga
@@ -118,7 +118,7 @@ const ImportOptions: React.FC<ImportOptionsProps> = ({
                 <Chip
                   variant={importOptions.includeAll ? "solid" : "flat"}
                   color={importOptions.includeAll ? "primary" : "default"}
-                  onClick={() => toggleOption('includeAll')}
+                  onPress={() => toggleOption('includeAll')}
                   className="cursor-pointer"
                 >
                   Inkludera alla fält

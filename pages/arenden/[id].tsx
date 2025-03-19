@@ -258,7 +258,7 @@ export default function TicketPage() {
                 {statusOptions.map((option) => (
                   <DropdownItem 
                     key={option.uid} 
-                    onClick={() => updateStatus(option.uid)}
+                    onPress={() => updateStatus(option.uid)}
                   >
                     <div className="flex items-center gap-2">
                       <div 

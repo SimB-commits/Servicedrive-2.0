@@ -120,8 +120,24 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
                 include: { fields: true },
               },
               customer: true, // Inkludera Customer i svaret
+              user: true     // Inkludera User i svaret
             },
           });
+
+          // Importera mailservice och skicka bekräftelsemail
+          try {
+            const { sendNewTicketEmail } = await import('@/utils/mail-service');
+            
+            // Försök skicka bekräftelsemail för det nya ärendet
+            const mailResponse = await sendNewTicketEmail(newTicket);
+            
+            if (mailResponse) {
+              console.log(`Bekräftelsemail skickat för nytt ärende #${newTicket.id}`);
+            }
+          } catch (mailError) {
+            // Ignorera mailfil men logga det - don't let it affect ticket creation
+            console.error(`Fel vid skickande av bekräftelsemail för ärende #${newTicket.id}:`, mailError);
+          }
 
           console.log('Ticket created:', newTicket);
           res.status(201).json(newTicket);

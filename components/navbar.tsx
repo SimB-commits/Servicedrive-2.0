@@ -149,7 +149,7 @@ export const Navbar = () => {
                     type="button"
                     size="sm"
                     variant="light"
-                    onClick={() => setShowSearchBar(false)}
+                    onPress={() => setShowSearchBar(false)}
                   >
                     Avbryt
                   </Button>
@@ -175,7 +175,7 @@ export const Navbar = () => {
                 isIconOnly
                 variant="light"
                 aria-label="Sök"
-                onClick={() => setShowSearchBar(true)}
+                onPress={() => setShowSearchBar(true)}
               >
                 <SearchIcon />
               </Button>

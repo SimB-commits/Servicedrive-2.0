@@ -834,7 +834,7 @@ export default function KundPage() {
                     {customerCardTemplates.map(template => (
                       <DropdownItem 
                         key={template.id}
-                        onClick={() => handleSelectTemplate(template)}
+                        onPress={() => handleSelectTemplate(template)}
                       >
                         {template.cardName} {template.isDefault && '(Standard)'}
                       </DropdownItem>

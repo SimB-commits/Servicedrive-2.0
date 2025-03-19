@@ -45,7 +45,7 @@ export default function LogoutPage() {
                 <p className="text-center text-danger">{error}</p>
                 <button
                   className="mt-4 px-4 py-2 bg-primary text-white rounded"
-                  onClick={() => router.push('/auth/login')}
+                  onPress={() => router.push('/auth/login')}
                 >
                   Återgå till inloggning
                 </button>

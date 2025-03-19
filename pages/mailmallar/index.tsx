@@ -20,6 +20,7 @@ import {
 } from '@heroui/react';
 import { title } from '@/components/primitives';
 import { DeleteIcon, EditIcon } from '@/components/icons';
+import MailTemplateTest from '@/components/MailTemplateTest';
 
 interface MailTemplate {
   id: number;
@@ -342,26 +343,27 @@ export default function MailmallsPage() {
                   <TableCell>{truncateText(template.body, 50)}</TableCell>
                   <TableCell>{formatDate(template.createdAt)}</TableCell>
                   <TableCell>
-                    <div className="flex items-center gap-2">
-                      <Button 
-                        type="button" 
-                        variant="flat" 
-                        isIconOnly
-                        onPress={() => handleEditTemplate(template)}
-                      >
-                        <EditIcon />
-                      </Button>
-                      <Button 
-                        type="button" 
-                        variant="flat" 
-                        isIconOnly
-                        color="danger"
-                        onPress={() => handleDeleteTemplate(template.id)}
-                      >
-                        <DeleteIcon />
-                      </Button>
-                    </div>
-                  </TableCell>
+                  <div className="flex items-center gap-2">
+                    <MailTemplateTest />
+                    <Button 
+                      type="button" 
+                      variant="flat" 
+                      isIconOnly
+                      onPress={() => handleEditTemplate(template)}
+                    >
+                      <EditIcon />
+                    </Button>
+                    <Button 
+                      type="button" 
+                      variant="flat" 
+                      isIconOnly
+                      color="danger"
+                      onPress={() => handleDeleteTemplate(template.id)}
+                    >
+                      <DeleteIcon />
+                    </Button>
+                  </div>
+                </TableCell>
                 </TableRow>
               ))}
             </TableBody>

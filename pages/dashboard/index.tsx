@@ -620,7 +620,7 @@ export default function DashboardRedesign() {
                     {dueTickets.slice(0, 5).map(ticket => (
                       <TableRow 
                         key={ticket.id}
-                        onClick={() => router.push(`/arenden/${ticket.id}`)}
+                        onPress={() => router.push(`/arenden/${ticket.id}`)}
                       >
                         <TableCell>#{ticket.id}</TableCell>
                         <TableCell>{getCustomerName(ticket.customer)}</TableCell>
@@ -647,7 +647,7 @@ export default function DashboardRedesign() {
                 <div className="space-y-4">
                   {recentTickets.map((ticket, index) => (
                     <div key={ticket.id} className="cursor-pointer hover:bg-default-100 p-2 rounded-md transition-colors"
-                      onClick={() => router.push(`/arenden/${ticket.id}`)}>
+                      onPress={() => router.push(`/arenden/${ticket.id}`)}>
                       {index > 0 && <Divider className="my-3" />}
                       <div className="flex items-start">
                         <div className="bg-primary/10 text-primary p-2 rounded-full mr-3">
