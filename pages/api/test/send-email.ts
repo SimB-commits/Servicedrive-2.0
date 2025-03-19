@@ -1,7 +1,7 @@
 // pages/api/test/send-email.ts
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { getServerSession } from 'next-auth/next';
-import { authOptions } from '../api/auth/authOptions';
+import { authOptions } from '../auth/authOptions';
 import { initSendGrid, sendEmail } from '@/utils/sendgrid';
 import { logger } from '@/utils/logger';
 
