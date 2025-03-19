@@ -2,11 +2,8 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from '../auth/authOptions';
-import { initSendGrid, sendEmail } from '@/utils/sendgrid';
+import { initSendGrid, sendEmail, validateSenderEmail } from '@/utils/sendgrid';
 import { logger } from '@/utils/logger';
-
-// OBS: Ta bort denna endpoint innan du går till produktion
-// Den är endast avsedd för testning!
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   try {
@@ -21,11 +18,28 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(405).json({ error: 'Method not allowed' });
     }
 
-    // Hämta mottagaradress från förfrågan eller använd avsändarens egen email
-    const { to = session.user.email } = req.body;
+    // Hämta parametrar från förfrågan
+    const { 
+      to = session.user.email,
+      from = process.env.EMAIL_FROM || 'no-reply@servicedrive.se',
+      fromName
+    } = req.body;
     
     if (!to || typeof to !== 'string' || !to.includes('@')) {
-      return res.status(400).json({ error: 'Giltig e-postadress krävs' });
+      return res.status(400).json({ error: 'Giltig mottagaradress krävs' });
+    }
+    
+    if (!from || typeof from !== 'string' || !from.includes('@')) {
+      return res.status(400).json({ error: 'Giltig avsändaradress krävs' });
+    }
+    
+    // Validera avsändaradressen
+    const validation = validateSenderEmail(from);
+    if (!validation.valid) {
+      return res.status(400).json({ 
+        error: 'Ogiltig avsändaradress', 
+        details: validation.reason 
+      });
     }
     
     // Initiera SendGrid
@@ -37,6 +51,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       });
     }
     
+    // Formatera avsändaradressen med visningsnamn om det finns
+    const formattedFrom = fromName ? `${fromName} <${from}>` : from;
+    
     // Skapa HTML-innehåll med diagnostikinformation
     const htmlContent = `
       <h1>SendGrid Testmail från Servicedrive</h1>
@@ -45,7 +62,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       <h2>Diagnostikinformation:</h2>
       <ul>
         <li><strong>Tidpunkt:</strong> ${new Date().toISOString()}</li>
-        <li><strong>Avsändaradress:</strong> ${process.env.EMAIL_FROM || 'Ej konfigurerad'}</li>
+        <li><strong>Avsändaradress:</strong> ${formattedFrom}</li>
         <li><strong>Verifierade domäner:</strong> ${process.env.SENDGRID_VERIFIED_DOMAINS || 'Ej konfigurerade'}</li>
         <li><strong>Miljö:</strong> ${process.env.NODE_ENV}</li>
         <li><strong>Användare:</strong> ${session.user.email}</li>
@@ -56,7 +73,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // Skicka ett testmail
     const result = await sendEmail({
       to: to,
-      from: process.env.EMAIL_FROM || 'no-reply@example.com',
+      from: formattedFrom,
       subject: 'SendGrid Test från Servicedrive',
       text: 'Om du ser detta mail fungerar din SendGrid-integration!',
       html: htmlContent,
@@ -65,7 +82,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     
     logger.info('Test mail skickat från API', { 
       recipient: to,
-      sender: process.env.EMAIL_FROM,
+      sender: from,
+      senderName: fromName || undefined,
       messageId: result[0]?.headers['x-message-id'] 
     });
     
@@ -75,6 +93,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       details: {
         messageId: result[0]?.headers['x-message-id'],
         recipient: to,
+        sender: formattedFrom,
         sentAt: new Date().toISOString()
       }
     });

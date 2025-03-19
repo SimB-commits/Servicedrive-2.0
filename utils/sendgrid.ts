@@ -1,6 +1,9 @@
 // utils/sendgrid.ts
 import sgMail from '@sendgrid/mail';
 import { logger } from './logger';
+import { PrismaClient } from '@prisma/client';
+
+const prisma = new PrismaClient();
 
 /**
  * SendGrid konfiguration - samla alla inställningar på ett ställe
@@ -18,6 +21,7 @@ export const sendgridConfig = {
 export interface EmailData {
   to: string | string[];
   from: string;
+  fromName?: string; // Namn på avsändaren (visningsnamn)
   subject: string;
   text?: string;
   html: string;
@@ -26,6 +30,14 @@ export interface EmailData {
   bcc?: string | string[];
   attachments?: any[];
   categories?: string[]; // Användbart för spårning
+}
+
+// Interface för sändaradress
+export interface SenderAddress {
+  email: string;
+  name?: string;
+  default?: boolean;
+  isVerified: boolean;
 }
 
 // Interface för mailmall med variabler
@@ -64,17 +76,17 @@ export const initSendGrid = (): boolean => {
  * Validerar att en avsändaradress är godkänd för SendGrid
  * SendGrid kräver verifierade avsändare för att förhindra spoofing
  * @param email Email-adress att validera
- * @returns true om adressen är godkänd, annars false
+ * @returns { valid: boolean, reason?: string } Resultat med eventuell felorsak
  */
-export const validateSenderEmail = (email: string): boolean => {
+export const validateSenderEmail = (email: string): { valid: boolean; reason?: string } => {
   if (!email || !email.includes('@')) {
-    return false;
+    return { valid: false, reason: 'Ogiltig e-postadressformat' };
   }
   
   // Om vi är i utvecklingsläge och inga domäner är konfigurerade, godkänn alla
   if (sendgridConfig.debugMode && sendgridConfig.verifiedDomains.length === 0) {
     logger.warn(`Avsändarverifiering kringgås i utvecklingsläge för: ${email}`);
-    return true;
+    return { valid: true };
   }
   
   // Kolla om domänen finns i listan över verifierade domäner
@@ -84,10 +96,154 @@ export const validateSenderEmail = (email: string): boolean => {
   );
   
   if (!isVerified) {
-    logger.warn(`Ogiltig avsändardomän: ${emailDomain} finns inte bland verifierade domäner.`);
+    return { 
+      valid: false, 
+      reason: `Domänen ${emailDomain} är inte verifierad i SendGrid. Verifierade domäner: ${sendgridConfig.verifiedDomains.join(', ')}`
+    };
   }
   
-  return isVerified;
+  return { valid: true };
+};
+
+/**
+ * Hämtar alla verifierade avsändaradresser för en butik
+ * @param storeId Butikens ID
+ * @returns Lista med verifierade avsändaradresser
+ */
+export const getVerifiedSenderAddresses = async (storeId: number): Promise<SenderAddress[]> => {
+  try {
+    // Hämta butikens konfigurerade avsändaradresser från databasen
+    const senderAddresses = await prisma.senderAddress.findMany({
+      where: { storeId: storeId }
+    });
+    
+    // Om butiken har konfigurerade adresser, returnera dem
+    if (senderAddresses.length > 0) {
+      return senderAddresses.map(addr => ({
+        email: addr.email,
+        name: addr.name || undefined,
+        default: addr.isDefault,
+        isVerified: true  // De är redan verifierade i databasen
+      }));
+    }
+    
+    // Om inga adresser är konfigurerade, generera från verifierade domäner
+    const defaultAddresses: SenderAddress[] = [];
+    
+    // Lägg till standardadressen som första alternativ
+    const defaultEmail = sendgridConfig.defaultFromEmail;
+    if (defaultEmail) {
+      const validation = validateSenderEmail(defaultEmail);
+      defaultAddresses.push({
+        email: defaultEmail,
+        name: 'Servicedrive',
+        default: true,
+        isVerified: validation.valid
+      });
+    }
+    
+    // Lägg till support-adress om den är verifierad
+    const supportEmail = sendgridConfig.companySupportEmail;
+    if (supportEmail && supportEmail !== defaultEmail) {
+      const validation = validateSenderEmail(supportEmail);
+      defaultAddresses.push({
+        email: supportEmail,
+        name: 'Kundsupport',
+        default: false,
+        isVerified: validation.valid
+      });
+    }
+    
+    // Generera adresser från verifierade domäner
+    sendgridConfig.verifiedDomains.forEach(domain => {
+      const domain_clean = domain.trim().toLowerCase();
+      
+      // Skapa några förslag baserat på domänen
+      const potentialAddresses = [
+        { email: `no-reply@${domain_clean}`, name: 'Automatiskt Utskick' },
+        { email: `info@${domain_clean}`, name: 'Information' }
+      ];
+      
+      // Lägg till adresser som inte redan finns
+      potentialAddresses.forEach(addr => {
+        if (!defaultAddresses.some(a => a.email === addr.email)) {
+          defaultAddresses.push({
+            ...addr,
+            default: false,
+            isVerified: true
+          });
+        }
+      });
+    });
+    
+    return defaultAddresses;
+  } catch (error) {
+    logger.error('Fel vid hämtning av verifierade avsändaradresser', { error: error.message });
+    
+    // Returnera åtminstone standardadressen vid fel
+    return [{
+      email: sendgridConfig.defaultFromEmail,
+      name: 'Servicedrive',
+      default: true,
+      isVerified: true
+    }];
+  }
+};
+
+/**
+ * Sparar en ny avsändaradress för en butik efter verifiering
+ * @param storeId Butikens ID
+ * @param email Avsändarens e-postadress
+ * @param name Avsändarens visningsnamn
+ * @param setDefault Om adressen ska vara standardadress
+ * @returns Den sparade avsändaradressen eller ett felmeddelande
+ */
+export const saveSenderAddress = async (
+  storeId: number, 
+  email: string, 
+  name?: string, 
+  setDefault: boolean = false
+): Promise<{ success: boolean; data?: any; error?: string }> => {
+  try {
+    // Validera adressen först
+    const validation = validateSenderEmail(email);
+    if (!validation.valid) {
+      return { success: false, error: validation.reason };
+    }
+    
+    // Om denna ska vara standard, avaktivera andra standardadresser
+    if (setDefault) {
+      await prisma.senderAddress.updateMany({
+        where: { storeId, isDefault: true },
+        data: { isDefault: false }
+      });
+    }
+    
+    // Försök först uppdatera om adressen redan finns
+    const existingAddress = await prisma.senderAddress.findFirst({
+      where: { storeId, email }
+    });
+    
+    if (existingAddress) {
+      // Uppdatera existerande adress
+      const updated = await prisma.senderAddress.update({
+        where: { id: existingAddress.id },
+        data: { name, isDefault: setDefault }
+      });
+      
+      return { success: true, data: updated };
+    } else {
+      // Skapa ny adress
+      const created = await prisma.senderAddress.create({
+        data: { storeId, email, name, isDefault: setDefault }
+      });
+      
+      return { success: true, data: created };
+    }
+  } catch (error) {
+    logger.error('Fel vid sparande av avsändaradress', { error: error.message });
+    return { success: false, error: 'Kunde inte spara avsändaradressen: ' + error.message };
+  }
 };
 
 /**
@@ -122,12 +278,14 @@ export const processTemplate = (template: string, variables: TemplateVariables):
 
 /**
  * Bygger ett email från en mailmall med variabeldata
+ * Stöder nu anpassat från-namn
  */
 export const buildEmailFromTemplate = (
   template: { subject: string; body: string },
   variables: TemplateVariables,
   toEmail: string,
-  fromEmail: string = sendgridConfig.defaultFromEmail
+  fromEmail: string = sendgridConfig.defaultFromEmail,
+  fromName?: string
 ): EmailData => {
   // Behandla både ämne och innehåll för att ersätta variabler
   const processedSubject = processTemplate(template.subject, variables);
@@ -136,9 +294,12 @@ export const buildEmailFromTemplate = (
   // Skapa en textversion genom att ta bort HTML-taggar
   const textContent = processedHtml.replace(/<[^>]*>/g, '');
   
+  // Formatera avsändaradressen med visningsnamn om det finns
+  const formattedFrom = fromName ? `${fromName} <${fromEmail}>` : fromEmail;
+  
   return {
     to: toEmail,
-    from: fromEmail,
+    from: formattedFrom,
     subject: processedSubject,
     html: processedHtml,
     text: textContent,
@@ -165,9 +326,18 @@ export const sendEmail = async (
       }
     }
     
+    // Extrakt avsändaradress från from-fältet
+    let senderEmail = emailData.from;
+    
+    // Om from innehåller ett namn, extrahera emailadressen
+    if (senderEmail.includes('<') && senderEmail.includes('>')) {
+      senderEmail = senderEmail.match(/<([^>]+)>/)?.[1] || senderEmail;
+    }
+    
     // Validera från-email
-    if (!validateSenderEmail(emailData.from)) {
-      throw new Error(`Ogiltig från-adress: ${emailData.from}. Måste vara en verifierad avsändare i SendGrid.`);
+    const validation = validateSenderEmail(senderEmail);
+    if (!validation.valid) {
+      throw new Error(validation.reason);
     }
     
     // Ta bort eventuella undefined- eller null-värden i emailData
@@ -181,6 +351,7 @@ export const sendEmail = async (
         ? cleanedEmailData.to.substring(0, 3) + '***' 
         : 'multiple-recipients',
       subject: cleanedEmailData.subject,
+      from: senderEmail.split('@')[0].substring(0, 2) + '***@' + senderEmail.split('@')[1],
       templateBased: !!cleanedEmailData.categories?.includes('template-based')
     });
     
@@ -220,5 +391,7 @@ export default {
   processTemplate,
   buildEmailFromTemplate,
   validateSenderEmail,
+  getVerifiedSenderAddresses,
+  saveSenderAddress,
   config: sendgridConfig
 };

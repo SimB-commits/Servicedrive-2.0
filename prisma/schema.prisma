@@ -243,3 +243,18 @@ model MailTemplate {
   statuses   UserTicketStatus[]
 }
 
+// Modell för att lagra verifierade avsändaradresser per butik
+model SenderAddress {
+  id          Int      @id @default(autoincrement())
+  storeId     Int
+  email       String
+  name        String?
+  isDefault   Boolean  @default(false)
+  store       Store    @relation(fields: [storeId], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([storeId, email])
+  @@index([storeId, isDefault])
+}
+
