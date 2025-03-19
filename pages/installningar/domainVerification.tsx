@@ -10,15 +10,13 @@ import {
   Spinner, 
   Tabs, 
   Tab, 
-  Step, 
-  StepLabel, 
-  Stepper, 
   Divider,
   addToast
 } from '@heroui/react';
 import { title } from '@/components/primitives';
 import DnsRecord from '@/components/email/DnsRecord';
 import DomainVerificationStatus from '@/components/email/DomainVerificationStatus';
+import { Stepper, Step, StepLabel } from '@/components/Stepper';
 
 export default function DomainVerificationPage() {
   const { data: session, status } = useSession();
