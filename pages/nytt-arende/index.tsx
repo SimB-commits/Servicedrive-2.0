@@ -717,30 +717,30 @@ export default function CreateTicketPage() {
                   </CardHeader>
                   
                   <CardBody className="px-6 py-4">
-                    <div className="relative mb-6">
-                      <Input
-                        label="Sök kund"
-                        name="customerSearch"
-                        type="text"
-                        placeholder="Skriv kundnamn för att söka..."
-                        value={customerFormValues.name || ''}
-                        onValueChange={(value: string) => handleCustomerInputChange(value, 'name')}
-                      />
-                      {customerSuggestions.length > 0 && (
-                        <div className="absolute z-10 w-full mt-1 bg-background border rounded-md shadow-lg max-h-60 overflow-y-auto">
-                          {customerSuggestions.map((customer: any) => (
-                            <div
-                              key={customer.id}
-                              className="px-4 py-3 border-b last:border-b-0 hover:bg-gray-100 cursor-pointer transition-colors"
-                              onPress={() => handleSelectCustomer(customer)}
-                            >
-                              <div className="font-medium">{customer.name}</div>
-                              {customer.email && <div className="text-sm text-gray-500">{customer.email}</div>}
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
+                  <div className="relative mb-6">
+                    <Input
+                      label="Sök kund"
+                      name="customerSearch"
+                      type="text"
+                      placeholder="Skriv kundnamn för att söka..."
+                      value={customerFormValues.name || ''}
+                      onValueChange={(value: string) => handleCustomerInputChange(value, 'name')}
+                    />
+                    {customerSuggestions.length > 0 && (
+                      <div className="absolute z-50 w-full mt-1 bg-background border rounded-md shadow-lg max-h-60 overflow-y-auto">
+                        {customerSuggestions.map((customer: any) => (
+                          <div
+                            key={customer.id}
+                            className="px-4 py-3 border-b last:border-b-0 hover:bg-default-100 cursor-pointer transition-colors"
+                            onClick={() => handleSelectCustomer(customer)}
+                          >
+                            <div className="font-medium">{getCustomerDisplayName(customer)}</div>
+                            {customer.email && <div className="text-sm text-default-500">{customer.email}</div>}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                     
                     {selectedCustomer ? (
                       <div className="mb-4 p-4 bg-gray-50 rounded-md">

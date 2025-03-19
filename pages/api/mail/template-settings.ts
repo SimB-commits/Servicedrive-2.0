@@ -35,8 +35,6 @@ type FormattedSettings = {
   [key in MailTemplateUsage]?: TemplateSettingResponse;
 };
 
-
-
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   try {
     // Rate Limiting
@@ -134,6 +132,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       case 'PUT':
         // Uppdatera inställningar för en mailmall
         try {
+          // Logga inkommande data för felsökning
+          console.log('Inkommande data för PUT:', req.body);
+          
           // Validera inkommande data
           const result = updateSettingsSchema.safeParse(req.body);
           
@@ -169,6 +170,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           
           // Upsert-operation (skapa om den inte finns, uppdatera annars)
           try {
+            // Säkerställ att templateId är korrekt formaterat för databasen
+            const sanitizedTemplateId = templateId === null ? null : templateId;
+            
             const updatedSetting = await prisma.mailTemplateSettings.upsert({
               where: {
                 storeId_usage: {
@@ -177,12 +181,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
                 }
               },
               update: {
-                templateId
+                templateId: sanitizedTemplateId
               },
               create: {
                 storeId,
                 usage,
-                templateId
+                templateId: sanitizedTemplateId
               },
               include: {
                 template: {
@@ -206,18 +210,25 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           } catch (prismaError) {
             logger.error('Prisma-fel vid uppdatering av mallinställning', {
               error: prismaError instanceof Error ? prismaError.message : 'Unknown error',
+              stack: prismaError instanceof Error ? prismaError.stack : undefined,
               storeId,
-              usage
+              usage,
+              templateId: templateId // Logga templateId för att se vad som skickas
             });
             
-            return res.status(500).json({ error: 'Databasfel: Kunde inte uppdatera mallinställning' });
+            return res.status(500).json({ 
+              error: 'Databasfel: Kunde inte uppdatera mallinställning',
+              details: prismaError instanceof Error ? prismaError.message : 'Unknown database error'
+            });
           }
         } catch (error) {
           const errorMessage = error instanceof Error ? error.message : 'Unknown error';
           
           logger.error('Fel vid uppdatering av mailmallinställning', {
             error: errorMessage,
-            storeId
+            stack: error instanceof Error ? error.stack : undefined,
+            storeId,
+            requestBody: req.body
           });
           
           if (error instanceof z.ZodError) {
@@ -227,7 +238,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             });
           }
           
-          return res.status(500).json({ error: 'Kunde inte uppdatera mallinställning' });
+          return res.status(500).json({ 
+            error: 'Kunde inte uppdatera mallinställning',
+            details: errorMessage
+          });
         }
 
       default:
@@ -236,13 +250,19 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    logger.error('Error in template-settings.ts:', { error: errorMessage });
+    logger.error('Error in template-settings.ts:', { 
+      error: errorMessage,
+      stack: error instanceof Error ? error.stack : undefined
+    });
 
     if (error instanceof Error && error.constructor.name === 'RateLimiterRes') {
       return res.status(429).json({ message: 'För många förfrågningar. Försök igen senare.' });
     }
 
-    return res.status(500).json({ message: 'Ett internt serverfel uppstod.', details: errorMessage });
+    return res.status(500).json({ 
+      message: 'Ett internt serverfel uppstod.', 
+      details: errorMessage 
+    });
   } finally {
     await prisma.$disconnect();
   }

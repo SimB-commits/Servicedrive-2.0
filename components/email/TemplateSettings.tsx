@@ -124,7 +124,9 @@ const TemplateSettings: React.FC<TemplateSettingsProps> = ({ onSettingsUpdated }
     Object.entries(selectedTemplateIds).forEach(([usage, selectedId]) => {
       const currentSetting = settings[usage];
       const currentId = currentSetting?.templateId;
-      const selectedIdNum = selectedId ? Number(selectedId) : null;
+      
+      // Konvertera till nummer om inte null eller tom sträng
+      const selectedIdNum = selectedId && selectedId !== "" ? Number(selectedId) : null;
       
       if (selectedIdNum !== currentId) {
         changed = true;
@@ -151,7 +153,9 @@ const TemplateSettings: React.FC<TemplateSettingsProps> = ({ onSettingsUpdated }
       Object.entries(selectedTemplateIds).forEach(([usage, selectedId]) => {
         const currentSetting = settings[usage];
         const currentId = currentSetting?.templateId;
-        const selectedIdNum = selectedId ? Number(selectedId) : null;
+        
+        // Korrigerad logik: säkerställ att tom sträng blir null
+        const selectedIdNum = selectedId && selectedId !== "" ? Number(selectedId) : null;
         
         if (selectedIdNum !== currentId) {
           changedSettings.push({
@@ -160,6 +164,9 @@ const TemplateSettings: React.FC<TemplateSettingsProps> = ({ onSettingsUpdated }
           });
         }
       });
+      
+      // Logga för debug
+      console.log('Sparar följande ändringar:', changedSettings);
       
       // Spara varje ändrad inställning
       const results = [];
