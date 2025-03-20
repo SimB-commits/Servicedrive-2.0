@@ -1,376 +1,285 @@
-import React, { useRef, useState } from 'react';
-import { Button, Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, Dropdown, DropdownTrigger, DropdownMenu, DropdownItem, Spinner } from '@heroui/react';
-import { PrinterIcon } from '@/components/icons';
-
-// Typdeklarationer
-interface Customer {
-  firstName?: string;
-  lastName?: string;
-  email?: string;
-  phoneNumber?: string;
-  name?: string;
-}
-
-interface TicketType {
-  name: string;
-  fields: Array<{ name: string; fieldType: string }>;
-}
-
-export interface Ticket {
-  id: number;
-  status: string;
-  createdAt: string;
-  customer?: Customer;
-  ticketType?: TicketType;
-  dynamicFields: { [key: string]: any };
-  dueDate?: string;
-  customStatus?: {
-    name: string;
-    color: string;
-  };
-}
+// components/TicketPrinter.tsx
+import React, { useRef } from 'react';
+import { Button } from '@heroui/react';
 
 interface TicketPrinterProps {
-  ticket: Ticket;
+  ticket: any;
+  onClose?: () => void;
 }
 
-const TicketPrinter: React.FC<TicketPrinterProps> = ({ ticket }) => {
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [selectedPrinter, setSelectedPrinter] = useState<string | null>(null);
-  const [printers, setPrinters] = useState<string[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const printContentRef = useRef<HTMLDivElement>(null);
+const TicketPrinter: React.FC<TicketPrinterProps> = ({ ticket, onClose }) => {
+  const printRef = useRef<HTMLDivElement>(null);
 
-  // Funktion för att detektera tillgängliga kvittoskrivare
-  const detectPrinters = async () => {
-    setLoading(true);
-    setError(null);
+  // Funktion för att hantera utskrift
+  const handlePrint = () => {
+    // Öppna en ny utskriftsvänlig popup-fönster
+    const printWindow = window.open('', '_blank');
     
-    try {
-      // Här skulle vi normalt anropa ett API för att hämta skrivare
-      // För demonstration simulerar vi med en timeout
-      setTimeout(() => {
-        // Simulerad lista med skrivare
-        const mockPrinters = [
-          'Kvittoskrivare (58mm)',
-          'Kvittoskrivare (80mm)',
-          'PDF-skrivare'
-        ];
-        setPrinters(mockPrinters);
-        setSelectedPrinter(mockPrinters[0]);
-        setLoading(false);
-      }, 1000);
-    } catch (err) {
-      setError('Kunde inte hämta skrivare. Kontrollera att drivrutiner är installerade.');
-      setLoading(false);
+    if (!printWindow || !printRef.current) return;
+    
+    // Skapa innehållet för utskriften
+    const printContent = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Ärende #${ticket.id} - Utskrift</title>
+          <meta charset="utf-8">
+          <style>
+            /* Grundläggande stilar */
+            body {
+              font-family: Arial, sans-serif;
+              margin: 0;
+              padding: 0;
+              color: #000;
+              background-color: #fff;
+            }
+            
+            .print-container {
+              width: 100%;
+              max-width: 100%;
+              margin: 0 auto;
+              padding: 20px;
+              box-sizing: border-box;
+            }
+            
+            /* Tabellstilar som säkerställer att text inte kapas */
+            table {
+              width: 100%;
+              margin-bottom: 20px;
+              table-layout: fixed; /* Viktigt! Fixerar kolumnbredd */
+              border-collapse: collapse;
+            }
+            
+            td, th {
+              padding: 8px;
+              text-align: left;
+              vertical-align: top;
+              border-bottom: 1px solid #ddd;
+              /* Se till att text som är för lång bryts om till nästa rad */
+              word-wrap: break-word;
+              overflow-wrap: break-word;
+            }
+            
+            th {
+              width: 30%;
+              font-weight: bold;
+              background-color: #f8f8f8;
+            }
+            
+            /* Rubrikstil */
+            .print-header {
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+              margin-bottom: 20px;
+              border-bottom: 2px solid #000;
+              padding-bottom: 10px;
+            }
+            
+            .print-header h1 {
+              margin: 0;
+              font-size: 24px;
+            }
+            
+            /* Skrivarspecifika justeringar */
+            @media print {
+              body {
+                width: 100%;
+                margin: 0;
+                padding: 0;
+              }
+              
+              /* Förhindra att innehåll kapas vid sidbrytningar */
+              .page-break {
+                page-break-after: always;
+              }
+              
+              /* Viktig för att hantera marginaler vid utskrift */
+              @page {
+                size: A4;
+                margin: 1cm;
+              }
+            }
+          </style>
+        </head>
+        <body>
+          <div class="print-container">
+            <div class="print-header">
+              <h1>Ärende #${ticket.id}</h1>
+              <div>${new Date().toLocaleDateString('sv-SE')}</div>
+            </div>
+            
+            <h2>Kundinformation</h2>
+            <table>
+              <tr>
+                <th>Kund</th>
+                <td>${getCustomerName(ticket.customer)}</td>
+              </tr>
+              ${ticket.customer?.email ? `
+              <tr>
+                <th>E-post</th>
+                <td>${ticket.customer.email}</td>
+              </tr>` : ''}
+              ${ticket.customer?.phoneNumber ? `
+              <tr>
+                <th>Telefon</th>
+                <td>${ticket.customer.phoneNumber}</td>
+              </tr>` : ''}
+              ${ticket.customer?.address ? `
+              <tr>
+                <th>Adress</th>
+                <td>${ticket.customer.address}${ticket.customer.postalCode ? ', ' + ticket.customer.postalCode : ''}${ticket.customer.city ? ', ' + ticket.customer.city : ''}</td>
+              </tr>` : ''}
+            </table>
+            
+            <h2>Ärendedetaljer</h2>
+            <table>
+              <tr>
+                <th>Ärendetyp</th>
+                <td>${ticket.ticketType?.name || '-'}</td>
+              </tr>
+              <tr>
+                <th>Status</th>
+                <td>${getStatusDisplay(ticket)}</td>
+              </tr>
+              <tr>
+                <th>Skapad</th>
+                <td>${ticket.createdAt ? new Date(ticket.createdAt).toLocaleDateString('sv-SE') : '-'}</td>
+              </tr>
+              ${ticket.dueDate ? `
+              <tr>
+                <th>Deadline</th>
+                <td>${new Date(ticket.dueDate).toLocaleDateString('sv-SE')}</td>
+              </tr>` : ''}
+            </table>
+            
+            <h2>Ärendeinformation</h2>
+            <table>
+              ${renderDynamicFields(ticket)}
+            </table>
+            
+            <div class="signature-area" style="margin-top: 40px;">
+              <p style="border-top: 1px solid #000; padding-top: 10px; width: 200px; margin-top: 70px;">
+                Signatur
+              </p>
+            </div>
+          </div>
+          
+          <script>
+            // Automatisk utskrift när sidan har laddats
+            window.onload = function() {
+              window.print();
+              // Stänger fönstret efter utskrift om det stöds av webbläsaren
+              // Fungerar ej i vissa webbläsare av säkerhetsskäl
+              setTimeout(function() {
+                window.close();
+              }, 500);
+            };
+          </script>
+        </body>
+      </html>
+    `;
+    
+    // Skriv innehållet till popup-fönstret
+    printWindow.document.open();
+    printWindow.document.write(printContent);
+    printWindow.document.close();
+  };
+  
+  // Hjälpfunktion för att visa kundnamn
+  const getCustomerName = (customer: any) => {
+    if (!customer) return "-";
+    
+    if (customer.name) {
+      return customer.name;
     }
-  };
 
-  // Öppna modal och detektera skrivare
-  const handleOpenModal = () => {
-    setIsModalOpen(true);
-    detectPrinters();
-  };
-
-  // Formatera kundnamn
-  const getCustomerName = () => {
-    if (!ticket.customer) return 'Okänd kund';
-    
-    if (ticket.customer.firstName || ticket.customer.lastName) {
-      const fullName = `${ticket.customer.firstName || ''} ${ticket.customer.lastName || ''}`.trim();
+    if (customer.firstName || customer.lastName) {
+      const fullName = `${customer.firstName || ''} ${customer.lastName || ''}`.trim();
       if (fullName) return fullName;
     }
-    
-    if (ticket.customer.name) {
-      return ticket.customer.name;
-    }
-    
-    return ticket.customer.email || `Kund #${ticket.id}`;
-  };
 
-  // Formatera status
-  const getStatusDisplay = () => {
+    if (customer.id) {
+      return `Kund #${customer.id}`;
+    }
+
+    return "Okänd kund";
+  };
+  
+  // Hjälpfunktion för att visa status
+  const getStatusDisplay = (ticket: any) => {
     if (ticket.customStatus) {
       return ticket.customStatus.name;
     }
     
-    const statusMap: Record<string, string> = {
-      'OPEN': 'Öppen',
-      'CLOSED': 'Stängd',
-      'IN_PROGRESS': 'Pågående'
+    const statusNames: Record<string, string> = {
+      OPEN: 'Öppen',
+      CLOSED: 'Färdig',
+      IN_PROGRESS: 'Pågående',
+      RESOLVED: 'Löst'
     };
     
-    return statusMap[ticket.status] || ticket.status;
+    return statusNames[ticket.status] || ticket.status;
   };
-
-  // Formatera datum
-  const formatDate = (dateString?: string) => {
-    if (!dateString) return '-';
-    try {
-      return new Date(dateString).toLocaleDateString('sv-SE');
-    } catch (e) {
-      return '-';
-    }
-  };
-
-  // Hantera utskrift
-  const handlePrint = async () => {
-    if (!selectedPrinter) {
-      setError('Ingen skrivare vald');
-      return;
-    }
+  
+  // Hjälpfunktion för att generera HTML för dynamiska fält
+  const renderDynamicFields = (ticket: any) => {
+    if (!ticket.ticketType?.fields || !ticket.dynamicFields) return '';
     
-    try {
-      setLoading(true);
-      
-      // Först: Skicka till API för utskrift på kvittoskrivare
-      if (selectedPrinter.includes('Kvittoskrivare')) {
-        try {
-          const response = await fetch('/api/tickets/print', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              ticketId: ticket.id,
-              printerName: selectedPrinter
-            }),
-          });
-          
-          const data = await response.json();
-          
-          if (response.ok) {
-            setLoading(false);
-            setIsModalOpen(false);
-            return;
+    return ticket.ticketType.fields
+      .filter((field: any) => field.fieldType !== "DUE_DATE")
+      .map((field: any) => {
+        const value = ticket.dynamicFields[field.name];
+        let displayValue = '-';
+        
+        if (value !== undefined && value !== null) {
+          if (field.fieldType === "DATE" && value) {
+            try {
+              displayValue = new Date(value).toLocaleDateString("sv-SE");
+            } catch (e) {
+              displayValue = value;
+            }
           } else {
-            throw new Error(data.message || 'Kunde inte skriva ut till kvittoskrivare');
+            displayValue = String(value);
           }
-        } catch (apiError) {
-          console.error('API error:', apiError);
-          // Fallback till browser utskrift om API fail
-          setError('Fel vid skrivarkommunikation. Använder browser-utskrift istället.');
         }
-      }
-      
-      // Fallback eller PDF-skrivare: använd browser utskrift
-      if (printContentRef.current) {
-        // Skapa en kopia av innehållet för utskrift
-        const printWindow = window.open('', '_blank');
-        if (printWindow) {
-          printWindow.document.write(`
-            <html>
-              <head>
-                <title>Utskrift - Ärende #${ticket.id}</title>
-                <style>
-                  body { 
-                    font-family: monospace; 
-                    width: 80mm;
-                    margin: 0;
-                    padding: 10px;
-                    font-size: 12px;
-                  }
-                  .divider { 
-                    border-top: 1px dashed #000;
-                    margin: 10px 0;
-                  }
-                  .title {
-                    text-align: center;
-                    font-weight: bold;
-                    font-size: 14px;
-                    margin-bottom: 10px;
-                  }
-                  .field {
-                    display: flex;
-                    justify-content: space-between;
-                    margin-bottom: 5px;
-                  }
-                  .field-name {
-                    font-weight: bold;
-                  }
-                  .section {
-                    margin-bottom: 10px;
-                  }
-                  .center {
-                    text-align: center;
-                  }
-                  @media print {
-                    body {
-                      width: 100%;
-                    }
-                  }
-                </style>
-              </head>
-              <body>
-                ${printContentRef.current.innerHTML}
-              </body>
-            </html>
-          `);
-          printWindow.document.close();
-          
-          // Vänta tills innehållet laddas, sedan skriv ut
-          printWindow.onload = () => {
-            printWindow.print();
-            printWindow.close();
-          };
-        }
-      }
-      
-      setLoading(false);
-      setIsModalOpen(false);
-    } catch (err) {
-      setError('Ett fel uppstod vid utskrift. Försök igen.');
-      setLoading(false);
-    }
+        
+        return `
+          <tr>
+            <th>${field.name}</th>
+            <td>${displayValue}</td>
+          </tr>
+        `;
+      })
+      .join('');
   };
 
   return (
-    <>
-      <Button 
-        color="primary" 
-        variant="flat" 
-        startContent={<PrinterIcon />}
-        onPress={handleOpenModal}
-      >
-        Skriv ut kvitto
-      </Button>
+    <div>
+      {/* Förhandsgranskningsyta som vanligtvis är dold */}
+      <div ref={printRef} style={{ display: 'none' }}>
+        {/* Innehåll för förhandsgranskning - vi genererar HTML direkt i handlePrint istället */}
+      </div>
       
-      <Modal isOpen={isModalOpen} onOpenChange={setIsModalOpen}>
-        <ModalContent>
-          <ModalHeader>
-            <h3 className="text-lg font-semibold">Skriv ut ärendekvitto</h3>
-          </ModalHeader>
-          
-          <ModalBody>
-            {loading ? (
-              <div className="flex flex-col items-center justify-center py-10">
-                <Spinner />
-                <p className="mt-4">Förbereder utskrift...</p>
-              </div>
-            ) : (
-              <>
-                <div className="mb-4">
-                  <p className="mb-2">Välj kvittoskrivare:</p>
-                  <Dropdown>
-                    <DropdownTrigger>
-                      <Button 
-                        variant="flat" 
-                        className="w-full justify-between"
-                      >
-                        {selectedPrinter || 'Välj skrivare'}
-                      </Button>
-                    </DropdownTrigger>
-                    <DropdownMenu 
-                      aria-label="Välj skrivare" 
-                      onAction={(key) => setSelectedPrinter(key as string)}
-                      selectionMode="single"
-                      selectedKeys={selectedPrinter ? [selectedPrinter] : []}
-                    >
-                      {printers.map((printer) => (
-                        <DropdownItem key={printer}>{printer}</DropdownItem>
-                      ))}
-                    </DropdownMenu>
-                  </Dropdown>
-                </div>
-                
-                {error && (
-                  <div className="bg-danger-50 border border-danger-100 text-danger-700 p-3 rounded-md mb-4">
-                    {error}
-                  </div>
-                )}
-                
-                <div className="mt-4 p-4 border border-default-200 rounded-md bg-default-50">
-                  <h4 className="font-medium mb-2">Förhandsgranskning:</h4>
-                  
-                  {/* Utskriftsinnehåll */}
-                  <div 
-                    ref={printContentRef} 
-                    className="font-mono text-xs overflow-x-auto whitespace-pre-wrap"
-                    style={{ maxWidth: '100%' }}
-                  >
-                    <div className="title">SERVICEDRIVE</div>
-                    
-                    <div className="divider"></div>
-                    
-                    <div className="title">ÄRENDE #{ticket.id}</div>
-                    <div className="center">{ticket.ticketType?.name || 'Ingen ärendetyp'}</div>
-                    <div className="divider"></div>
-                    
-                    <div className="section">
-                      <div className="field">
-                        <span className="field-name">Kund:</span>
-                        <span>{getCustomerName()}</span>
-                      </div>
-                      
-                      {ticket.customer?.phoneNumber && (
-                        <div className="field">
-                          <span className="field-name">Telefon:</span>
-                          <span>{ticket.customer.phoneNumber}</span>
-                        </div>
-                      )}
-                    </div>
-                    
-                    <div className="divider"></div>
-                    
-                    <div className="section">
-                      
-                      
-                      {ticket.dueDate && (
-                        <div className="field">
-                          <span className="field-name">Deadline:</span>
-                          <span>{formatDate(ticket.dueDate)}</span>
-                        </div>
-                      )}
-                    </div>
-                    
-                    {ticket.ticketType?.fields && ticket.dynamicFields && (
-                      <>
-                        <div className="divider"></div>
-                        <div className="section">
-                          {ticket.ticketType.fields
-                            .filter(field => field.fieldType !== "DUE_DATE" && 
-                                            ticket.dynamicFields[field.name] !== undefined)
-                            .map((field, index) => (
-                              <div key={index} className="field">
-                                <span className="field-name">{field.name}:</span>
-                                <span>
-                                  {field.fieldType === "DATE" 
-                                    ? formatDate(ticket.dynamicFields[field.name]) 
-                                    : String(ticket.dynamicFields[field.name])}
-                                </span>
-                              </div>
-                            ))}
-                        </div>
-                      </>
-                    )}
-                    
-                    <div className="divider"></div>
-                    
-                  </div>
-                </div>
-              </>
-            )}
-          </ModalBody>
-          
-          <ModalFooter>
-            <Button 
-              variant="flat" 
-              onPress={() => setIsModalOpen(false)}
-            >
-              Avbryt
-            </Button>
-            <Button 
-              color="primary"
-              onPress={handlePrint}
-              isDisabled={loading || !selectedPrinter}
-            >
-              Skriv ut
-            </Button>
-          </ModalFooter>
-        </ModalContent>
-      </Modal>
-    </>
+      {/* Utskriftsknapp */}
+      <div className="flex justify-center mt-4 space-x-4">
+        <Button
+          color="primary"
+          onPress={handlePrint}
+        >
+          Skriv ut ärende
+        </Button>
+        
+        {onClose && (
+          <Button
+            variant="flat"
+            onPress={onClose}
+          >
+            Stäng
+          </Button>
+        )}
+      </div>
+    </div>
   );
 };
 

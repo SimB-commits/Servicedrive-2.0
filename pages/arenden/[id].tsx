@@ -14,7 +14,11 @@ import {
   DropdownTrigger, 
   DropdownMenu, 
   DropdownItem,
-  addToast 
+  addToast,
+  Modal, 
+  ModalContent, 
+  ModalHeader, 
+  ModalBody, 
 } from '@heroui/react';
 import { title } from '@/components/primitives';
 import TicketPrinter from '@/components/TicketPrinter';
@@ -40,6 +44,8 @@ export default function TicketPage() {
   const [ticket, setTicket] = useState<Ticket | null>(null);
   const [statusOptions, setStatusOptions] = useState<Array<{ name: string; uid: string; color?: string }>>([]);
   const [activeTab, setActiveTab] = useState('details');
+  const [showPrinter, setShowPrinter] = useState(false);
+  const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null);
 
   // Hämta ärende
   useEffect(() => {
@@ -54,6 +60,7 @@ export default function TicketPage() {
         }
         const data = await res.json();
         setTicket(data);
+        setSelectedTicket(data);
       } catch (error) {
         console.error('Fel vid hämtning av ärende:', error);
       } finally {
@@ -61,7 +68,7 @@ export default function TicketPage() {
       }
     };
 
-    fetchTicket();
+    fetchTicket();    
   }, [id, session]);
 
   // Hämta statusar
@@ -270,8 +277,16 @@ export default function TicketPage() {
               </DropdownMenu>
             </Dropdown>
             
-            {/* Utskriftskomponenten integrerad här */}
-            <TicketPrinter ticket={ticket} />
+            {/* Utskriftsknapp */}
+            <Button
+              variant="flat"
+              color="primary"
+              onPress={() => setShowPrinter(true)}
+              startContent={<PrinterIcon />} // Om du har en ikon-komponent, annars ta bort detta
+            >
+              Skriv ut
+            </Button>
+            
             
             <Button color="primary" variant="flat" onPress={() => router.push('/arenden')}>
               Tillbaka till ärendelistan
@@ -290,6 +305,13 @@ export default function TicketPage() {
           <Tab key="messages" title="Meddelanden" />
           <Tab key="history" title="Historik" />
         </Tabs>
+
+        {/* Utskriftskomponenten */}
+        {showPrinter && (
+          <TicketPrinter 
+            ticket={selectedTicket} 
+            onClose={() => setShowPrinter(false)} />
+        )}
 
         {activeTab === 'details' && (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -478,6 +500,25 @@ export default function TicketPage() {
               </div>
             </CardBody>
           </Card>
+        )}
+        {ticket && (
+          <Modal 
+            isOpen={showPrinter} 
+            onOpenChange={(isOpen) => setShowPrinter(isOpen)}
+            size="lg"
+          >
+            <ModalContent>
+              <ModalHeader>
+                <h2 className="text-lg font-semibold">Utskrift av ärende #{ticket.id}</h2>
+              </ModalHeader>
+              <ModalBody>
+                <TicketPrinter 
+                  ticket={ticket} 
+                  onClose={() => setShowPrinter(false)} 
+                />
+              </ModalBody>
+            </ModalContent>
+          </Modal>
         )}
       </div>
     </section>
