@@ -5,22 +5,15 @@ import {
   addToast,
   Form,
   Button,
-  Modal,
-  ModalContent,
-  ModalHeader,
-  ModalBody,
-  ModalFooter,
   Table,
   TableHeader,
   TableRow,
   TableBody,
   TableCell,
   TableColumn,
-  Input,
   Card,
   CardBody,
   CardHeader,
-  Divider,
   Tabs,
   Tab,
   Spinner
@@ -28,28 +21,13 @@ import {
 import { title, subtitle } from '@/components/primitives';
 import { DeleteIcon, EditIcon } from '@/components/icons';
 import StatusModal from '@/components/StatusModal';
-import StatusMailTemplateIntegration from '@/components/email/StatusMailTemplateIntegration';
-
-// Definiera de grundläggande statusarna
-const BASIC_STATUSES = [
-  { id: 'OPEN', name: 'Öppen', color: '#22c55e', systemName: 'OPEN' },
-  { id: 'IN_PROGRESS', name: 'Pågående', color: '#3b82f6', systemName: 'IN_PROGRESS' },
-  { id: 'RESOLVED', name: 'Löst', color: '#6366f1', systemName: 'RESOLVED' },
-  { id: 'CLOSED', name: 'Stängd', color: '#64748b', systemName: 'CLOSED' }
-];
+import { SYSTEM_STATUSES } from '@/utils/ticketStatus';
 
 export default function Arendestatusar() {
   const { data: session, status } = useSession();
-  const [statusName, setStatusName] = useState('');
-  const [selectedMailTemplate, setSelectedMailTemplate] = useState('');
-  const [statusColor, setStatusColor] = useState('#ffffff'); // Defaultfärg
-  const [validationErrors, setValidationErrors] = useState({});
   const [statuses, setStatuses] = useState<any[]>([]);
   const [systemStatuses, setSystemStatuses] = useState<any[]>([]);
   const [editingStatus, setEditingStatus] = useState<any>(null);
-  const [editName, setEditName] = useState('');
-  const [editSelectedMailTemplate, setEditSelectedMailTemplate] = useState('');
-  const [editStatusColor, setEditStatusColor] = useState('#ffffff');
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [mailTemplates, setMailTemplates] = useState<any[]>([]);
   const [activeTab, setActiveTab] = useState('custom');
@@ -66,14 +44,14 @@ export default function Arendestatusar() {
         if (res.ok) {
           // Filtrera bort eventuella grundläggande statusar från vanliga statusar
           const customStatuses = data.filter(status => 
-            !BASIC_STATUSES.some(bs => bs.name.toLowerCase() === status.name.toLowerCase())
+            !SYSTEM_STATUSES.some(bs => bs.name.toLowerCase() === status.name.toLowerCase())
           );
           setStatuses(customStatuses);
           
           // Kontrollera om vi har UserTicketStatus-poster för grundläggande statusar
           const foundSystemStatuses = [];
           
-          for (const basicStatus of BASIC_STATUSES) {
+          for (const basicStatus of SYSTEM_STATUSES) {
             const existingStatus = data.find(status => 
               status.name.toLowerCase() === basicStatus.name.toLowerCase()
             );
@@ -155,65 +133,7 @@ export default function Arendestatusar() {
   if (status === 'loading') return <p>Laddar session...</p>;
   if (!session) return <p>Ingen session – vänligen logga in.</p>;
 
-  // Skapa ny status
-  const handleSubmit = async (event: { preventDefault: () => void; }) => {
-    event.preventDefault();
-    setValidationErrors({});
-
-    const payload = {
-      name: statusName,
-      mailTemplateId: selectedMailTemplate ? Number(selectedMailTemplate) : null,
-      color: statusColor
-    };
-
-    try {
-      const res = await fetch('/api/tickets/statuses', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-      if (res.ok) {
-        const newStatus = await res.json();
-        addToast({
-          title: 'Status skapad',
-          description: 'Den nya statusen skapades framgångsrikt!',
-          color: 'success',
-          variant: 'flat'
-        });
-        setStatuses((prev) => [...prev, newStatus]);
-        setStatusName('');
-        setSelectedMailTemplate('');
-        setStatusColor('#ffffff');
-        setValidationErrors({});
-        setCreateModalOpen(false);
-      } else {
-        const data = await res.json();
-        setValidationErrors(data.errors || {});
-        addToast({
-          title: 'Fel',
-          description: data.message || 'Något gick fel vid skapandet.',
-          color: 'danger',
-          variant: 'flat'
-        });
-      }
-    } catch (error) {
-      console.error('Fel vid skapande av status:', error);
-      addToast({
-        title: 'Fel',
-        description: 'Ett fel inträffade vid skapandet av statusen.',
-        color: 'danger',
-        variant: 'flat'
-      });
-    }
-  };
-
-  const handleReset = () => {
-    setStatusName('');
-    setSelectedMailTemplate('');
-    setStatusColor('#ffffff');
-    setValidationErrors({});
-  };
-
+  // Hantera borttagning av status
   const handleDelete = async (id: number) => {
     if (!confirm('Är du säker på att du vill ta bort denna status?')) return;
     
@@ -247,13 +167,12 @@ export default function Arendestatusar() {
     }
   };
 
+  // Öppna redigeringsmodal för en status
   const handleEdit = (status: any) => {
     setEditingStatus(status);
-    setEditName(status.name);
-    setEditSelectedMailTemplate(status.mailTemplateId ? status.mailTemplateId.toString() : '');
-    setEditStatusColor(status.color || '#ffffff');
   };
 
+  // Hantera uppdatering av systemstatusar
   const handleEditSystemStatus = async (systemStatus: any, templateId: number | null) => {
     try {
       // Om det är en befintlig status, uppdatera den
@@ -331,22 +250,25 @@ export default function Arendestatusar() {
     }
   };
 
-  const handleEditSubmit = async () => {
+  // Hantera uppdatering av en status
+  const handleUpdateStatus = async (statusData: any) => {
     if (!editingStatus) return;
     
-    setValidationErrors({});
+    // Om det är en grundläggande status, uppdatera endast mailTemplateId
+    if (editingStatus.isSystemStatus) {
+      await handleEditSystemStatus(editingStatus, statusData.mailTemplateId);
+      setEditingStatus(null);
+      return;
+    }
     
-    const payload = {
-      name: editName,
-      mailTemplateId: editSelectedMailTemplate ? Number(editSelectedMailTemplate) : null,
-      color: editStatusColor
-    };
+    // För anpassade statusar, uppdatera alla fält
     try {
       const res = await fetch(`/api/tickets/statuses/${editingStatus.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
+        body: JSON.stringify(statusData)
       });
+      
       if (res.ok) {
         const updatedStatus = await res.json();
         addToast({
@@ -355,6 +277,7 @@ export default function Arendestatusar() {
           color: 'success',
           variant: 'flat'
         });
+        
         setStatuses((prev) =>
           prev.map((s) => (s.id === updatedStatus.id ? updatedStatus : s))
         );
@@ -379,8 +302,48 @@ export default function Arendestatusar() {
     }
   };
 
+  // Hantera skapande av en ny status
+  const handleCreateStatus = async (statusData: any) => {
+    try {
+      const res = await fetch('/api/tickets/statuses', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(statusData)
+      });
+      
+      if (res.ok) {
+        const newStatus = await res.json();
+        addToast({
+          title: 'Status skapad',
+          description: 'Den nya statusen skapades framgångsrikt!',
+          color: 'success',
+          variant: 'flat'
+        });
+        
+        setStatuses((prev) => [...prev, newStatus]);
+        setCreateModalOpen(false);
+      } else {
+        const data = await res.json();
+        addToast({
+          title: 'Fel',
+          description: data.message || 'Något gick fel vid skapandet.',
+          color: 'danger',
+          variant: 'flat'
+        });
+      }
+    } catch (error) {
+      console.error('Fel vid skapande av status:', error);
+      addToast({
+        title: 'Fel',
+        description: 'Ett fel inträffade vid skapandet av statusen.',
+        color: 'danger',
+        variant: 'flat'
+      });
+    }
+  };
+
+  // Öppna modal för att koppla en mailmall till en systemstatus
   const handleSelectMailTemplate = (systemStatus: any) => {
-    // Öppna modal för att redigera status, men anpassa för systemstatus
     setEditingStatus({
       ...systemStatus,
       isSystemStatus: true
@@ -592,119 +555,18 @@ export default function Arendestatusar() {
         </Tabs>
       </div>
 
-      {/* Modal för skapande av ny status */}
-      <Modal
-        isOpen={createModalOpen}
-        onOpenChange={setCreateModalOpen}
-        scrollBehavior="inside"
-        backdrop="opaque"
-        size="md"
-      >
-        <ModalContent>
-          <ModalHeader>
-            <h2 className="text-xl font-semibold">Skapa ny status</h2>
-          </ModalHeader>
-          <ModalBody>
-            <Form
-              onSubmit={handleSubmit}
-              onReset={handleReset}
-              validationBehavior="native"
-              validationErrors={validationErrors}
-              className="space-y-6"
-            >
-              <div>
-                <Input
-                  id="statusName"
-                  name="statusName"
-                  label="Namn på status"
-                  labelPlacement="outside"
-                  value={statusName}
-                  onValueChange={(value) => setStatusName(value)}
-                  placeholder="Ange statusens namn"
-                  isRequired
-                  className="w-full"
-                />
-              </div>
-              
-              <div>
-                <label htmlFor="mailTemplate" className="block text-sm font-medium mb-2">
-                  Välj mailmall
-                </label>
-                <select
-                  id="mailTemplate"
-                  name="mailTemplate"
-                  value={selectedMailTemplate}
-                  onChange={(e) => setSelectedMailTemplate(e.target.value)}
-                  className="w-full rounded-md border border-default-200 bg-background p-2"
-                >
-                  <option value="">Ingen mall vald</option>
-                  {mailTemplates.map((mt) => (
-                    <option key={mt.id} value={mt.id}>
-                      {mt.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              
-              <div>
-                <label htmlFor="statusColor" className="block text-sm font-medium mb-2">
-                  Välj färg
-                </label>
-                <div className="flex items-center gap-2">
-                  <input
-                    id="statusColor"
-                    name="statusColor"
-                    type="color"
-                    value={statusColor}
-                    onChange={(e) => setStatusColor(e.target.value)}
-                    className="border border-default-200 rounded p-1 h-10 w-16"
-                  />
-                  <div className="w-8 h-8 rounded-full border border-default-200" style={{ backgroundColor: statusColor }} />
-                  <span className="ml-2 text-sm text-default-600">{statusColor}</span>
-                </div>
-              </div>
-            </Form>
-          </ModalBody>
-          <ModalFooter>
-            <Button 
-              type="button" 
-              variant="flat" 
-              onPress={() => {
-                handleReset();
-                setCreateModalOpen(false);
-              }}
-            >
-              Avbryt
-            </Button>
-            <Button 
-              type="submit" 
-              color="primary"
-              onPress={(e) => {
-                // Simulera ett form submit genom att hitta och klicka på submit-knappen
-                const form = document.querySelector('form');
-                if (form) {
-                  const submitEvent = new Event('submit', { cancelable: true, bubbles: true });
-                  form.dispatchEvent(submitEvent);
-                }
-              }}
-            >
-              Skapa status
-            </Button>
-          </ModalFooter>
-        </ModalContent>
-      </Modal>
-
-      {/* Modal för redigering av status */}
+      {/* StatusModal för att skapa/redigera statusar */}
       <StatusModal
-        isOpen={!!editingStatus}
-        onClose={() => setEditingStatus(null)}
+        isOpen={createModalOpen || !!editingStatus}
+        onClose={() => {
+          setCreateModalOpen(false);
+          setEditingStatus(null);
+        }}
         onSave={(statusData) => {
-          if (editingStatus?.isSystemStatus) {
-            // För systemstatusar, tillåt endast ändring av mailmall
-            handleEditSystemStatus(editingStatus, statusData.mailTemplateId);
+          if (editingStatus) {
+            handleUpdateStatus(statusData);
           } else {
-            // För vanliga statusar, tillåt fullständig redigering
-            handleEditSubmit();
+            handleCreateStatus(statusData);
           }
         }}
         editingStatus={editingStatus}

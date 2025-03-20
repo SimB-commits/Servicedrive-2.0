@@ -16,6 +16,7 @@ import {
   Badge
 } from '@heroui/react';
 import StatusMailTemplateIntegration from './email/StatusMailTemplateIntegration';
+import { hasMailTemplate } from '@/utils/ticketStatus';
 
 interface MailTemplate {
   id: number;
@@ -27,7 +28,7 @@ interface UserTicketStatus {
   name: string;
   color: string;
   mailTemplateId: number | null;
-  isSystemStatus?: boolean; // Ny flagga för grundläggande statusar
+  isSystemStatus?: boolean; // Flagga för grundläggande statusar
 }
 
 interface StatusModalProps {
@@ -38,6 +39,10 @@ interface StatusModalProps {
   mailTemplates: MailTemplate[];
 }
 
+/**
+ * Modal för att skapa eller redigera en status.
+ * Hanterar både systemstatusar och anpassade statusar.
+ */
 const StatusModal: React.FC<StatusModalProps> = ({
   isOpen,
   onClose,
@@ -95,7 +100,7 @@ const StatusModal: React.FC<StatusModalProps> = ({
     
     setSaving(true);
     
-    // För grundläggande statusar skickar vi bara mailmall-ändringen
+    // Förbered olika data beroende på om det är grundläggande status eller anpassad
     const statusData = isSystemStatus 
       ? {
           mailTemplateId: selectedTemplateId ? Number(selectedTemplateId) : null
@@ -226,7 +231,7 @@ const StatusModal: React.FC<StatusModalProps> = ({
                 </div>
               </Tab>
               
-              {editingStatus && (
+              {editingStatus && !isSystemStatus && (
                 <Tab key="mail" title="Mail">
                   <div className="py-4">
                     <StatusMailTemplateIntegration 

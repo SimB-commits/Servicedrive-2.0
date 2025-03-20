@@ -16,10 +16,19 @@ import {
   addToast
 } from "@heroui/react";
 import StatusConfirmationDialog from "@/components/StatusConfirmationDialog";
+import { 
+  TicketStatus, 
+  combineStatusOptions,
+  findStatusByUid, 
+  hasMailTemplate,
+  getEffectiveStatus 
+} from "@/utils/ticketStatus";
 
 // Definiera typer
 type Customer = {
-  name: string;
+  name?: string;
+  firstName?: string;
+  lastName?: string;
   email?: string;
   phoneNumber?: string;
 };
@@ -33,7 +42,7 @@ export type Ticket = {
   customStatus: any;
   dueDate: any;
   id: number;
-  status: string; // Vi förväntar oss att statusen sparas som en uid (t.ex. "OPEN", "CUSTOM_X")
+  status: string;
   createdAt: string;
   customer?: Customer;
   ticketType?: TicketType;
@@ -55,15 +64,15 @@ const TicketEditDrawer: React.FC<TicketEditDrawerProps> = ({
 }) => {
   // Lokalt formulärdata
   const [formData, setFormData] = useState<any>({});
-  // Dynamiska statusalternativ hämtade från API:t
-  const [statusOptions, setStatusOptions] = useState<Array<{ name: string; uid: string; color?: string; mailTemplateId?: number | null }>>([]);
+  // Statusvalmöjligheter
+  const [statusOptions, setStatusOptions] = useState<TicketStatus[]>([]);
   
   // State för statusbekräftelsedialogrutan
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
   const [newStatus, setNewStatus] = useState<string | null>(null);
-  const [selectedStatusInfo, setSelectedStatusInfo] = useState<{ name: string; color: string; mailTemplateId?: number | null } | null>(null);
+  const [selectedStatusInfo, setSelectedStatusInfo] = useState<TicketStatus | null>(null);
   
-  // NYTT: Spara användarens val om mail ska skickas eller inte
+  // Spara användarens val om mail ska skickas eller inte
   const [shouldSendEmail, setShouldSendEmail] = useState<boolean>(true);
 
   // Hämta statusalternativ när komponenten monteras
@@ -73,38 +82,9 @@ const TicketEditDrawer: React.FC<TicketEditDrawerProps> = ({
         const res = await fetch('/api/tickets/statuses');
         if (res.ok) {
           const data = await res.json();
-          
-          // För felsökning
-          console.log('API-svar från statuses:', data);
-          
-          // Skapa defaultstatusar med explicit mailTemplateId: null
-          const defaultStatuses = [
-            { name: "Öppen", uid: "OPEN", color: "#ff9500", mailTemplateId: null },
-            { name: "Färdig", uid: "CLOSED", color: "#3BAB48", mailTemplateId: null },
-            { name: "Pågående", uid: "IN_PROGRESS", color: "#ffa500", mailTemplateId: null },
-          ];
-          
-          // Mappa de dynamiska statusarna och konvertera mailTemplateId explicit
-          const dynamicStatuses = data.map((s: any) => {
-            // Konvertera explicit till nummer eller null
-            const templateId = s.mailTemplateId !== undefined && s.mailTemplateId !== null 
-              ? Number(s.mailTemplateId) 
-              : null;
-              
-            return { 
-              ...s, 
-              uid: `CUSTOM_${s.id}`,
-              name: s.name,
-              color: s.color,
-              mailTemplateId: templateId
-            };
-          });
-          
-          // Logga för felsökning
-          console.log('Bearbetade statusar:', [...defaultStatuses, ...dynamicStatuses]);
-          
-          const merged = [...defaultStatuses, ...dynamicStatuses];
-          setStatusOptions(merged);
+          // Använd den centraliserade funktionen för att kombinera statusar
+          const combinedOptions = combineStatusOptions(data);
+          setStatusOptions(combinedOptions);
         }
       } catch (error) {
         console.error('Fel vid hämtning av statusar:', error);
@@ -125,11 +105,14 @@ const TicketEditDrawer: React.FC<TicketEditDrawerProps> = ({
           }
         });
       }
+      
+      // Använd getEffectiveStatus för att få rätt status-ID
+      const statusUid = getEffectiveStatus(ticket);
+      
       setFormData({
-        // Om customStatus finns, sätt status till "CUSTOM_" + customStatus.id, annars använd ticket.status
-        status: ticket.customStatus ? `CUSTOM_${ticket.customStatus.id}` : ticket.status,
+        status: statusUid,
         customer: {
-          name: ticket.customer?.name || "",
+          name: getCustomerName(ticket.customer),
           email: ticket.customer?.email || "",
           phoneNumber: ticket.customer?.phoneNumber || "",
         },
@@ -140,6 +123,21 @@ const TicketEditDrawer: React.FC<TicketEditDrawerProps> = ({
       setShouldSendEmail(true);
     }
   }, [ticket]);
+
+  // Hjälpfunktion för att hämta kundnamn
+  const getCustomerName = (customer?: Customer): string => {
+    if (!customer) return "";
+    
+    if (customer.name) {
+      return customer.name;
+    }
+    
+    if (customer.firstName || customer.lastName) {
+      return `${customer.firstName || ''} ${customer.lastName || ''}`.trim();
+    }
+    
+    return customer.email || "";
+  };
 
   if (!ticket) return null;
 
@@ -153,18 +151,11 @@ const TicketEditDrawer: React.FC<TicketEditDrawerProps> = ({
 
   // Hantera statusändring - visa bekräftelsedialog först
   const handleStatusChange = (statusUid: string) => {
-    const selectedOption = statusOptions.find(option => option.uid === statusUid);
+    const selectedOption = findStatusByUid(statusUid, statusOptions);
     
     if (selectedOption) {
-      // Lägg till loggning för felsökning
-      console.log('Status vald:', selectedOption.name, 'har mailTemplateId:', selectedOption.mailTemplateId);
-      
       setNewStatus(statusUid);
-      setSelectedStatusInfo({
-        name: selectedOption.name,
-        color: selectedOption.color || '#000000',
-        mailTemplateId: selectedOption.mailTemplateId
-      });
+      setSelectedStatusInfo(selectedOption);
       setConfirmDialogOpen(true);
     } else {
       // Om statusen inte hittas bland alternativ (borde inte inträffa), sätt direkt
@@ -237,7 +228,7 @@ const TicketEditDrawer: React.FC<TicketEditDrawerProps> = ({
   const handleConfirmStatus = (sendEmail: boolean) => {
     confirmStatusChange(newStatus);
     
-    // NYTT: Spara användarens val om mail ska skickas eller inte
+    // Spara användarens val om mail ska skickas eller inte
     setShouldSendEmail(sendEmail);
     
     setConfirmDialogOpen(false);
@@ -261,16 +252,15 @@ const TicketEditDrawer: React.FC<TicketEditDrawerProps> = ({
         </DrawerHeader>
         <DrawerBody>
           <div className="space-y-4">
-            {/* Nytt fält för att ändra status med dynamiska alternativ */}
+            {/* Status dropdown med dynamiska alternativ */}
             <div>
               <label className="block font-bold mb-1">Status</label>
               <Dropdown>
                 <DropdownTrigger>
                   <Button variant="flat">
                     {
-                      // Visa statusnamnet om vi hittar det i de dynamiska alternativen,
-                      // annars visa uid:t direkt
-                      statusOptions.find(opt => opt.uid === formData.status)?.name ||
+                      // Visa statusnamnet om vi hittar det i alternativen, annars visa uid
+                      findStatusByUid(formData.status, statusOptions)?.name ||
                       formData.status ||
                       "Välj status"
                     }
@@ -288,7 +278,13 @@ const TicketEditDrawer: React.FC<TicketEditDrawerProps> = ({
                 >
                   {statusOptions.map((option) => (
                     <DropdownItem key={option.uid}>
-                      {option.name}
+                      <div className="flex items-center gap-2">
+                        <div 
+                          className="w-3 h-3 rounded-full" 
+                          style={{ backgroundColor: option.color }} 
+                        />
+                        {option.name}
+                      </div>
                     </DropdownItem>
                   ))}
                 </DropdownMenu>
@@ -332,14 +328,14 @@ const TicketEditDrawer: React.FC<TicketEditDrawerProps> = ({
             <Button
               onPress={async () => {
                 try {
-                  // Hämta information om vald status för att kontrollera om den har en mailmall
-                  const selectedStatus = statusOptions.find(opt => opt.uid === formData.status);
-                  const hasMailTemplate = selectedStatus?.mailTemplateId !== null && 
-                                         selectedStatus?.mailTemplateId !== undefined;
+                  // Hämta information om vald status
+                  const selectedStatus = findStatusByUid(formData.status, statusOptions);
                   
-                  // ÄNDRAT: Använd både hasMailTemplate och användarens val
+                  // Kontrollera om den har en mailmall
+                  const statusHasMailTemplate = hasMailTemplate(selectedStatus);
+                  
                   // Mail skickas endast om det finns en mall OCH användaren har valt att skicka
-                  const sendNotification = hasMailTemplate && shouldSendEmail;
+                  const sendNotification = statusHasMailTemplate && shouldSendEmail;
 
                   const preparedData = prepareFormData(formData, ticket, sendNotification);
                   const res = await fetch(`/api/tickets/${ticket.id}`, {
@@ -347,25 +343,29 @@ const TicketEditDrawer: React.FC<TicketEditDrawerProps> = ({
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify(preparedData),
                   });
+                  
                   if (res.ok) {
                     const updatedTicket = await res.json();
                     onTicketUpdated(updatedTicket);
                     onClose();
                     
-                    // ÄNDRAT: Korrekt toastmeddelande baserat på vad som faktiskt sker
+                    // Korrekt toastmeddelande baserat på vad som faktiskt sker
                     addToast({
                       title: 'Ärende uppdaterat',
-                      description: hasMailTemplate && shouldSendEmail
+                      description: statusHasMailTemplate && shouldSendEmail
                         ? 'Ärendet har uppdaterats och mail har skickats till kunden'
                         : 'Ärendet har uppdaterats utan mailnotifiering',
                       color: 'success',
                       variant: 'flat'
                     });
                   } else {
-                    console.error("Kunde inte uppdatera ärendet");
+                    const errorData = await res.json().catch(() => ({}));
+                    const errorMsg = errorData.message || 'Kunde inte uppdatera ärendet';
+                    
+                    console.error("Fel vid uppdatering:", errorMsg);
                     addToast({
                       title: 'Fel',
-                      description: 'Kunde inte uppdatera ärendet',
+                      description: errorMsg,
                       color: 'danger',
                       variant: 'flat'
                     });
@@ -388,15 +388,17 @@ const TicketEditDrawer: React.FC<TicketEditDrawerProps> = ({
       </DrawerContent>
       
       {/* StatusConfirmationDialog för statusändringar */}
-      <StatusConfirmationDialog
-        isOpen={confirmDialogOpen}
-        onClose={() => setConfirmDialogOpen(false)}
-        onConfirm={handleConfirmStatus}
-        statusName={selectedStatusInfo?.name || ''}
-        statusColor={selectedStatusInfo?.color || '#000000'}
-        ticketId={ticket.id}
-        hasMailTemplate={Boolean(selectedStatusInfo?.mailTemplateId)}
-      />
+      {selectedStatusInfo && (
+        <StatusConfirmationDialog
+          isOpen={confirmDialogOpen}
+          onClose={() => setConfirmDialogOpen(false)}
+          onConfirm={handleConfirmStatus}
+          statusName={selectedStatusInfo.name}
+          statusColor={selectedStatusInfo.color}
+          ticketId={ticket.id}
+          hasMailTemplate={hasMailTemplate(selectedStatusInfo)}
+        />
+      )}
     </Drawer>
   );
 };

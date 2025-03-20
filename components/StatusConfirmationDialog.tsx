@@ -20,6 +20,9 @@ interface StatusConfirmationDialogProps {
   hasMailTemplate: boolean;
 }
 
+/**
+ * Dialogruta för att bekräfta statusändringar och välja om mail ska skickas.
+ */
 const StatusConfirmationDialog: React.FC<StatusConfirmationDialogProps> = ({
   isOpen,
   onClose,
@@ -29,17 +32,8 @@ const StatusConfirmationDialog: React.FC<StatusConfirmationDialogProps> = ({
   ticketId,
   hasMailTemplate,
 }) => {
+  // State för om mail ska skickas till kunden
   const [sendEmail, setSendEmail] = useState(true);
-
-  // Logga för felsökning
-  useEffect(() => {
-    if (isOpen) {
-      console.log('StatusConfirmationDialog öppnad med:', { 
-        statusName, 
-        hasMailTemplate 
-      });
-    }
-  }, [isOpen, statusName, hasMailTemplate]);
 
   // Återställ checkboxen när dialogen öppnas
   useEffect(() => {
