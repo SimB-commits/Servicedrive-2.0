@@ -78,7 +78,32 @@ export function normalizeApiStatus(apiStatus: any): CustomStatus {
  */
 export function combineStatusOptions(customStatuses: any[] = []): TicketStatus[] {
   const normalizedCustomStatuses = customStatuses.map(normalizeApiStatus);
-  return [...SYSTEM_STATUSES, ...normalizedCustomStatuses];
+  const combinedStatuses: TicketStatus[] = [...SYSTEM_STATUSES];
+  
+  // Gå igenom alla anpassade statusar
+  normalizedCustomStatuses.forEach(customStatus => {
+    // Kontrollera om denna anpassade status motsvarar en systemstatus
+    // genom att jämföra namn (strängen, inte UID)
+    const matchingSystemStatusIndex = combinedStatuses.findIndex(
+      status => status.name.toLowerCase() === customStatus.name.toLowerCase()
+    );
+    
+    if (matchingSystemStatusIndex >= 0) {
+      // Om en matchande systemstatus hittades, uppdatera den med egenskaper från den anpassade statusen
+      // (speciellt mailTemplateId) istället för att lägga till en ny status
+      combinedStatuses[matchingSystemStatusIndex] = {
+        ...combinedStatuses[matchingSystemStatusIndex],
+        mailTemplateId: customStatus.mailTemplateId,
+        // Behåll isSystemStatus = true
+        isSystemStatus: combinedStatuses[matchingSystemStatusIndex].isSystemStatus
+      };
+    } else {
+      // Om det inte finns någon matchande systemstatus, lägg till den anpassade statusen
+      combinedStatuses.push(customStatus);
+    }
+  });
+  
+  return combinedStatuses;
 }
 
 /**
