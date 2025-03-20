@@ -14,12 +14,11 @@ import {
   DropdownTrigger, 
   DropdownMenu, 
   DropdownItem,
-  addToast,
-  // Tar bort onödiga Modal-importer
+  addToast
 } from '@heroui/react';
 import { title } from '@/components/primitives';
-// Tar bort importen av TicketPrinter eftersom vi genererar HTML direkt
 import { PrinterIcon } from '@/components/icons';
+import StatusConfirmationDialog from '@/components/StatusConfirmationDialog';
 
 interface Ticket {
   customStatus: any;
@@ -40,9 +39,12 @@ export default function TicketPage() {
   const { data: session, status } = useSession();
   const [loading, setLoading] = useState(true);
   const [ticket, setTicket] = useState<Ticket | null>(null);
-  const [statusOptions, setStatusOptions] = useState<Array<{ name: string; uid: string; color?: string }>>([]);
+  const [statusOptions, setStatusOptions] = useState<Array<{ name: string; uid: string; color?: string; mailTemplateId?: number | null }>>([]);
   const [activeTab, setActiveTab] = useState('details');
-  // Ingen state behövs för utskrift längre
+  
+  // State för statusbekräftelsedialogrutan
+  const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
+  const [selectedStatus, setSelectedStatus] = useState<{ uid: string; name: string; color: string; mailTemplateId?: number | null } | null>(null);
 
   // Hämta ärende
   useEffect(() => {
@@ -87,7 +89,8 @@ export default function TicketPage() {
             ...s, 
             uid: `CUSTOM_${s.id}`,
             name: s.name,
-            color: s.color
+            color: s.color,
+            mailTemplateId: s.mailTemplateId
           }));
           
           const merged = [...defaultStatuses, ...dynamicStatuses];
@@ -101,15 +104,21 @@ export default function TicketPage() {
     fetchStatuses();
   }, [session]);
 
-  // Funktion för att uppdatera status
-  const updateStatus = async (newStatus: string) => {
+  // Visa bekräftelsedialog istället för att uppdatera direkt
+  const handleStatusChange = (statusOption: any) => {
+    setSelectedStatus(statusOption);
+    setConfirmDialogOpen(true);
+  };
+
+  // Faktisk uppdatering av status efter bekräftelse
+  const updateStatus = async (newStatus: string, sendEmail: boolean) => {
     if (!ticket || !id) return;
 
     try {
-      console.log('Försöker uppdatera status till:', newStatus);
+      console.log('Uppdaterar status till:', newStatus, 'Skicka mail:', sendEmail);
       
       // Skapa ett fullständigt payload för att behålla alla befintliga värden
-      // men uppdatera status
+      // men uppdatera status och mailNotification-flaggan
       const payload = {
         // Behåll befintliga värden från ticket
         dynamicFields: ticket.dynamicFields,
@@ -121,7 +130,10 @@ export default function TicketPage() {
         dueDate: ticket.dueDate,
         
         // Uppdatera status
-        status: newStatus
+        status: newStatus,
+        
+        // Skicka med flaggan för om mail ska skickas eller inte
+        sendNotification: sendEmail
       };
 
       const res = await fetch(`/api/tickets/${id}`, {
@@ -140,12 +152,15 @@ export default function TicketPage() {
       }
 
       const updatedTicket = await res.json();
-      console.log('Uppdaterat ärende:', updatedTicket);
       setTicket(updatedTicket);
+      
+      const statusMessage = sendEmail 
+        ? 'Ärendets status har uppdaterats och mail har skickats till kunden'
+        : 'Ärendets status har uppdaterats utan mailnotifiering';
       
       addToast({
         title: 'Status uppdaterad',
-        description: 'Ärendets status har uppdaterats',
+        description: statusMessage,
         color: 'success',
         variant: 'flat'
       });
@@ -469,7 +484,7 @@ export default function TicketPage() {
                 {statusOptions.map((option) => (
                   <DropdownItem 
                     key={option.uid} 
-                    onPress={() => updateStatus(option.uid)}
+                    onPress={() => handleStatusChange(option)}
                   >
                     <div className="flex items-center gap-2">
                       <div 
@@ -711,7 +726,21 @@ export default function TicketPage() {
           </Card>
         )}
 
-        {/* Ingen modal behövs - utskriften sker direkt när knappen klickas */}
+        {/* StatusConfirmationDialog för att bekräfta statusändring */}
+        <StatusConfirmationDialog
+          isOpen={confirmDialogOpen}
+          onClose={() => setConfirmDialogOpen(false)}
+          onConfirm={(sendEmail) => {
+            if (selectedStatus) {
+              updateStatus(selectedStatus.uid, sendEmail);
+              setConfirmDialogOpen(false);
+            }
+          }}
+          statusName={selectedStatus?.name || ''}
+          statusColor={selectedStatus?.color || '#000000'}
+          ticketId={ticket.id}
+          hasMailTemplate={selectedStatus?.mailTemplateId !== null && selectedStatus?.mailTemplateId !== undefined}
+        />
       </div>
     </section>
   );
