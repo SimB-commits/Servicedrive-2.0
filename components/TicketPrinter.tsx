@@ -290,7 +290,7 @@ const TicketPrinter: React.FC<TicketPrinterProps> = ({ ticket }) => {
                     style={{ maxWidth: '100%' }}
                   >
                     <div className="title">SERVICEDRIVE</div>
-                    <div className="center">{formatDate(new Date().toISOString())}</div>
+                    
                     <div className="divider"></div>
                     
                     <div className="title">ÄRENDE #{ticket.id}</div>
@@ -302,12 +302,7 @@ const TicketPrinter: React.FC<TicketPrinterProps> = ({ ticket }) => {
                         <span className="field-name">Kund:</span>
                         <span>{getCustomerName()}</span>
                       </div>
-                      {ticket.customer?.email && (
-                        <div className="field">
-                          <span className="field-name">E-post:</span>
-                          <span>{ticket.customer.email}</span>
-                        </div>
-                      )}
+                      
                       {ticket.customer?.phoneNumber && (
                         <div className="field">
                           <span className="field-name">Telefon:</span>
@@ -319,14 +314,8 @@ const TicketPrinter: React.FC<TicketPrinterProps> = ({ ticket }) => {
                     <div className="divider"></div>
                     
                     <div className="section">
-                      <div className="field">
-                        <span className="field-name">Status:</span>
-                        <span>{getStatusDisplay()}</span>
-                      </div>
-                      <div className="field">
-                        <span className="field-name">Skapad:</span>
-                        <span>{formatDate(ticket.createdAt)}</span>
-                      </div>
+                      
+                      
                       {ticket.dueDate && (
                         <div className="field">
                           <span className="field-name">Deadline:</span>
@@ -357,8 +346,7 @@ const TicketPrinter: React.FC<TicketPrinterProps> = ({ ticket }) => {
                     )}
                     
                     <div className="divider"></div>
-                    <div className="center">Tack för din beställning!</div>
-                    <div className="center">www.servicedrive.se</div>
+                    
                   </div>
                 </div>
               </>

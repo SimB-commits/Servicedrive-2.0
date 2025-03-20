@@ -30,25 +30,51 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     switch (method) {
       case 'GET':
-        try {
-          const tickets = await prisma.ticket.findMany({
-            where: { storeId: session.user.storeId },
-            include: {
-              customer: true,
-              user: true,
-              assignedUser: true,
-              ticketType: { include: { fields: true } },
-              customStatus: true, // Lägg till denna rad
-              messages: true,
-            },
-          });
-          
-          res.status(200).json(tickets);
-        } catch (error) {
-          console.error(error);
-          res.status(500).json({ error: 'Server error' });
-        }
-        break;
+  try {
+    const { customerId, limit } = req.query;
+    
+    // Bygg where-villkoret dynamiskt
+    const whereClause: any = { 
+      storeId: session.user.storeId 
+    };
+    
+    // Om customerId anges, filtrera endast ärenden för den kunden
+    if (customerId && !Array.isArray(customerId)) {
+      // Konvertera customerId till heltal eftersom query-parametrar alltid är strängar
+      whereClause.customerId = parseInt(customerId, 10);
+      
+      // Validera att det är ett giltigt tal
+      if (isNaN(whereClause.customerId)) {
+        return res.status(400).json({ error: 'Invalid customerId parameter' });
+      }
+    }
+    
+    // Hämta ärenden med filter
+    const tickets = await prisma.ticket.findMany({
+      where: whereClause,
+      include: {
+        customer: true,
+        user: true,
+        assignedUser: true,
+        ticketType: { include: { fields: true } },
+        customStatus: true, 
+        messages: true,
+      },
+      // Om limit anges, begränsa antalet resultat
+      ...(limit && !Array.isArray(limit) && !isNaN(parseInt(limit, 10)) ? 
+        { take: parseInt(limit, 10) } : {}),
+      // Sortera efter skapandedatum, nyaste först
+      orderBy: {
+        createdAt: 'desc'
+      }
+    });
+    
+    res.status(200).json(tickets);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Server error' });
+  }
+  break;
 
       case 'POST':
         try {

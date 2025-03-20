@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { useRouter } from "next/router";
 import {
   Drawer,
   DrawerContent,
@@ -55,6 +56,7 @@ type CustomerDrawerProps = {
 const CustomerDrawer: React.FC<CustomerDrawerProps> = ({ isOpen, onClose, customer }) => {
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [loading, setLoading] = useState(false);
+  const router = useRouter();
 
   // Hämta kundens ärenden när drawern öppnas
   useEffect(() => {
@@ -80,6 +82,13 @@ const CustomerDrawer: React.FC<CustomerDrawerProps> = ({ isOpen, onClose, custom
     } finally {
       setLoading(false);
     }
+  };
+
+  // Funktion för att navigera till ärendesidan när en rad klickas
+  const handleTicketClick = (ticketId: number) => {
+    // Stäng drawern och navigera till ärendesidan
+    onClose();
+    router.push(`/arenden/${ticketId}`);
   };
 
   if (!customer) return null;
@@ -184,7 +193,11 @@ const CustomerDrawer: React.FC<CustomerDrawerProps> = ({ isOpen, onClose, custom
                   </TableHeader>
                   <TableBody>
                     {tickets.map((ticket) => (
-                      <TableRow key={ticket.id}>
+                      <TableRow 
+                        key={ticket.id}
+                        onClick={() => handleTicketClick(ticket.id)}
+                        className="cursor-pointer transition-colors hover:bg-default-100"
+                      >
                         <TableCell>{ticket.id}</TableCell>
                         <TableCell>{ticket.ticketType?.name || "-"}</TableCell>
                         <TableCell>{getTicketStatus(ticket)}</TableCell>
@@ -200,7 +213,10 @@ const CustomerDrawer: React.FC<CustomerDrawerProps> = ({ isOpen, onClose, custom
           </div>
         </DrawerBody>
         <DrawerFooter>
-          <Button onPress={onClose} variant="flat">
+          <Button 
+            onPress={onClose} 
+            variant="flat"
+          >
             Stäng
           </Button>
         </DrawerFooter>

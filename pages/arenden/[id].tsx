@@ -1,8 +1,6 @@
-// pages/arenden/[id].tsx
+import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
-import { useEffect, useState } from 'react';
 import { useSession } from 'next-auth/react';
-import { GetServerSideProps } from 'next';
 import { 
   Card, 
   CardHeader, 
@@ -15,37 +13,23 @@ import {
   Dropdown, 
   DropdownTrigger, 
   DropdownMenu, 
-  DropdownItem 
+  DropdownItem,
+  addToast 
 } from '@heroui/react';
 import { title } from '@/components/primitives';
+import TicketPrinter from '@/components/TicketPrinter';
+import { PrinterIcon } from '@/components/icons';
 
 interface Ticket {
+  customStatus: any;
+  dueDate: any;
   id: number;
   status: string;
   createdAt: string;
-  updatedAt: string;
   customer?: any;
-  ticketType?: {
-    name: string;
-    fields: Array<{ fieldType: string; name: string }>;
-  };
+  ticketType?: any;
   dynamicFields: { [key: string]: any };
-  dueDate?: string;
-  customStatus?: {
-    id: number;
-    name: string;
-    color: string;
-  };
-  messages?: Array<{
-    id: number;
-    content: string;
-    createdAt: string;
-    senderId: string;
-    sender?: {
-      id: string;
-      email: string;
-    };
-  }>;
+  messages?: any[];
 }
 
 export default function TicketPage() {
@@ -158,10 +142,22 @@ export default function TicketPage() {
       const updatedTicket = await res.json();
       console.log('Uppdaterat ärende:', updatedTicket);
       setTicket(updatedTicket);
+      
+      addToast({
+        title: 'Status uppdaterad',
+        description: 'Ärendets status har uppdaterats',
+        color: 'success',
+        variant: 'flat'
+      });
 
     } catch (error) {
       console.error('Fel vid uppdatering av status:', error);
-      alert('Kunde inte uppdatera status: ' + (error instanceof Error ? error.message : 'Oväntat fel'));
+      addToast({
+        title: 'Fel',
+        description: error instanceof Error ? error.message : 'Kunde inte uppdatera status',
+        color: 'danger',
+        variant: 'flat'
+      });
     }
   };
 
@@ -247,6 +243,8 @@ export default function TicketPage() {
               {ticket.ticketType?.name} • Skapad {new Date(ticket.createdAt).toLocaleDateString('sv-SE')}
             </p>
           </div>
+          
+          {/* Här har vi nu knapparna, inklusive utskriftsfunktionen */}
           <div className="flex gap-3">
             <Dropdown>
               <DropdownTrigger>
@@ -271,6 +269,10 @@ export default function TicketPage() {
                 ))}
               </DropdownMenu>
             </Dropdown>
+            
+            {/* Utskriftskomponenten integrerad här */}
+            <TicketPrinter ticket={ticket} />
+            
             <Button color="primary" variant="flat" onPress={() => router.push('/arenden')}>
               Tillbaka till ärendelistan
             </Button>
@@ -337,9 +339,10 @@ export default function TicketPage() {
             
             {/* Ärendeinformation */}
             <Card className="col-span-1 md:col-span-2">
-              <CardHeader className="px-6 py-4">
+              <CardHeader className="px-6 py-4 flex justify-between items-center">
                 <h2 className="text-lg font-medium">Ärendeinformation</h2>
               </CardHeader>
+              
               <CardBody className="px-6 py-4">
                 <div className="space-y-4">
                   <div className="flex justify-between">
