@@ -142,10 +142,7 @@ const TicketPrinter: React.FC<TicketPrinterProps> = ({ ticket, onClose }) => {
                 <th>Status</th>
                 <td>${getStatusDisplay(ticket)}</td>
               </tr>
-              <tr>
-                <th>Skapad</th>
-                <td>${ticket.createdAt ? new Date(ticket.createdAt).toLocaleDateString('sv-SE') : '-'}</td>
-              </tr>
+              
               ${ticket.dueDate ? `
               <tr>
                 <th>Deadline</th>

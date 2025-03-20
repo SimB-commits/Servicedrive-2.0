@@ -15,13 +15,10 @@ import {
   DropdownMenu, 
   DropdownItem,
   addToast,
-  Modal, 
-  ModalContent, 
-  ModalHeader, 
-  ModalBody, 
+  // Tar bort onödiga Modal-importer
 } from '@heroui/react';
 import { title } from '@/components/primitives';
-import TicketPrinter from '@/components/TicketPrinter';
+// Tar bort importen av TicketPrinter eftersom vi genererar HTML direkt
 import { PrinterIcon } from '@/components/icons';
 
 interface Ticket {
@@ -30,6 +27,7 @@ interface Ticket {
   id: number;
   status: string;
   createdAt: string;
+  updatedAt: string;
   customer?: any;
   ticketType?: any;
   dynamicFields: { [key: string]: any };
@@ -44,8 +42,7 @@ export default function TicketPage() {
   const [ticket, setTicket] = useState<Ticket | null>(null);
   const [statusOptions, setStatusOptions] = useState<Array<{ name: string; uid: string; color?: string }>>([]);
   const [activeTab, setActiveTab] = useState('details');
-  const [showPrinter, setShowPrinter] = useState(false);
-  const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null);
+  // Ingen state behövs för utskrift längre
 
   // Hämta ärende
   useEffect(() => {
@@ -60,7 +57,6 @@ export default function TicketPage() {
         }
         const data = await res.json();
         setTicket(data);
-        setSelectedTicket(data);
       } catch (error) {
         console.error('Fel vid hämtning av ärende:', error);
       } finally {
@@ -127,9 +123,6 @@ export default function TicketPage() {
         // Uppdatera status
         status: newStatus
       };
-      
-      // Debugging: Logga det fullständiga payload
-      console.log('Skickar payload:', JSON.stringify(payload));
 
       const res = await fetch(`/api/tickets/${id}`, {
         method: 'PUT',
@@ -186,6 +179,219 @@ export default function TicketPage() {
     };
 
     return statusMap[ticket?.status || ''] || { name: ticket?.status || 'Okänd', color: '#cccccc' };
+  };
+
+  // Funktion för att generera HTML för utskriftsfönstret
+  const generatePrintContent = (ticket: Ticket) => {
+    return `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Ärende #${ticket.id} - Utskrift</title>
+          <meta charset="utf-8">
+          <style>
+            /* Grundläggande stilar */
+            body {
+              font-family: Arial, sans-serif;
+              margin: 0;
+              padding: 0;
+              color: #000;
+              background-color: #fff;
+            }
+            
+            .print-container {
+              width: 100%;
+              max-width: 100%;
+              margin: 0 auto;
+              padding: 20px;
+              box-sizing: border-box;
+            }
+            
+            /* Tabellstilar som säkerställer att text inte kapas */
+            table {
+              width: 100%;
+              margin-bottom: 20px;
+              table-layout: fixed; /* Viktigt! Fixerar kolumnbredd */
+              border-collapse: collapse;
+            }
+            
+            td, th {
+              padding: 8px;
+              text-align: left;
+              vertical-align: top;
+              border-bottom: 1px solid #ddd;
+              /* Se till att text som är för lång bryts om till nästa rad */
+              word-wrap: break-word;
+              overflow-wrap: break-word;
+            }
+            
+            th {
+              width: 30%;
+              font-weight: bold;
+              background-color: #f8f8f8;
+            }
+            
+            /* Rubrikstil */
+            .print-header {
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+              margin-bottom: 20px;
+              border-bottom: 2px solid #000;
+              padding-bottom: 10px;
+            }
+            
+            .print-header h1 {
+              margin: 0;
+              font-size: 24px;
+            }
+            
+            /* Skrivarspecifika justeringar */
+            @media print {
+              body {
+                width: 100%;
+                margin: 0;
+                padding: 0;
+              }
+              
+              /* Förhindra att innehåll kapas vid sidbrytningar */
+              .page-break {
+                page-break-after: always;
+              }
+              
+              /* Viktig för att hantera marginaler vid utskrift */
+              @page {
+                size: A4;
+                margin: 1cm;
+              }
+            }
+          </style>
+        </head>
+        <body>
+          <div class="print-container">
+            <div class="print-header">
+              <h1>Ärende #${ticket.id}</h1>
+              <div>${new Date().toLocaleDateString('sv-SE')}</div>
+            </div>
+            
+            <h2>Kundinformation</h2>
+            <table>
+              <tr>
+                <th>Kund</th>
+                <td>${getCustomerDisplayName(ticket.customer)}</td>
+              </tr>
+              ${ticket.customer?.email ? `
+              <tr>
+                <th>E-post</th>
+                <td>${ticket.customer.email}</td>
+              </tr>` : ''}
+              ${ticket.customer?.phoneNumber ? `
+              <tr>
+                <th>Telefon</th>
+                <td>${ticket.customer.phoneNumber}</td>
+              </tr>` : ''}
+              ${ticket.customer?.address ? `
+              <tr>
+                <th>Adress</th>
+                <td>${ticket.customer.address}${ticket.customer.postalCode ? ', ' + ticket.customer.postalCode : ''}${ticket.customer.city ? ', ' + ticket.customer.city : ''}</td>
+              </tr>` : ''}
+            </table>
+            
+            <h2>Ärendedetaljer</h2>
+            <table>
+              <tr>
+                <th>Ärendetyp</th>
+                <td>${ticket.ticketType?.name || '-'}</td>
+              </tr>
+              <tr>
+                <th>Status</th>
+                <td>${getStatusDisplay().name}</td>
+              </tr>
+              ${ticket.dueDate ? `
+              <tr>
+                <th>Deadline</th>
+                <td>${new Date(ticket.dueDate).toLocaleDateString('sv-SE')}</td>
+              </tr>` : ''}
+            </table>
+            
+            <h2>Ärendeinformation</h2>
+            <table>
+              ${renderDynamicFieldsForPrint(ticket)}
+            </table>
+            
+            <div class="signature-area" style="margin-top: 40px;">
+              <p style="border-top: 1px solid #000; padding-top: 10px; width: 200px; margin-top: 70px;">
+                Signatur
+              </p>
+            </div>
+          </div>
+          
+          <script>
+            // Automatisk utskrift när sidan har laddats
+            window.onload = function() {
+              window.print();
+              // Stänger fönstret efter utskrift om det stöds av webbläsaren
+              // Fungerar ej i vissa webbläsare av säkerhetsskäl
+              setTimeout(function() {
+                window.close();
+              }, 500);
+            };
+          </script>
+        </body>
+      </html>
+    `;
+  };
+
+  // Hjälpfunktion för att generera HTML för de dynamiska fälten
+  const renderDynamicFieldsForPrint = (ticket: Ticket) => {
+    if (!ticket.ticketType?.fields || !ticket.dynamicFields) return '';
+    
+    return ticket.ticketType.fields
+      .filter((field) => field.fieldType !== "DUE_DATE")
+      .map((field) => {
+        const value = ticket.dynamicFields[field.name];
+        let displayValue = '-';
+        
+        if (value !== undefined && value !== null) {
+          if (field.fieldType === "DATE" && value) {
+            try {
+              displayValue = new Date(value).toLocaleDateString("sv-SE");
+            } catch (e) {
+              displayValue = value;
+            }
+          } else {
+            displayValue = String(value);
+          }
+        }
+        
+        return `
+          <tr>
+            <th>${field.name}</th>
+            <td>${displayValue}</td>
+          </tr>
+        `;
+      })
+      .join('');
+  };
+  
+  // Hjälpfunktion för att visa kundnamn
+  const getCustomerDisplayName = (customer: any) => {
+    if (!customer) return "-";
+    
+    if (customer.name) {
+      return customer.name;
+    }
+
+    if (customer.firstName || customer.lastName) {
+      const fullName = `${customer.firstName || ''} ${customer.lastName || ''}`.trim();
+      if (fullName) return fullName;
+    }
+
+    if (customer.id) {
+      return `Kund #${customer.id}`;
+    }
+
+    return "Okänd kund";
   };
 
   // Funktion för att formatera kundinformation
@@ -251,7 +457,7 @@ export default function TicketPage() {
             </p>
           </div>
           
-          {/* Här har vi nu knapparna, inklusive utskriftsfunktionen */}
+          {/* Knappar för åtgärder */}
           <div className="flex gap-3">
             <Dropdown>
               <DropdownTrigger>
@@ -277,16 +483,26 @@ export default function TicketPage() {
               </DropdownMenu>
             </Dropdown>
             
-            {/* Utskriftsknapp */}
+            {/* Utskriftsknapp - startar utskrift direkt */}
             <Button
               variant="flat"
               color="primary"
-              onPress={() => setShowPrinter(true)}
-              startContent={<PrinterIcon />} // Om du har en ikon-komponent, annars ta bort detta
+              onPress={() => {
+                if (ticket) {
+                  const printWindow = window.open('', '_blank');
+                  if (printWindow) {
+                    // Skapa innehållet för utskriftsfönstret
+                    const printContent = generatePrintContent(ticket);
+                    printWindow.document.open();
+                    printWindow.document.write(printContent);
+                    printWindow.document.close();
+                  }
+                }
+              }}
+              startContent={<PrinterIcon />}
             >
               Skriv ut
             </Button>
-            
             
             <Button color="primary" variant="flat" onPress={() => router.push('/arenden')}>
               Tillbaka till ärendelistan
@@ -305,13 +521,6 @@ export default function TicketPage() {
           <Tab key="messages" title="Meddelanden" />
           <Tab key="history" title="Historik" />
         </Tabs>
-
-        {/* Utskriftskomponenten */}
-        {showPrinter && (
-          <TicketPrinter 
-            ticket={selectedTicket} 
-            onClose={() => setShowPrinter(false)} />
-        )}
 
         {activeTab === 'details' && (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -501,25 +710,8 @@ export default function TicketPage() {
             </CardBody>
           </Card>
         )}
-        {ticket && (
-          <Modal 
-            isOpen={showPrinter} 
-            onOpenChange={(isOpen) => setShowPrinter(isOpen)}
-            size="lg"
-          >
-            <ModalContent>
-              <ModalHeader>
-                <h2 className="text-lg font-semibold">Utskrift av ärende #{ticket.id}</h2>
-              </ModalHeader>
-              <ModalBody>
-                <TicketPrinter 
-                  ticket={ticket} 
-                  onClose={() => setShowPrinter(false)} 
-                />
-              </ModalBody>
-            </ModalContent>
-          </Modal>
-        )}
+
+        {/* Ingen modal behövs - utskriften sker direkt när knappen klickas */}
       </div>
     </section>
   );
