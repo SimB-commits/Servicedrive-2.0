@@ -40,31 +40,32 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     switch (method) {
       case 'GET':
-        try {
-          const ticket = await prisma.ticket.findUnique({
-            where: { id: ticketId },
-            include: {
-              customer: true,
-              user: true,
-              assignedUser: true,
-              ticketType: {
-                include: { fields: true },
-              },
-              messages: true,
-            },
-          });
+  try {
+    const ticket = await prisma.ticket.findUnique({
+      where: { id: ticketId },
+      include: {
+        customer: true,
+        user: true,
+        assignedUser: true,
+        ticketType: {
+          include: { fields: true },
+        },
+        customStatus: true, // Lägger till customStatus här för att inkludera anpassad status
+        messages: true,
+      },
+    });
 
-          if (!ticket || ticket.storeId !== session.user.storeId) {
-            console.log('Ticket not found or not in user\'s store');
-            return res.status(404).json({ error: 'Ticket not found' });
-          }
+    if (!ticket || ticket.storeId !== session.user.storeId) {
+      console.log('Ticket not found or not in user\'s store');
+      return res.status(404).json({ error: 'Ticket not found' });
+    }
 
-          res.status(200).json(ticket);
-        } catch (error) {
-          console.error(error);
-          res.status(500).json({ error: 'Server error' });
-        }
-        break;
+    res.status(200).json(ticket);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Server error' });
+  }
+  break;
 
       // I PUT-fallet i /api/tickets/[id].ts
 

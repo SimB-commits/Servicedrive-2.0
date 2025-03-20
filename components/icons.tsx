@@ -294,3 +294,21 @@ export const ChevronDownIcon: React.FC<IconSvgProps> = ({ size = 24, width, heig
     <polyline points="6 9 12 15 18 9" />
   </svg>
 );
+
+export const PrinterIcon: React.FC<IconSvgProps> = ({ size = 24, width, height, ...props }) => (
+  <svg 
+    height={size || height} 
+    viewBox="0 0 24 24" 
+    width={size || width} 
+    fill="none" 
+    stroke="currentColor" 
+    strokeWidth="2" 
+    strokeLinecap="round" 
+    strokeLinejoin="round" 
+    {...props}
+  >
+    <polyline points="6 9 6 2 18 2 18 9" />
+    <path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2" />
+    <rect x="6" y="14" width="12" height="8" />
+  </svg>
+);
