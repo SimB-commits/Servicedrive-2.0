@@ -3,259 +3,274 @@ import type { NextApiRequest, NextApiResponse } from 'next';
 import { PrismaClient } from '@prisma/client';
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from '../auth/authOptions';
-import { updateTicketSchema } from '@/utils/validation';
-import { getAuthenticatedSession } from '@/utils/authHelper';
-import { sendTicketStatusEmail } from '@/utils/mail-service';
 import rateLimiter from '@/lib/rateLimiterApi';
+import { sendTicketStatusEmail } from '@/utils/mail-service';
+import { logger } from '@/utils/logger';
 
 const prisma = new PrismaClient();
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   try {
-    // Rate Limiting
+    // Rate limiting
     await rateLimiter.consume(req.socket.remoteAddress || 'unknown');
 
-    // Authenticate using helper function
-    const session = await getAuthenticatedSession(req, res);
-
-    // Check if request refers to a valid ticket ID
+    // Hämta ID-parameter
     const { id } = req.query;
-    if (!id || typeof id !== 'string' || isNaN(Number(id))) {
-      return res.status(400).json({ message: 'Ogiltigt ärende-ID' });
+    if (!id || typeof id !== 'string') {
+      return res.status(400).json({ error: 'Ogiltigt eller saknat ID' });
+    }
+    const ticketId = Number(id);
+
+    // Autentisering
+    const session = await getServerSession(req, res, authOptions);
+    if (!session) {
+      return res.status(401).json({ error: 'Ej inloggad' });
     }
 
-    const ticketId = parseInt(id);
-
-    // Handle different HTTP methods
+    // Hantera olika HTTP-metoder
     switch (req.method) {
-      case 'GET': {
-        // Fetch ticket with relations
-        const ticket = await prisma.ticket.findUnique({
-          where: {
-            id: ticketId,
-          },
-          include: {
-            customer: true,
-            ticketType: {
-              include: {
-                fields: true,
+      case 'GET':
+        try {
+          // Hämta ärende med alla relaterade data
+          const ticket = await prisma.ticket.findUnique({
+            where: { id: ticketId },
+            include: {
+              customer: true,
+              ticketType: {
+                include: {
+                  fields: true,
+                },
               },
-            },
-            customStatus: {
-              include: {
-                mailTemplate: {
-                  select: {
-                    id: true,
-                    name: true,
-                    subject: true,
+              customStatus: {
+                include: {
+                  mailTemplate: true,
+                }
+              },
+              messages: {
+                include: {
+                  sender: {
+                    select: {
+                      id: true,
+                      email: true,
+                      firstName: true,
+                      lastName: true,
+                    },
                   },
+                },
+                orderBy: {
+                  createdAt: 'desc',
+                },
+              },
+              user: {
+                select: {
+                  id: true,
+                  email: true,
+                  firstName: true,
+                  lastName: true,
+                },
+              },
+              assignedUser: {
+                select: {
+                  id: true,
+                  email: true,
+                  firstName: true,
+                  lastName: true,
                 },
               },
             },
-            user: {
-              select: {
-                id: true,
-                firstName: true,
-                lastName: true,
-                email: true,
-              },
-            },
-            assignedUser: {
-              select: {
-                id: true,
-                firstName: true,
-                lastName: true,
-                email: true,
-              },
-            },
-            messages: {
-              orderBy: {
-                createdAt: 'desc',
-              },
-              include: {
-                sender: {
-                  select: {
-                    id: true,
-                    firstName: true,
-                    lastName: true,
-                    email: true,
-                  },
-                },
-              },
-            },
-            store: {
-              select: {
-                id: true,
-                name: true,
-                company: true,
-              },
-            },
-          },
-        });
-
-        if (!ticket) {
-          return res.status(404).json({ message: 'Ärendet hittades inte' });
-        }
-
-        // Check if user has access to this ticket through their store
-        if (ticket.storeId !== session.user.storeId) {
-          return res.status(403).json({ message: 'Du har inte åtkomst till detta ärende' });
-        }
-
-        return res.status(200).json(ticket);
-      }
-
-      case 'PUT': {
-        // Validate input data
-        const parseResult = updateTicketSchema.safeParse(req.body);
-        if (!parseResult.success) {
-          return res.status(400).json({
-            message: 'Valideringsfel',
-            errors: parseResult.error.errors,
           });
-        }
 
-        // Find the ticket to update
-        const ticket = await prisma.ticket.findUnique({
-          where: {
-            id: ticketId,
-          },
-          include: {
-            customStatus: true,
-            customer: true,
-            ticketType: {
-              include: {
-                fields: true,
-              },
-            },
-            user: true,
-            assignedUser: true,
-            store: true,
-          },
-        });
-
-        if (!ticket) {
-          return res.status(404).json({ message: 'Ärendet hittades inte' });
-        }
-
-        // Check if user has access to this ticket through their store
-        if (ticket.storeId !== session.user.storeId) {
-          return res.status(403).json({ message: 'Du har inte åtkomst till detta ärende' });
-        }
-
-        // Prepare data for update
-        const data = parseResult.data;
-        const oldStatus = ticket.status;
-        const oldCustomStatusId = ticket.customStatusId;
-
-        let customStatusId = ticket.customStatusId;
-
-        // Special handling for status updates:
-        // If status starts with "CUSTOM_", it refers to a custom status
-        if (data.status && data.status.startsWith('CUSTOM_')) {
-          const customId = parseInt(data.status.replace('CUSTOM_', ''));
-          customStatusId = customId;
-          data.status = undefined; // Don't update the status field
-        } else if (data.status) {
-          // If a regular status is selected, clear any custom status
-          customStatusId = null;
-        }
-
-        // Update the ticket in the database
-        const updatedTicket = await prisma.ticket.update({
-          where: {
-            id: ticketId,
-          },
-          data: {
-            ...(data.description && { description: data.description }),
-            ...(data.status && { status: data.status }),
-            customStatusId: customStatusId,
-            ...(data.dueDate !== undefined && {
-              dueDate: data.dueDate ? new Date(data.dueDate) : null,
-            }),
-            ...(data.dynamicFields && { dynamicFields: data.dynamicFields }),
-          },
-          include: {
-            customer: true,
-            ticketType: {
-              include: {
-                fields: true,
-              },
-            },
-            customStatus: {
-              include: {
-                mailTemplate: true,
-              },
-            },
-            user: true,
-            assignedUser: true,
-            store: true,
-          },
-        });
-
-        // Determine if status has changed
-        const statusChanged =
-          updatedTicket.status !== oldStatus || updatedTicket.customStatusId !== oldCustomStatusId;
-
-        // Send email notification if status changed and we have the sendNotification flag
-        if (statusChanged) {
-          try {
-            // Check if we should send email (default to true if not specified)
-            const shouldSendEmail = req.body.sendNotification !== false;
-            
-            if (shouldSendEmail) {
-              await sendTicketStatusEmail(updatedTicket, oldStatus, oldCustomStatusId);
-            } else {
-              console.log('Skipping email notification as requested by user');
-            }
-          } catch (emailError) {
-            console.error('Error sending email notification:', emailError);
-            // We don't fail the request if email sending fails
+          if (!ticket) {
+            return res.status(404).json({ error: 'Ärende hittades inte' });
           }
+
+          // Kontrollera om användaren har rätt att se ärendet
+          if (ticket.storeId !== session.user.storeId) {
+            return res.status(403).json({ error: 'Åtkomst nekad' });
+          }
+
+          return res.status(200).json(ticket);
+        } catch (error) {
+          logger.error('Fel vid hämtning av ärende', { error: error.message, ticketId });
+          return res.status(500).json({ error: 'Serverfel' });
         }
 
-        return res.status(200).json(updatedTicket);
-      }
+      case 'PUT':
+        try {
+          // Hämta nuvarande ärende för att kunna jämföra statusar
+          const existingTicket = await prisma.ticket.findUnique({
+            where: { id: ticketId },
+            include: {
+              customer: true,
+              ticketType: true,
+              customStatus: {
+                include: {
+                  mailTemplate: true,
+                },
+              },
+              user: true,
+              assignedUser: true,
+              store: true,
+            },
+          });
 
-      case 'DELETE': {
-        // Find the ticket to delete
-        const ticket = await prisma.ticket.findUnique({
-          where: {
-            id: ticketId,
-          },
-        });
+          if (!existingTicket) {
+            return res.status(404).json({ error: 'Ärende hittades inte' });
+          }
 
-        if (!ticket) {
-          return res.status(404).json({ message: 'Ärendet hittades inte' });
+          // Kontrollera om användaren har rätt att ändra ärendet
+          if (existingTicket.storeId !== session.user.storeId) {
+            return res.status(403).json({ error: 'Åtkomst nekad' });
+          }
+
+          // Spara nuvarande status för att kunna jämföra senare
+          const oldStatus = existingTicket.status;
+          const oldCustomStatusId = existingTicket.customStatusId;
+
+          // Parsea inkommande data
+          const {
+            status,
+            dueDate,
+            title,
+            description,
+            dynamicFields,
+            customerId,
+            assignedTo,
+            ticketTypeId,
+            // Detta är den viktiga parametern som styr om mail ska skickas
+            sendNotification = false, // Default är att inte skicka mail
+          } = req.body;
+
+          // Bygg upp uppdateringsdata
+          const updateData: any = {
+            dynamicFields: dynamicFields || existingTicket.dynamicFields,
+          };
+
+          // Uppdatera endast fält som är angivna
+          if (title !== undefined) updateData.title = title;
+          if (description !== undefined) updateData.description = description;
+          if (dueDate !== undefined) {
+            updateData.dueDate = dueDate ? new Date(dueDate) : null;
+          }
+          if (customerId !== undefined) updateData.customerId = customerId;
+          if (assignedTo !== undefined) updateData.assignedTo = assignedTo;
+          if (ticketTypeId !== undefined) updateData.ticketTypeId = ticketTypeId;
+
+          // Hantera statusuppdatering
+          if (status) {
+            // Om det är en anpassad status (börjar med "CUSTOM_")
+            if (status.startsWith('CUSTOM_')) {
+              const customStatusId = Number(status.replace('CUSTOM_', ''));
+              updateData.customStatusId = customStatusId;
+              updateData.status = null; // Nollställ grund-status om anpassad status används
+            } else {
+              // Använd grund-status
+              updateData.status = status;
+              updateData.customStatusId = null; // Nollställ anpassad status om grund-status används
+            }
+          }
+
+          // Uppdatera ärendet i databasen
+          const updatedTicket = await prisma.ticket.update({
+            where: { id: ticketId },
+            data: updateData,
+            include: {
+              customer: true,
+              ticketType: {
+                include: {
+                  fields: true,
+                },
+              },
+              customStatus: {
+                include: {
+                  mailTemplate: true,
+                },
+              },
+              user: true,
+              assignedUser: true,
+              store: true,
+            },
+          });
+
+          // Kontrollera om statusen har ändrats
+          const statusChanged = oldStatus !== updatedTicket.status || oldCustomStatusId !== updatedTicket.customStatusId;
+
+          // Om statusen har ändrats och sendNotification är true, skicka mail
+          if (statusChanged && sendNotification === true) {
+            try {
+              const mailResult = await sendTicketStatusEmail(updatedTicket, oldStatus, oldCustomStatusId);
+              logger.info('Status-mail skickat för ärende', { 
+                ticketId, 
+                oldStatus, 
+                newStatus: updatedTicket.status,
+                oldCustomStatusId,
+                newCustomStatusId: updatedTicket.customStatusId,
+                mailSent: !!mailResult
+              });
+            } catch (mailError) {
+              // Logga felet men fortsätt (vi vill inte att ett misslyckat mail-utskick ska stoppa uppdateringen)
+              logger.error('Fel vid skickande av status-mail', { 
+                error: mailError.message, 
+                ticketId, 
+                oldStatus, 
+                newStatus: updatedTicket.status 
+              });
+            }
+          } else if (statusChanged) {
+            logger.info('Status ändrad utan mailutskick', { 
+              ticketId, 
+              oldStatus, 
+              newStatus: updatedTicket.status,
+              sendNotification
+            });
+          }
+
+          // Returnera det uppdaterade ärendet
+          return res.status(200).json(updatedTicket);
+        } catch (error) {
+          logger.error('Fel vid uppdatering av ärende', { error: error.message, ticketId });
+          return res.status(500).json({ error: 'Serverfel' });
         }
 
-        // Check if user has access to this ticket through their store
-        if (ticket.storeId !== session.user.storeId) {
-          return res.status(403).json({ message: 'Du har inte åtkomst till detta ärende' });
+      case 'DELETE':
+        try {
+          // Hämta ärendet för att kontrollera åtkomst
+          const ticket = await prisma.ticket.findUnique({
+            where: { id: ticketId },
+          });
+
+          if (!ticket) {
+            return res.status(404).json({ error: 'Ärende hittades inte' });
+          }
+
+          // Kontrollera om användaren har rätt att ta bort ärendet
+          if (ticket.storeId !== session.user.storeId) {
+            return res.status(403).json({ error: 'Åtkomst nekad' });
+          }
+
+          // Ta bort ärendet
+          await prisma.ticket.delete({
+            where: { id: ticketId },
+          });
+
+          return res.status(200).json({ message: 'Ärende borttaget' });
+        } catch (error) {
+          logger.error('Fel vid borttagning av ärende', { error: error.message, ticketId });
+          return res.status(500).json({ error: 'Serverfel' });
         }
-
-        // Delete the ticket
-        await prisma.ticket.delete({
-          where: {
-            id: ticketId,
-          },
-        });
-
-        return res.status(200).json({ message: 'Ärendet har tagits bort' });
-      }
 
       default:
         res.setHeader('Allow', ['GET', 'PUT', 'DELETE']);
         return res.status(405).end(`Method ${req.method} Not Allowed`);
     }
   } catch (error) {
-    console.error('Error handling ticket request:', error);
+    logger.error('Error in tickets/[id].ts:', { error: error.message });
     
-    if (error.constructor?.name === 'RateLimiterRes') {
+    if (error.constructor.name === 'RateLimiterRes') {
       return res.status(429).json({ message: 'För många förfrågningar. Försök igen senare.' });
     }
     
-    return res.status(500).json({ message: 'Ett serverfel inträffade' });
+    return res.status(500).json({ message: 'Ett internt serverfel uppstod.' });
   } finally {
     await prisma.$disconnect();
   }
