@@ -16,6 +16,7 @@ import {
 import { title } from '@/components/primitives';
 import DnsRecord from '@/components/email/DnsRecord';
 import DomainVerificationStatus from '@/components/email/DomainVerificationStatus';
+import DomainVerificationInfo from '@/components/email/DomainVerificationInfo';
 import { Stepper, Step, StepLabel } from '@/components/Stepper';
 
 export default function DomainVerificationPage() {
@@ -30,6 +31,7 @@ export default function DomainVerificationPage() {
   const [isCheckingStatus, setIsCheckingStatus] = useState(false);
   const [error, setError] = useState('');
   const [subdomainError, setSubdomainError] = useState('');
+  const [activeTab, setActiveTab] = useState('verify');
 
   // Hämta redan verifierade domäner
   useEffect(() => {
@@ -198,11 +200,55 @@ export default function DomainVerificationPage() {
     }
   };
 
+  const handleRefreshDomainStatus = async (domainId) => {
+    try {
+      setError('');
+      const res = await fetch(`/api/mail/domains/${domainId}/verify`, {
+        method: 'POST',
+      });
+      
+      const data = await res.json();
+      
+      if (!res.ok) {
+        setError(data.error || 'Kunde inte verifiera domänen');
+        return;
+      }
+      
+      if (data.verified) {
+        addToast({
+          title: 'Domän verifierad',
+          description: 'Din domän har verifierats framgångsrikt!',
+          color: 'success',
+          variant: 'flat'
+        });
+        // Uppdatera listan med verifierade domäner
+        await fetchVerifiedDomains();
+      } else {
+        setError('DNS-inställningarna är ännu inte aktiva. Det kan ta upp till 48 timmar för DNS-ändringar att spridas, men oftast går det fortare. Försök igen om en stund.');
+      }
+    } catch (error) {
+      console.error('Fel vid verifiering:', error);
+      setError('Ett fel inträffade vid verifiering av domänen');
+    }
+  };
+
   const steps = [
     'Ange domän',
     'Uppdatera DNS-inställningar',
     'Bekräfta verifiering'
   ];
+
+  // Funktion för navigering till verifieringsfliken och nollställning av formuläret
+  const handleStartNewVerification = () => {
+    setActiveTab('verify');
+    setActiveStep(0);
+    setVerificationData(null);
+    setDomain('');
+    setSubdomain('');
+    setNeedSubdomain(false);
+    setError('');
+    setSubdomainError('');
+  };
 
   // Rendering för olika steg i processen
   const renderStepContent = () => {
@@ -345,43 +391,55 @@ export default function DomainVerificationPage() {
             <div className="mt-6">
               <h3 className="text-lg font-medium">Vad händer nu?</h3>
               <p className="mt-2">
-                Du kan nu skicka mail från vilken adress som helst @{domain}. Gå till Mailmallar 
-                eller Ärendestatusar för att konfigurera automatiska mailutskick, eller använd
-                Test-verktyget för att testa din nya konfiguration.
+                Du kan nu skicka mail från vilken adress som helst @{domain}. Gå till:
               </p>
-              
-              <div className="flex space-x-4 mt-6">
-                <Button 
-                  color="primary" 
-                  variant="flat"
-                  onPress={() => window.location.href = '/installningar?tab=mailmallar'}
-                >
-                  Gå till Mailmallar
-                </Button>
-                <Button 
-                  color="primary"
-                  onPress={() => window.location.href = '/test-mail'}
-                >
-                  Testa mail
-                </Button>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                <Card className="p-4 bg-primary-50 border border-primary-200">
+                  <h4 className="font-medium">Avsändarinställningar</h4>
+                  <p className="text-sm mt-1">Konfigurera avsändaradresser för att använda din nya domän</p>
+                  <Button 
+                    color="primary" 
+                    variant="flat"
+                    size="sm"
+                    className="mt-3"
+                    onPress={() => window.location.href = '/mailmallar?tab=settings'}
+                  >
+                    Hantera avsändare
+                  </Button>
+                </Card>
+
+                <Card className="p-4 bg-primary-50 border border-primary-200">
+                  <h4 className="font-medium">Test-verktyg</h4>
+                  <p className="text-sm mt-1">Testa din nya domän med testverktyget för mail</p>
+                  <Button 
+                    color="primary"
+                    size="sm"
+                    className="mt-3"
+                    onPress={() => window.location.href = '/test-mail'}
+                  >
+                    Testa mail
+                  </Button>
+                </Card>
               </div>
             </div>
             
-            <Button 
-              variant="flat" 
-              className="mt-8"
-              onPress={() => {
-                setActiveStep(0);
-                setVerificationData(null);
-                setDomain('');
-                setSubdomain('');
-                setNeedSubdomain(false);
-                setError('');
-                setSubdomainError('');
-              }}
-            >
-              Verifiera en annan domän
-            </Button>
+            <div className="flex justify-between mt-8">
+              <Button 
+                variant="flat" 
+                className="mt-4"
+                onPress={() => setActiveTab('domains')}
+              >
+                Visa alla domäner
+              </Button>
+              <Button 
+                variant="solid"
+                color="primary"
+                onPress={handleStartNewVerification}
+              >
+                Verifiera en ny domän
+              </Button>
+            </div>
           </div>
         );
     }
@@ -409,7 +467,11 @@ export default function DomainVerificationPage() {
 
   return (
     <div className="py-8 px-4">
-      <Tabs aria-label="Domänverifiering">
+      <Tabs 
+        aria-label="Domänverifiering" 
+        selectedKey={activeTab}
+        onSelectionChange={key => setActiveTab(key as string)}
+      >
         <Tab key="verify" title="Verifiera domän">
           <div className="max-w-4xl mx-auto mt-8">
             <h1 className={title({ size: 'sm' })}>Domänverifiering för mail</h1>
@@ -442,41 +504,71 @@ export default function DomainVerificationPage() {
               Här ser du alla domäner du har verifierat och kan hantera dem.
             </p>
             
-            <Card>
-              <CardBody>
-                {loading ? (
-                  <div className="py-8 text-center">
-                    <Spinner />
-                    <p className="mt-2 text-default-500">Laddar domäner...</p>
-                  </div>
-                ) : verifiedDomains.length === 0 ? (
-                  <div className="py-8 text-center">
-                    <p className="text-default-500">Inga verifierade domäner än</p>
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              {/* Vänstra delen (75% bredd på större skärmar) */}
+              <div className="lg:col-span-2">
+                <Card>
+                  <CardHeader className="flex justify-between items-center">
+                    <h2 className="text-lg font-semibold">Verifierade domäner</h2>
                     <Button 
                       color="primary" 
-                      variant="flat" 
-                      className="mt-4"
-                      onPress={() => {
-                        const tabTrigger = document.querySelector('[data-key="verify"]');
-                        if (tabTrigger) tabTrigger.click();
-                      }}
+                      onPress={handleStartNewVerification}
                     >
-                      Verifiera din första domän
+                      Lägg till domän
                     </Button>
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    {verifiedDomains.map((domain) => (
-                      <DomainVerificationStatus 
-                        key={domain.id} 
-                        domain={domain} 
-                        onDelete={() => handleDeleteDomain(domain.id)} 
-                      />
-                    ))}
+                  </CardHeader>
+                  <CardBody>
+                    {loading ? (
+                      <div className="py-8 text-center">
+                        <Spinner />
+                        <p className="mt-2 text-default-500">Laddar domäner...</p>
+                      </div>
+                    ) : verifiedDomains.length === 0 ? (
+                      <div className="py-8 text-center">
+                        <p className="text-default-500">Inga verifierade domäner än</p>
+                        <p className="text-sm text-default-400 mt-1 mb-4">
+                          Du har servicedrive.se som standarddomän, men du kan lägga till egna domäner
+                        </p>
+                        <Button 
+                          color="primary" 
+                          onPress={handleStartNewVerification}
+                        >
+                          Verifiera din första domän
+                        </Button>
+                      </div>
+                    ) : (
+                      <div className="space-y-4">
+                        {verifiedDomains.map((domain) => (
+                          <DomainVerificationStatus 
+                            key={domain.id} 
+                            domain={domain} 
+                            onDelete={() => handleDeleteDomain(domain.id)}
+                            onRefreshStatus={
+                              domain.verified ? undefined : () => handleRefreshDomainStatus(domain.id)
+                            }
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </CardBody>
+                </Card>
+                
+                {verifiedDomains.length > 0 && verifiedDomains.some(d => !d.verified) && (
+                  <div className="mt-4 p-4 bg-info-50 border border-info-200 rounded-md">
+                    <h3 className="text-md font-medium text-info-700">Väntar på verifiering?</h3>
+                    <p className="text-sm text-info-600 mt-1">
+                      Domäner som väntar på verifiering behöver ha korrekta DNS-inställningar. 
+                      Klicka på "Uppdatera status" för att kontrollera om DNS-posterna är aktiva.
+                    </p>
                   </div>
                 )}
-              </CardBody>
-            </Card>
+              </div>
+              
+              {/* Högra delen (25% bredd på större skärmar) - Informationsruta */}
+              <div className="lg:col-span-1">
+                <DomainVerificationInfo onAddNewClick={handleStartNewVerification} />
+              </div>
+            </div>
           </div>
         </Tab>
       </Tabs>

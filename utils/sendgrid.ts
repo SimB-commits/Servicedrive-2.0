@@ -11,11 +11,140 @@ const prisma = new PrismaClient();
 export const sendgridConfig = {
   apiKey: process.env.SENDGRID_API_KEY,
   defaultFromEmail: process.env.EMAIL_FROM || 'no-reply@servicedrive.se',
-  verifiedDomains: process.env.SENDGRID_VERIFIED_DOMAINS?.split(',') || [],
   companySupportEmail: process.env.SUPPORT_EMAIL || 'support@servicedrive.se',
   maxRetries: 3,
   debugMode: process.env.NODE_ENV !== 'production'
 };
+
+// Cache-mekanism för verifierade domäner
+let domainCache: Record<number, string[]> = {}; // Lagra domäner per storeId
+let lastCacheTime = 0;
+const CACHE_TTL = 5 * 60 * 1000; // 5 minuter
+
+/**
+ * Initialisera domäncachen vid modulstart
+ */
+const initDomainCache = async () => {
+  try {
+    // Hämta alla verifierade domäner från databasen
+    const dbDomains = await prisma.verifiedDomain.findMany({
+      where: { status: 'verified' },
+      select: { domain: true, storeId: true }
+    });
+    
+    // Gruppera domäner efter storeId
+    domainCache = {};
+    dbDomains.forEach(({ domain, storeId }) => {
+      if (!domainCache[storeId]) {
+        domainCache[storeId] = [];
+      }
+      domainCache[storeId].push(domain.toLowerCase());
+    });
+    
+    lastCacheTime = Date.now();
+    logger.info('Domäncache initialiserad', { 
+      stores: Object.keys(domainCache).length,
+      totalDomains: dbDomains.length
+    });
+  } catch (error) {
+    logger.error('Fel vid initialisering av domäncache', { error: error.message });
+  }
+};
+
+/**
+ * Uppdatera cachen om nödvändigt
+ */
+const refreshDomainCache = async () => {
+  if (Date.now() - lastCacheTime > CACHE_TTL) {
+    await initDomainCache();
+  }
+};
+
+/**
+ * Hämta verifierade domäner för en butik
+ */
+export const getVerifiedDomains = async (storeId: number): Promise<string[]> => {
+  await refreshDomainCache();
+  return domainCache[storeId] || [];
+};
+
+/**
+ * Validerar att en avsändaradress är godkänd för SendGrid
+ * Kontrollerar mot domäner i databasen
+ */
+export const validateSenderEmailByStore = async (email: string, storeId: number): Promise<{ valid: boolean; reason?: string }> => {
+  if (!email || !email.includes('@')) {
+    return { valid: false, reason: 'Ogiltig e-postadressformat' };
+  }
+  
+  // Om vi är i utvecklingsläge, godkänn alla adresser
+  if (process.env.NODE_ENV !== 'production') {
+    logger.warn(`Avsändarverifiering kringgås i utvecklingsläge för: ${email}`);
+    return { valid: true };
+  }
+  
+  // Uppdatera cachen om nödvändigt
+  await refreshDomainCache();
+  
+  // Extrahera domänen från e-postadressen
+  const emailDomain = email.split('@')[1]?.toLowerCase();
+  
+  // Kontrollera om domänen finns i butikens lista
+  if (domainCache[storeId]?.some(domain => emailDomain === domain)) {
+    return { valid: true };
+  }
+  
+  // Hämta alla verifierade domäner för denna butik för felmeddelandet
+  const domains = domainCache[storeId] || [];
+  
+  return { 
+    valid: false, 
+    reason: `Domänen ${emailDomain} är inte verifierad för din butik. Verifierade domäner: ${domains.join(', ') || 'Inga'}`
+  };
+};
+
+/**
+ * Skapa en standard servicedrive.se-domän för butiken om den inte redan finns
+ */
+export const ensureDefaultDomain = async (storeId: number): Promise<void> => {
+  try {
+    // Kolla om servicedrive.se redan finns för denna butik
+    const existingDomain = await prisma.verifiedDomain.findFirst({
+      where: {
+        storeId,
+        domain: 'servicedrive.se'
+      }
+    });
+    
+    // Om den inte finns, skapa den
+    if (!existingDomain) {
+      await prisma.verifiedDomain.create({
+        data: {
+          domain: 'servicedrive.se',
+          domainId: 'default-servicedrive',
+          storeId,
+          status: 'verified',
+          verifiedAt: new Date()
+        }
+      });
+      
+      logger.info(`Lagt till servicedrive.se som verifierad domän för butik ${storeId}`);
+      
+      // Uppdatera cachen
+      await refreshVerifiedDomains();
+    }
+  } catch (error) {
+    logger.error('Fel vid säkerställande av standarddomän', { error: error.message, storeId });
+  }
+};
+
+// Exportera en funktion för att explicit uppdatera cachen (användbart efter domänoperationer)
+export const refreshVerifiedDomains = initDomainCache;
+
+// Initialisera cachen vid modulstart
+initDomainCache().catch(err => {
+  logger.error('Kunde inte initialisera domäncache', { error: err.message });
+});
 
 // Interface för maildata
 export interface EmailData {
@@ -135,7 +264,7 @@ export const getVerifiedSenderAddresses = async (storeId: number): Promise<Sende
     // Lägg till standardadressen som första alternativ
     const defaultEmail = sendgridConfig.defaultFromEmail;
     if (defaultEmail) {
-      const validation = validateSenderEmail(defaultEmail);
+      const validation = validateSenderEmailByStore(defaultEmail, storeId);
       defaultAddresses.push({
         email: defaultEmail,
         name: 'Servicedrive',
@@ -147,7 +276,7 @@ export const getVerifiedSenderAddresses = async (storeId: number): Promise<Sende
     // Lägg till support-adress om den är verifierad
     const supportEmail = sendgridConfig.companySupportEmail;
     if (supportEmail && supportEmail !== defaultEmail) {
-      const validation = validateSenderEmail(supportEmail);
+      const validation = validateSenderEmailByStore(supportEmail, storeId);
       defaultAddresses.push({
         email: supportEmail,
         name: 'Kundsupport',
@@ -208,7 +337,7 @@ export const saveSenderAddress = async (
 ): Promise<{ success: boolean; data?: any; error?: string }> => {
   try {
     // Validera adressen först
-    const validation = validateSenderEmail(email);
+    const validation = validateSenderEmailByStore(email, storeId);
     if (!validation.valid) {
       return { success: false, error: validation.reason };
     }
@@ -337,7 +466,7 @@ export const sendEmail = async (
     }
     
     // Validera från-email
-    const validation = validateSenderEmail(senderEmail);
+    const validation = validateSenderEmailByStore(senderEmail, 0);
     if (!validation.valid) {
       throw new Error(validation.reason);
     }
@@ -392,6 +521,7 @@ export default {
   sendEmail,
   processTemplate,
   buildEmailFromTemplate,
+  validateSenderEmailByStore,
   validateSenderEmail,
   getVerifiedSenderAddresses,
   saveSenderAddress,
