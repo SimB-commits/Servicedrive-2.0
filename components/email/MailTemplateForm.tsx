@@ -84,8 +84,13 @@ const MailTemplateForm: React.FC<MailTemplateFormProps> = ({
     return Object.keys(errors).length === 0;
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  // Här är problemet! Vi behöver hantera när handleSubmit kallas från Button.onPress
+  // som inte skickar ett event-objekt
+  const handleSubmit = async (e?: React.FormEvent) => {
+    // Endast anropa preventDefault om e existerar (när anropat från form submit)
+    if (e && e.preventDefault) {
+      e.preventDefault();
+    }
     
     if (!validateForm()) {
       return;
@@ -243,7 +248,7 @@ const MailTemplateForm: React.FC<MailTemplateFormProps> = ({
           </Button>
           <Button 
             color="primary" 
-            onPress={handleSubmit}
+            onPress={() => handleSubmit()} // Viktigt! Anropa utan event-objekt här
             isLoading={submitting}
             isDisabled={submitting}
           >
