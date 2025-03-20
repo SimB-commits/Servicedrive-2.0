@@ -609,7 +609,11 @@ export default function DashboardRedesign() {
                 <Table 
                   removeWrapper 
                   aria-label="Ärenden med deadline denna vecka"
-                  className="cursor-pointer"
+                  onRowAction={(key) => router.push(`/arenden/${key}`)}
+                  classNames={{
+                    // Lägg till hover-effekt med mjuk övergång
+                    tr: "hover:bg-default-100 hover:cursor-pointer transition-background duration-200 ease-in-out",
+                  }}
                 >
                   <TableHeader>
                     <TableColumn>ID</TableColumn>
@@ -620,7 +624,7 @@ export default function DashboardRedesign() {
                     {dueTickets.slice(0, 5).map(ticket => (
                       <TableRow 
                         key={ticket.id}
-                        onPress={() => router.push(`/arenden/${ticket.id}`)}
+                        className="hover:bg-default-100 hover:cursor-pointer"
                       >
                         <TableCell>#{ticket.id}</TableCell>
                         <TableCell>{getCustomerName(ticket.customer)}</TableCell>

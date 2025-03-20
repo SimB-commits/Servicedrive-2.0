@@ -140,7 +140,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           }
 
           console.log('Ticket created:', newTicket);
-          res.status(201).json(newTicket);
+          
+          // Returnera ytterligare information för routing
+          res.status(201).json({
+            ticket: newTicket,
+            redirectUrl: `/arenden/${newTicket.id}`
+          });
         } catch (error: any) {
           console.error('Create Ticket error:', error);
           res.status(500).json({ error: 'Server error' });
