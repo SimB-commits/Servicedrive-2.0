@@ -46,7 +46,6 @@ const StatusMailTemplateIntegration: React.FC<StatusMailTemplateIntegrationProps
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-  const [defaultTemplateId, setDefaultTemplateId] = useState<number | null>(null);
 
   // Hämta alla mailmallar
   useEffect(() => {
@@ -70,25 +69,6 @@ const StatusMailTemplateIntegration: React.FC<StatusMailTemplateIntegrationProps
     };
 
     fetchTemplates();
-  }, []);
-
-  // Hämta standardmallen för statusuppdateringar
-  useEffect(() => {
-    const fetchDefaultTemplate = async () => {
-      try {
-        const res = await fetch('/api/mail/template-settings');
-        if (res.ok) {
-          const data = await res.json();
-          if (data.STATUS_UPDATE && data.STATUS_UPDATE.templateId) {
-            setDefaultTemplateId(data.STATUS_UPDATE.templateId);
-          }
-        }
-      } catch (error) {
-        console.error('Fel vid hämtning av standardmall:', error);
-      }
-    };
-
-    fetchDefaultTemplate();
   }, []);
 
   // Hämta status om statusId är angivet
@@ -226,8 +206,15 @@ const StatusMailTemplateIntegration: React.FC<StatusMailTemplateIntegrationProps
         <div className="space-y-4">
           <p className="text-sm text-default-600">
             När ett ärende uppdateras till denna status kan ett automatiskt mail skickas till kunden.
-            Välj vilken mall som ska användas för statusen <strong>{status?.name}</strong>.
+            <strong> Om ingen mall väljs kommer inga automatiska mail att skickas</strong> när ärenden får denna status.
           </p>
+          
+          <div className="p-3 mb-4 bg-info-50 border border-info-200 rounded">
+            <p className="text-sm text-info-700">
+              <strong>Viktig ändring:</strong> Systemet använder inte längre någon standardmall för statusuppdateringar.
+              Endast statusar med en specifik kopplad mailmall skickar automatiska mail.
+            </p>
+          </div>
           
           <div className="pb-3">
             <Select
@@ -244,13 +231,6 @@ const StatusMailTemplateIntegration: React.FC<StatusMailTemplateIntegrationProps
                 </SelectItem>
               ))}
             </Select>
-            
-            {!selectedTemplateId && defaultTemplateId && (
-              <p className="text-xs text-default-500 mt-2">
-                <span className="font-medium">OBS:</span> Ingen specifik mall är vald. 
-                Standardmallen för statusuppdateringar kommer att användas om den är konfigurerad.
-              </p>
-            )}
           </div>
           
           <Divider />

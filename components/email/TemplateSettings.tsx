@@ -22,12 +22,12 @@ interface MailTemplate {
 }
 
 // Definiera MailTemplateUsage typen för att matcha typen i Prisma Schema
-type MailTemplateUsage = 'NEW_TICKET' | 'STATUS_UPDATE' | 'MANUAL' | 'REMINDER' | 'FOLLOW_UP';
+// Ta bort STATUS_UPDATE från listan över tillgängliga val
+type MailTemplateUsage = 'NEW_TICKET' | 'MANUAL' | 'REMINDER' | 'FOLLOW_UP';
 
 // Mappa MailTemplateUsage till användarvänliga namn
 const usageLabels: Record<MailTemplateUsage, string> = {
   NEW_TICKET: 'Bekräftelsemail vid nya ärenden',
-  STATUS_UPDATE: 'Mail vid statusuppdateringar',
   MANUAL: 'Manuella utskick',
   REMINDER: 'Påminnelsemail',
   FOLLOW_UP: 'Uppföljningsmail'
@@ -36,7 +36,6 @@ const usageLabels: Record<MailTemplateUsage, string> = {
 // Mappa MailTemplateUsage till beskrivningar
 const usageDescriptions: Record<MailTemplateUsage, string> = {
   NEW_TICKET: 'Denna mall används automatiskt för att skicka ett bekräftelsemail när ett nytt ärende skapas.',
-  STATUS_UPDATE: 'Denna mall används som standardval när statusinställningar saknar specifik mall.',
   MANUAL: 'Denna mall används som förval vid manuella mailutskick.',
   REMINDER: 'Denna mall används för automatiska påminnelser om ärenden som närmar sig deadline.',
   FOLLOW_UP: 'Denna mall används för automatiska uppföljningsmail efter att ett ärende har stängts.'
@@ -94,11 +93,14 @@ const TemplateSettings: React.FC<TemplateSettingsProps> = ({ onSettingsUpdated }
         const res = await fetch('/api/mail/template-settings');
         if (res.ok) {
           const data = await res.json();
-          setSettings(data);
           
-          // Sätt valda mallar baserat på aktuella inställningar
+          // Ta bort STATUS_UPDATE från data om den finns
+          const { STATUS_UPDATE, ...filteredData } = data;
+          setSettings(filteredData);
+          
+          // Sätt valda mallar baserat på filtrerade inställningar
           const initialSelectedIds: Record<string, string | null> = {};
-          Object.entries(data).forEach(([usage, setting]) => {
+          Object.entries(filteredData).forEach(([usage, setting]) => {
             const typedSetting = setting as { templateId: number | null };
             initialSelectedIds[usage] = typedSetting.templateId ? typedSetting.templateId.toString() : null;
           });
@@ -250,7 +252,7 @@ const TemplateSettings: React.FC<TemplateSettingsProps> = ({ onSettingsUpdated }
   };
 
   // Rendera inställningar för de mest relevanta användningsområdena först
-  const prioritizedUsages: MailTemplateUsage[] = ['NEW_TICKET', 'STATUS_UPDATE'];
+  const prioritizedUsages: MailTemplateUsage[] = ['NEW_TICKET'];
   const secondaryUsages: MailTemplateUsage[] = ['FOLLOW_UP', 'REMINDER', 'MANUAL'];
   
   if (loading || loadingSettings) {

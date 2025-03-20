@@ -48,31 +48,12 @@ export const sendTicketStatusEmail = async (
   try {
     // Om ärendet har en anpassad status med mailmall, använd den
     let mailTemplate = ticket.customStatus?.mailTemplate;
-    let mailSource = 'custom-status';
     
-    // Om ingen mailmall är direkt kopplad till status, försök hitta en mall baserad på statustyp
+    // Returnera null om ingen mailmall är kopplad till denna status
+    // Vi använder INTE längre någon standardmall som fallback
     if (!mailTemplate) {
-      // Försök att hitta en mall för generella statusuppdateringar
-      const templateSetting = await prisma.mailTemplateSettings.findUnique({
-        where: {
-          storeId_usage: {
-            storeId: ticket.storeId,
-            usage: 'STATUS_UPDATE'
-          }
-        },
-        include: {
-          template: true
-        }
-      });
-      
-      if (templateSetting?.template) {
-        mailTemplate = templateSetting.template;
-        mailSource = 'template-settings';
-        logger.debug(`Använder generell STATUS_UPDATE-mall för ärende #${ticket.id}`);
-      } else {
-        logger.debug(`Ingen mailmall kopplad till status för ärende #${ticket.id}`);
-        return null;
-      }
+      logger.debug(`Ingen mailmall kopplad till status för ärende #${ticket.id}, skickar inget mail`);
+      return null;
     }
     
     // Kontrollera om vi har kundens e-postadress
@@ -146,7 +127,7 @@ export const sendTicketStatusEmail = async (
       ticketId: ticket.id, 
       status: ticket.status,
       customStatusId: ticket.customStatusId,
-      mailSource,
+      mailSource: 'custom-status',
       anonymizedRecipient: getAnonymizedCustomerName(ticket.customer)
     });
     
@@ -183,6 +164,8 @@ const getStatusSpecificText = (status?: string, customStatusName?: string): stri
       return 'Status på ditt ärende har uppdaterats.';
   }
 };
+
+// Resten av filen är oförändrad...
 
 /**
  * Skickar bekräftelsemail när ett nytt ärende skapas om det finns en standardmall

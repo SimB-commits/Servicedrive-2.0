@@ -39,7 +39,8 @@ const MailTemplateGuide: React.FC = () => {
                 </li>
                 <li>
                   <strong>Statusbundna mailmallar</strong> - Kopplingar mellan ärendestatusar och 
-                  mailmallar som skickar mail automatiskt när ett ärende byter status.
+                  mailmallar som skickar mail automatiskt när ett ärende byter status. Status utan 
+                  kopplad mall skickar inga automatiska mail.
                 </li>
                 <li>
                   <strong>Avsändaradresser</strong> - Konfigurera vilka e-postadresser som används 
@@ -129,12 +130,16 @@ const MailTemplateGuide: React.FC = () => {
               
               <h4>2. Ärende byter status</h4>
               <p>
-                När ett ärende byter status kan systemet skicka mail baserat på:
+                När ett ärende byter status skickas mail endast om statusen har en specifik
+                mailmall kopplad till sig. Konfigurera detta individuellt under Ärendestatusar
+                när du skapar eller redigerar en status.
               </p>
-              <ul>
-                <li>En specifik mall kopplad till statusen (konfigureras under Ärendestatusar)</li>
-                <li>En generell mall för statusändringar (användningsområde "STATUS_UPDATE")</li>
-              </ul>
+              <div className="p-3 bg-info-50 border border-info-200 rounded">
+                <p className="text-sm text-info-700">
+                  <strong>OBS!</strong> Om en status saknar kopplad mailmall skickas inget
+                  automatiskt mail när ärenden får denna status.
+                </p>
+              </div>
               
               <h4>3. Påminnelser och uppföljningar</h4>
               <p>
@@ -147,7 +152,8 @@ const MailTemplateGuide: React.FC = () => {
               
               <p>
                 <strong>Tips:</strong> För att se vilka mallar som är konfigurerade för automatiska 
-                utskick, gå till fliken "Mailmallar" och se under "Mallinställningar".
+                utskick, gå till fliken "Mailmallar" och se under "Mallinställningar". För statusspecifika
+                mallar, gå till fliken "Ärendestatusar" och granska de konfigurerade statusarna.
               </p>
             </div>
           </AccordionItem>
