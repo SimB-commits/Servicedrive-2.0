@@ -41,11 +41,28 @@ export const sendTicketStatusEmail = async (
     customStatus?: UserTicketStatus & { mailTemplate?: MailTemplate };
     user?: any;
     assignedUser?: any;
+    store?: any; // Lägg till valfri store-parameter
   },
   oldStatus?: string,
   oldCustomStatusId?: number | null
 ): Promise<any | null> => {
   try {
+    // Om butiksinformation saknas, hämta den
+    let store = ticket.store;
+    if (!store && ticket.storeId) {
+      try {
+        store = await prisma.store.findUnique({
+          where: { id: ticket.storeId }
+        });
+      } catch (error) {
+        logger.warn(`Kunde inte hämta butiksinformation för ärende #${ticket.id}, använder standardnamn`, {
+          error: error.message,
+          ticketId: ticket.id,
+          storeId: ticket.storeId
+        });
+      }
+    }
+
     // Om ärendet har en anpassad status med mailmall, använd den
     let mailTemplate = ticket.customStatus?.mailTemplate;
     
@@ -112,6 +129,11 @@ export const sendTicketStatusEmail = async (
     // Lägg till status-specifik text baserad på aktuell status
     variables.statusText = getStatusSpecificText(ticket.status, ticket.customStatus?.name);
     
+    // Lägg till butiksnamn i variablerna om det finns
+    if (store) {
+      variables.företagsNamn = store.name || store.company || variables.företagsNamn;
+    }
+    
     // Skicka mail med statusmallen
     const response = await sendTemplatedEmail(
       ticket.customer.email,
@@ -128,7 +150,8 @@ export const sendTicketStatusEmail = async (
       status: ticket.status,
       customStatusId: ticket.customStatusId,
       mailSource: 'custom-status',
-      anonymizedRecipient: getAnonymizedCustomerName(ticket.customer)
+      anonymizedRecipient: getAnonymizedCustomerName(ticket.customer),
+      storeName: store?.name || 'Okänd butik'
     });
     
     return response;
@@ -231,7 +254,7 @@ export const sendNewTicketEmail = async (
       return await sendTemplatedEmail(
         ticket.customer.email,
         fallbackTemplate,
-        buildTicketVariables(ticket),
+        buildTicketVariables(ticket, storeId),
         ['new-ticket-confirmation', `ticket-${ticket.id}`],
         senderAddress?.email,
         senderAddress?.name
@@ -269,10 +292,16 @@ export const sendNewTicketEmail = async (
  * Byggfunktion för att skapa variabeldata från ett ärende
  * Centraliserad funktion för att skapa konsistenta variabler
  */
-export const buildTicketVariables = (ticket: any): TemplateVariables => {
+export const buildTicketVariables = (ticket: any, store?: any): TemplateVariables => {
   const dynamicFields = typeof ticket.dynamicFields === 'object' && ticket.dynamicFields !== null
     ? ticket.dynamicFields
     : {};
+
+  // Använd butiksnamn från store-objektet om tillgängligt, annars fallback
+  const useCompanyName = store?.company || 
+    ticket.store?.company || 
+    process.env.COMPANY_NAME || 
+    'Servicedrive';
 
   return {
     ärendeID: ticket.id,
@@ -281,7 +310,7 @@ export const buildTicketVariables = (ticket: any): TemplateVariables => {
     ärendeTyp: ticket.ticketType?.name || '',
     ärendeStatus: ticket.customStatus?.name || ticket.status || '',
     ärendeDatum: ticket.createdAt,
-    företagsNamn: process.env.COMPANY_NAME || '',
+    företagsNamn: useCompanyName,
     deadline: ticket.dueDate || '',
     // Data om användare som hanterar ärendet, om tillgängligt
     handläggare: ticket.assignedUser ? 
