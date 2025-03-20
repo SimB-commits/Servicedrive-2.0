@@ -62,6 +62,9 @@ const TicketEditDrawer: React.FC<TicketEditDrawerProps> = ({
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
   const [newStatus, setNewStatus] = useState<string | null>(null);
   const [selectedStatusInfo, setSelectedStatusInfo] = useState<{ name: string; color: string; mailTemplateId?: number | null } | null>(null);
+  
+  // NYTT: Spara användarens val om mail ska skickas eller inte
+  const [shouldSendEmail, setShouldSendEmail] = useState<boolean>(true);
 
   // Hämta statusalternativ när komponenten monteras
   useEffect(() => {
@@ -120,6 +123,9 @@ const TicketEditDrawer: React.FC<TicketEditDrawerProps> = ({
         },
         dynamicFields: initialDynamicFields,
       });
+      
+      // Återställ mail-valet när ny biljett laddas
+      setShouldSendEmail(true);
     }
   }, [ticket]);
 
@@ -216,8 +222,8 @@ const TicketEditDrawer: React.FC<TicketEditDrawerProps> = ({
   const handleConfirmStatus = (sendEmail: boolean) => {
     confirmStatusChange(newStatus);
     
-    // Här skulle vi kunna spara direkt, men vi väljer att vänta till användaren klickar på Spara
-    // för att ge användaren möjlighet att avbryta/göra andra ändringar
+    // NYTT: Spara användarens val om mail ska skickas eller inte
+    setShouldSendEmail(sendEmail);
     
     setConfirmDialogOpen(false);
     
@@ -315,7 +321,10 @@ const TicketEditDrawer: React.FC<TicketEditDrawerProps> = ({
                   const selectedStatus = statusOptions.find(opt => opt.uid === formData.status);
                   const hasMailTemplate = selectedStatus?.mailTemplateId !== null && 
                                          selectedStatus?.mailTemplateId !== undefined;
-                  const sendNotification = hasMailTemplate; // Standardvärde baserat på StatusConfirmationDialog
+                  
+                  // ÄNDRAT: Använd både hasMailTemplate och användarens val
+                  // Mail skickas endast om det finns en mall OCH användaren har valt att skicka
+                  const sendNotification = hasMailTemplate && shouldSendEmail;
 
                   const preparedData = prepareFormData(formData, ticket, sendNotification);
                   const res = await fetch(`/api/tickets/${ticket.id}`, {
@@ -328,11 +337,12 @@ const TicketEditDrawer: React.FC<TicketEditDrawerProps> = ({
                     onTicketUpdated(updatedTicket);
                     onClose();
                     
+                    // ÄNDRAT: Korrekt toastmeddelande baserat på vad som faktiskt sker
                     addToast({
                       title: 'Ärende uppdaterat',
-                      description: hasMailTemplate && sendNotification
+                      description: hasMailTemplate && shouldSendEmail
                         ? 'Ärendet har uppdaterats och mail har skickats till kunden'
-                        : 'Ärendet har uppdaterats',
+                        : 'Ärendet har uppdaterats utan mailnotifiering',
                       color: 'success',
                       variant: 'flat'
                     });
