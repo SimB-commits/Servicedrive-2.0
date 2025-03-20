@@ -20,6 +20,7 @@ import {
 import { useSession } from 'next-auth/react';
 import { TicketType } from '@/types/ticket';
 import { parseZonedDateTime, getLocalTimeZone, ZonedDateTime } from "@internationalized/date";
+import router from 'next/router';
 
 interface Field {
   name: string;
@@ -434,14 +435,14 @@ export default function CreateTicketPage() {
     }
     
     setSubmitting(true);
-
+  
     const selectedTicketType = ticketTypes.find((type) => type.id.toString() === selectedKey);
     if (!selectedTicketType) {
       addToast({ title: 'Fel', description: 'Ogiltig ärendetyp.', color: 'danger', variant: 'flat' });
       setSubmitting(false);
       return;
     }
-
+  
     try {
       let customerData: any;
       if (selectedCustomer) {
@@ -495,7 +496,7 @@ export default function CreateTicketPage() {
         }
         customerData = await customerResponse.json();
       }
-
+  
       // Förbered fälten – DUE_DATE hanteras separat
       const prepareDynamicFields = () => {
         const formattedFields: Record<string, string> = {};
@@ -521,7 +522,7 @@ export default function CreateTicketPage() {
       
       const { formattedFields, dueDateValue } = prepareDynamicFields();
       console.log("About to send request with dueDateValue:", dueDateValue);
-
+  
       // Log the full request body
       const requestBody = {
         ticketTypeId: selectedTicketType.id,
@@ -533,27 +534,47 @@ export default function CreateTicketPage() {
         status: 'OPEN'
       };
       console.log("Full request body:", JSON.stringify(requestBody));
-
+  
       const ticketResponse = await fetch('/api/tickets', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(requestBody),
       });
-
+  
       if (!ticketResponse.ok) {
         const errData = await ticketResponse.json();
         throw new Error(errData.message || 'Kunde inte skapa ärende.');
       }
-      await ticketResponse.json();
-      addToast({ title: 'Framgång', description: 'Ärendet skapades!', color: 'success', variant: 'flat' });
-      setTicketFormValues({});
-      setCustomerFormValues({ name: '', email: '', phoneNumber: '' });
-      setCustomerSuggestions([]);
-      setSelectedCustomer(null);
-      setFormErrors({});
+      
+      // Hantera svaret från API:et och förbereda för omdirigering
+      const responseData = await ticketResponse.json();
+      
+      addToast({ 
+        title: 'Framgång', 
+        description: 'Ärendet skapades!', 
+        color: 'success', 
+        variant: 'flat' 
+      });
+      
+      // Omdirigera till den specifika ärendesidan om redirectUrl finns
+      if (responseData.redirectUrl) {
+        router.push(responseData.redirectUrl);
+      } else {
+        // Rensa formuläret endast om vi inte omdirigerar
+        setTicketFormValues({});
+        setCustomerFormValues({ name: '', email: '', phoneNumber: '' });
+        setCustomerSuggestions([]);
+        setSelectedCustomer(null);
+        setFormErrors({});
+      }
     } catch (err: any) {
       console.error(err);
-      addToast({ title: 'Fel', description: err.message || 'Ett okänt fel inträffade.', color: 'danger', variant: 'flat' });
+      addToast({ 
+        title: 'Fel', 
+        description: err.message || 'Ett okänt fel inträffade.', 
+        color: 'danger', 
+        variant: 'flat' 
+      });
     }
     setSubmitting(false);
   };

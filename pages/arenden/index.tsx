@@ -447,32 +447,74 @@ export default function TicketTablePage() {
           <h1 className={title()}>Ärenden</h1>
         </div>
         <Table
-          isHeaderSticky
-          aria-label="Tickets Table"
-          topContent={topContent}
-          topContentPlacement="outside"
-          bottomContent={bottomContent}
-          bottomContentPlacement="outside"
-          selectedKeys={new Set()}
-          selectionMode="none"
-          sortDescriptor={sortDescriptor}
-          onSortChange={setSortDescriptor}
-        >
-          <TableHeader columns={headerColumns}>
-            {(column) => (
-              <TableColumn key={column.uid} align="start" allowsSorting={column.sortable}>
-                {column.name}
-              </TableColumn>
-            )}
-          </TableHeader>
-          <TableBody emptyContent="Inga ärenden hittades">
-            {sortedTickets.map((ticket) => (
-              <TableRow key={ticket.id}>
-                {(columnKey) => <TableCell>{renderCell(ticket, columnKey)}</TableCell>}
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+  isHeaderSticky
+  aria-label="Tickets Table"
+  topContent={topContent}
+  topContentPlacement="outside"
+  bottomContent={bottomContent}
+  bottomContentPlacement="outside"
+  selectedKeys={new Set()}
+  selectionMode="none"
+  sortDescriptor={sortDescriptor}
+  onSortChange={setSortDescriptor}
+>
+  <TableHeader columns={headerColumns}>
+    {(column) => (
+      <TableColumn key={column.uid} align="start" allowsSorting={column.sortable}>
+        {column.name}
+      </TableColumn>
+    )}
+  </TableHeader>
+  <TableBody emptyContent="Inga ärenden hittades">
+    {sortedTickets.map((ticket) => (
+      <TableRow 
+        key={ticket.id}
+        // Gör raden klickbar så användaren kan navigera direkt till ärendesidan
+        onClick={() => router.push(`/arenden/${ticket.id}`)}
+        className="cursor-pointer hover:bg-default-100 transition-colors"
+      >
+        {(columnKey) => {
+          // Om detta är åtgärdskolumnen, stoppa händelsebubbling för åtgärdsknappar
+          if (columnKey === 'actions') {
+            return (
+              <TableCell>
+                <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
+                  <Button 
+                    type="button" 
+                    variant="flat" 
+                    isIconOnly 
+                    onPress={() => handleOpenViewDrawer(ticket)}
+                  >
+                    <EyeIcon />
+                  </Button>
+                  <Button 
+                    type="button" 
+                    variant="flat" 
+                    isIconOnly 
+                    onPress={() => handleOpenEditDrawer(ticket)}
+                  >
+                    <EditIcon />
+                  </Button>
+                  <Button
+                    type="button" 
+                    variant="flat" 
+                    isIconOnly
+                    color="danger"
+                    onPress={() => handleDelete(ticket.id)}
+                  >
+                    <DeleteIcon />
+                  </Button>
+                </div>
+              </TableCell>
+            );
+          }
+          // För alla andra kolumner, visa som tidigare
+          return <TableCell>{renderCell(ticket, columnKey)}</TableCell>;
+        }}
+      </TableRow>
+    ))}
+  </TableBody>
+</Table>
       </section>
       {/* Drawer för att visa ärendedetaljer */}
       <TicketDrawer

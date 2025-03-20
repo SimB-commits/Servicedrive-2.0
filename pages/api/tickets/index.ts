@@ -141,7 +141,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
           console.log('Ticket created:', newTicket);
           
-          // Returnera ytterligare information för routing
+          // Returnera både ärendet och URL för omdirigering
           res.status(201).json({
             ticket: newTicket,
             redirectUrl: `/arenden/${newTicket.id}`

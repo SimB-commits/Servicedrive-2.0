@@ -7,6 +7,7 @@ import {
   DrawerFooter,
   Button,
 } from "@heroui/react";
+import { useRouter } from "next/router";
 
 type Ticket = {
   id: number;
@@ -46,7 +47,14 @@ type TicketDrawerProps = {
 };
 
 const TicketDrawer: React.FC<TicketDrawerProps> = ({ isOpen, onClose, ticket }) => {
+  const router = useRouter();
+  
   if (!ticket) return null;
+
+  // Funktion för att navigera till den fullständiga ärendesidan
+  const navigateToFullView = () => {
+    router.push(`/arenden/${ticket.id}`);
+  };
 
   // Funktion för att hämta korrekt visat statusnamn
   const getStatusDisplay = () => {
@@ -191,6 +199,16 @@ const TicketDrawer: React.FC<TicketDrawerProps> = ({ isOpen, onClose, ticket }) 
               <p>Inga dynamiska fält</p>
             )}
           </div>
+          
+          {/* Ny knapp för att navigera till fullständig vy */}
+          <Button 
+            color="primary" 
+            variant="flat"
+            className="w-full mt-6"
+            onPress={navigateToFullView}
+          >
+            Visa fullständig ärendevy
+          </Button>
         </DrawerBody>
         <DrawerFooter>
           <Button onPress={onClose} variant="flat">
