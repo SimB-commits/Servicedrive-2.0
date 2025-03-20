@@ -195,8 +195,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           // Kontrollera om statusen har ändrats
           const statusChanged = oldStatus !== updatedTicket.status || oldCustomStatusId !== updatedTicket.customStatusId;
 
-          // Om statusen har ändrats och sendNotification är true, skicka mail
-          if (statusChanged && sendNotification === true) {
+          // Kontrollera om den nya statusen har en mailmall kopplad till sig
+          const hasMailTemplate = updatedTicket.customStatus?.mailTemplate != null;
+          
+          // Skicka mail endast om:
+          // 1. Statusen har ändrats
+          // 2. Användaren har valt att skicka mail (sendNotification === true)
+          // 3. Det finns en kopplad mailmall
+          if (statusChanged && sendNotification === true && hasMailTemplate) {
             try {
               const mailResult = await sendTicketStatusEmail(updatedTicket, oldStatus, oldCustomStatusId);
               logger.info('Status-mail skickat för ärende', { 
@@ -217,11 +223,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
               });
             }
           } else if (statusChanged) {
+            // Logga varför inget mail skickades
             logger.info('Status ändrad utan mailutskick', { 
               ticketId, 
               oldStatus, 
               newStatus: updatedTicket.status,
-              sendNotification
+              sendNotification,
+              hasMailTemplate,
+              reason: !sendNotification ? 'Användaren valde att inte skicka mail' :
+                     !hasMailTemplate ? 'Ingen mailmall kopplad till statusen' : 
+                     'Okänd anledning'
             });
           }
 
