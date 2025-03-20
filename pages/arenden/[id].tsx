@@ -78,20 +78,34 @@ export default function TicketPage() {
         const res = await fetch('/api/tickets/statuses');
         if (res.ok) {
           const data = await res.json();
+          
+          // Viktigt: Skapa defaultstatusarna med EXPLICIT mailTemplateId
           const defaultStatuses = [
-            { name: "Öppen", uid: "OPEN", color: "#ff9500" },
-            { name: "Färdig", uid: "CLOSED", color: "#3BAB48" },
-            { name: "Pågående", uid: "IN_PROGRESS", color: "#ffa500" },
+            // Dessa måste ha explicit mailTemplateId för att korrekt funktionalitet
+            { name: "Öppen", uid: "OPEN", color: "#ff9500", mailTemplateId: null },
+            { name: "Färdig", uid: "CLOSED", color: "#3BAB48", mailTemplateId: null },
+            { name: "Pågående", uid: "IN_PROGRESS", color: "#ffa500", mailTemplateId: null },
           ];
           
-          // Mappa de dynamiska statusarna
-          const dynamicStatuses = data.map((s: any) => ({ 
-            ...s, 
-            uid: `CUSTOM_${s.id}`,
-            name: s.name,
-            color: s.color,
-            mailTemplateId: s.mailTemplateId
-          }));
+          // Mappa de dynamiska statusarna och säkerställ att mailTemplateId hanteras korrekt
+          const dynamicStatuses = data.map((s) => {
+            // Se till att mailTemplateId hanteras konsekvent
+            let templateId = null;
+            
+            // Hantera olika möjliga dataformat från API
+            if (s.mailTemplateId !== undefined) {
+              templateId = s.mailTemplateId;
+            } else if (s.mailTemplate && s.mailTemplate.id) {
+              templateId = s.mailTemplate.id;
+            }
+            
+            return { 
+              ...s, 
+              uid: `CUSTOM_${s.id}`,
+              // Se till att mailTemplateId alltid finns, även om det är null
+              mailTemplateId: templateId
+            };
+          });
           
           const merged = [...defaultStatuses, ...dynamicStatuses];
           setStatusOptions(merged);
@@ -106,6 +120,7 @@ export default function TicketPage() {
 
   // Visa bekräftelsedialog istället för att uppdatera direkt
   const handleStatusChange = (statusOption: any) => {
+    console.log('Status vald:', statusOption, 'har mailTemplateId:', statusOption.mailTemplateId);
     setSelectedStatus(statusOption);
     setConfirmDialogOpen(true);
   };
@@ -739,7 +754,7 @@ export default function TicketPage() {
           statusName={selectedStatus?.name || ''}
           statusColor={selectedStatus?.color || '#000000'}
           ticketId={ticket.id}
-          hasMailTemplate={selectedStatus?.mailTemplateId !== null && selectedStatus?.mailTemplateId !== undefined}
+          hasMailTemplate={Boolean(selectedStatus?.mailTemplateId)}
         />
       </div>
     </section>

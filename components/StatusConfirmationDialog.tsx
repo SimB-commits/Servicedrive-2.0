@@ -31,6 +31,16 @@ const StatusConfirmationDialog: React.FC<StatusConfirmationDialogProps> = ({
 }) => {
   const [sendEmail, setSendEmail] = useState(true);
 
+  // Logga för felsökning
+  useEffect(() => {
+    if (isOpen) {
+      console.log('StatusConfirmationDialog öppnad med:', { 
+        statusName, 
+        hasMailTemplate 
+      });
+    }
+  }, [isOpen, statusName, hasMailTemplate]);
+
   // Återställ checkboxen när dialogen öppnas
   useEffect(() => {
     if (isOpen) {

@@ -68,36 +68,48 @@ const TicketEditDrawer: React.FC<TicketEditDrawerProps> = ({
 
   // Hämta statusalternativ när komponenten monteras
   useEffect(() => {
-    async function fetchStatuses() {
+    const fetchStatuses = async () => {
       try {
-        const res = await fetch("/api/tickets/statuses");
-        const data = await res.json();
+        const res = await fetch('/api/tickets/statuses');
         if (res.ok) {
+          const data = await res.json();
+          
+          // För felsökning
+          console.log('API-svar från statuses:', data);
+          
+          // Skapa defaultstatusar med explicit mailTemplateId: null
           const defaultStatuses = [
-            { name: "Öppen", uid: "OPEN", color: "#ff9500" },
-            { name: "Färdig", uid: "CLOSED", color: "#3BAB48" },
-            { name: "Pågående", uid: "IN_PROGRESS", color: "#ffa500" },
+            { name: "Öppen", uid: "OPEN", color: "#ff9500", mailTemplateId: null },
+            { name: "Färdig", uid: "CLOSED", color: "#3BAB48", mailTemplateId: null },
+            { name: "Pågående", uid: "IN_PROGRESS", color: "#ffa500", mailTemplateId: null },
           ];
-          // Mappa de dynamiska statusarna så att de får ett uid
-          const dynamicStatuses = data.map((s: any) => ({ 
-            ...s, 
-            uid: `CUSTOM_${s.id}`,
-            mailTemplateId: s.mailTemplateId
-          }));
-          const merged = [...defaultStatuses];
-          dynamicStatuses.forEach((s: any) => {
-            if (!merged.some((d) => d.uid === s.uid)) {
-              merged.push(s);
-            }
+          
+          // Mappa de dynamiska statusarna och konvertera mailTemplateId explicit
+          const dynamicStatuses = data.map((s: any) => {
+            // Konvertera explicit till nummer eller null
+            const templateId = s.mailTemplateId !== undefined && s.mailTemplateId !== null 
+              ? Number(s.mailTemplateId) 
+              : null;
+              
+            return { 
+              ...s, 
+              uid: `CUSTOM_${s.id}`,
+              name: s.name,
+              color: s.color,
+              mailTemplateId: templateId
+            };
           });
+          
+          // Logga för felsökning
+          console.log('Bearbetade statusar:', [...defaultStatuses, ...dynamicStatuses]);
+          
+          const merged = [...defaultStatuses, ...dynamicStatuses];
           setStatusOptions(merged);
-        } else {
-          console.error("Kunde inte hämta statusar:", data.message);
         }
       } catch (error) {
-        console.error("Fel vid hämtning av statusar:", error);
+        console.error('Fel vid hämtning av statusar:', error);
       }
-    }
+    };
     fetchStatuses();
   }, []);
   
@@ -144,6 +156,9 @@ const TicketEditDrawer: React.FC<TicketEditDrawerProps> = ({
     const selectedOption = statusOptions.find(option => option.uid === statusUid);
     
     if (selectedOption) {
+      // Lägg till loggning för felsökning
+      console.log('Status vald:', selectedOption.name, 'har mailTemplateId:', selectedOption.mailTemplateId);
+      
       setNewStatus(statusUid);
       setSelectedStatusInfo({
         name: selectedOption.name,
@@ -380,7 +395,7 @@ const TicketEditDrawer: React.FC<TicketEditDrawerProps> = ({
         statusName={selectedStatusInfo?.name || ''}
         statusColor={selectedStatusInfo?.color || '#000000'}
         ticketId={ticket.id}
-        hasMailTemplate={selectedStatusInfo?.mailTemplateId !== null && selectedStatusInfo?.mailTemplateId !== undefined}
+        hasMailTemplate={Boolean(selectedStatusInfo?.mailTemplateId)}
       />
     </Drawer>
   );
