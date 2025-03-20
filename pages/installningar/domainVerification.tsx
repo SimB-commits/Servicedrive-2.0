@@ -143,12 +143,24 @@ export default function DomainVerificationPage() {
       }
       
       if (data.verified) {
+        // Om verifieringen lyckades, tvinga uppdatering av domäncachen
+        try {
+          await fetch('/api/mail/domains/refresh-cache', { 
+            method: 'POST' 
+          });
+          console.log('Domäncache uppdaterad efter lyckad verifiering');
+        } catch (cacheError) {
+          console.error('Fel vid uppdatering av domäncache:', cacheError);
+          // Fortsätt även om cache-uppdateringen misslyckas
+        }
+        
         addToast({
           title: 'Domän verifierad',
           description: 'Din domän har verifierats framgångsrikt!',
           color: 'success',
           variant: 'flat'
         });
+        
         setActiveStep(2);
         // Uppdatera listan med verifierade domäner
         fetchVerifiedDomains();
@@ -161,7 +173,7 @@ export default function DomainVerificationPage() {
     } finally {
       setIsCheckingStatus(false);
     }
-  };
+  }
 
   const handleDeleteDomain = async (domainId) => {
     if (!confirm('Är du säker på att du vill ta bort denna domän? Detta kommer att påverka mailutskick från denna domän.')) return;

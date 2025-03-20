@@ -37,41 +37,47 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         }
 
         case 'POST':
-          // Skapa en ny butik för användaren
-          try {
-            // Validera input
-            const { name, company, address } = req.body;
-            if (!name || !company || !address) {
-              return res.status(400).json({ error: 'Missing required fields' });
-            }
-  
-            // Skapa butik och UserStore-relation i en transaktion
-            const result = await prisma.$transaction(async (tx) => {
-              // Skapa butiken
-              const newStore = await tx.store.create({
-                data: {
-                  name,
-                  company,
-                  address,
-                },
-              });
-  
-              // Koppla användaren till butiken
-              await tx.userStore.create({
-                data: {
-                  userId: session.user.id,
-                  storeId: newStore.id,
-                },
-              });
-  
-              return newStore;
+        // Skapa en ny butik för användaren
+        try {
+          // Validera input
+          const { name, company, address } = req.body;
+          if (!name || !company || !address) {
+            return res.status(400).json({ error: 'Missing required fields' });
+          }
+
+          // Skapa butik och UserStore-relation i en transaktion
+          const result = await prisma.$transaction(async (tx) => {
+            // Skapa butiken
+            const newStore = await tx.store.create({
+              data: {
+                name,
+                company,
+                address,
+              },
             });
 
-          // Lägg till standarddomänen servicedrive.se för butiken
-          await ensureDefaultDomain(result.id);
+            // Koppla användaren till butiken
+            await tx.userStore.create({
+              data: {
+                userId: session.user.id,
+                storeId: newStore.id,
+              },
+            });
 
-          logger.info(`Ny butik skapad med ID ${result.id} och standarddomän`);
-          return res.status(201).json(result);
+            return newStore;
+          });
+
+        // Importera funktionerna för att få tillgång till senaste implementationen
+        const { ensureDefaultDomain, refreshVerifiedDomains } = await import('@/utils/sendgrid');
+        
+        // Lägg till standarddomänen servicedrive.se för butiken
+        await ensureDefaultDomain(result.id);
+        
+        // Uppdatera domäncachen för att inkludera den nya standarddomänen
+        await refreshVerifiedDomains();
+
+        logger.info(`Ny butik skapad med ID ${result.id} och standarddomän`);
+        return res.status(201).json(result);
         } catch (error) {
           console.error('Error creating store:', error);
           return res.status(500).json({ error: 'Server error' });
