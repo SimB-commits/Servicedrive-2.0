@@ -22,6 +22,9 @@ interface StatusConfirmationDialogProps {
 
 /**
  * Dialogruta för att bekräfta statusändringar och välja om mail ska skickas.
+ * 
+ * Används i flera komponenter för att ge en konsekvent konfirmationsupplevelse
+ * när ett ärendes status ändras, med tydlig information om email-notifiering.
  */
 const StatusConfirmationDialog: React.FC<StatusConfirmationDialogProps> = ({
   isOpen,

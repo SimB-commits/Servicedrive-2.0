@@ -2,7 +2,6 @@
 import React, { useState, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
 import {
-  addToast,
   Form,
   Button,
   Table,
@@ -21,83 +20,52 @@ import {
 import { title, subtitle } from '@/components/primitives';
 import { DeleteIcon, EditIcon } from '@/components/icons';
 import StatusModal from '@/components/StatusModal';
-import { SYSTEM_STATUSES } from '@/utils/ticketStatus';
+
+// Importera centraliserad statushantering
+import ticketStatusService, { 
+  TicketStatus, 
+  SystemStatus, 
+  CustomStatus, 
+  SYSTEM_STATUSES 
+} from '@/utils/ticketStatusService';
 
 export default function Arendestatusar() {
   const { data: session, status } = useSession();
-  const [statuses, setStatuses] = useState<any[]>([]);
-  const [systemStatuses, setSystemStatuses] = useState<any[]>([]);
-  const [editingStatus, setEditingStatus] = useState<any>(null);
+  const [customStatuses, setCustomStatuses] = useState<CustomStatus[]>([]);
+  const [systemStatuses, setSystemStatuses] = useState<SystemStatus[]>([]);
+  const [editingStatus, setEditingStatus] = useState<TicketStatus | null>(null);
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [mailTemplates, setMailTemplates] = useState<any[]>([]);
   const [activeTab, setActiveTab] = useState('custom');
   const [loading, setLoading] = useState(true);
-  const [systemStatusesLoading, setSystemStatusesLoading] = useState(true);
 
   // Hämta alla statusar vid sidladdning
   useEffect(() => {
     async function fetchStatuses() {
       try {
         setLoading(true);
-        const res = await fetch('/api/tickets/statuses', { method: 'GET' });
-        const data = await res.json();
-        if (res.ok) {
-          // Filtrera bort eventuella grundläggande statusar från vanliga statusar
-          const customStatuses = data.filter(status => 
-            !SYSTEM_STATUSES.some(bs => bs.name.toLowerCase() === status.name.toLowerCase())
-          );
-          setStatuses(customStatuses);
-          
-          // Kontrollera om vi har UserTicketStatus-poster för grundläggande statusar
-          const foundSystemStatuses = [];
-          
-          for (const basicStatus of SYSTEM_STATUSES) {
-            const existingStatus = data.find(status => 
-              status.name.toLowerCase() === basicStatus.name.toLowerCase()
-            );
-            
-            if (existingStatus) {
-              foundSystemStatuses.push({
-                ...existingStatus,
-                isSystemStatus: true,
-                systemName: basicStatus.systemName
-              });
-            } else {
-              // Om det inte finns en UserTicketStatus för denna grundläggande status,
-              // skapar vi ett objektrepresentation för UI
-              foundSystemStatuses.push({
-                id: null,
-                name: basicStatus.name,
-                color: basicStatus.color,
-                isSystemStatus: true,
-                systemName: basicStatus.systemName,
-                mailTemplateId: null
-              });
-            }
-          }
-          
-          setSystemStatuses(foundSystemStatuses);
-          setSystemStatusesLoading(false);
-        } else {
-          addToast({
-            title: 'Fel',
-            description: data.message || 'Kunde inte hämta statusar.',
-            color: 'danger',
-            variant: 'flat'
-          });
-        }
+        
+        // Använd vår centraliserade service för att hämta statusar
+        const allStatuses = await ticketStatusService.getAllStatuses(true);
+        
+        // Separera systemstatusar och anpassade statusar
+        const sysStatuses = allStatuses.filter((s): s is SystemStatus => 
+          'isSystemStatus' in s && s.isSystemStatus === true
+        );
+        
+        const custStatuses = allStatuses.filter((s): s is CustomStatus => 
+          !('isSystemStatus' in s) || s.isSystemStatus !== true
+        );
+        
+        setSystemStatuses(sysStatuses);
+        setCustomStatuses(custStatuses);
       } catch (error) {
         console.error('Fel vid hämtning av statusar:', error);
-        addToast({
-          title: 'Fel',
-          description: 'Ett fel inträffade vid hämtning av statusar.',
-          color: 'danger',
-          variant: 'flat'
-        });
       } finally {
         setLoading(false);
       }
     }
+    
     fetchStatuses();
   }, []);
 
@@ -106,25 +74,12 @@ export default function Arendestatusar() {
     async function fetchMailTemplates() {
       try {
         const res = await fetch('/api/mail/templates', { method: 'GET' });
-        const data = await res.json();
         if (res.ok) {
+          const data = await res.json();
           setMailTemplates(data);
-        } else {
-          addToast({
-            title: 'Fel',
-            description: data.message || 'Kunde inte hämta mailmallar.',
-            color: 'danger',
-            variant: 'flat'
-          });
         }
       } catch (error) {
         console.error('Fel vid hämtning av mailmallar:', error);
-        addToast({
-          title: 'Fel',
-          description: 'Ett fel inträffade vid hämtning av mailmallar.',
-          color: 'danger',
-          variant: 'flat'
-        });
       }
     }
     fetchMailTemplates();
@@ -133,221 +88,81 @@ export default function Arendestatusar() {
   if (status === 'loading') return <p>Laddar session...</p>;
   if (!session) return <p>Ingen session – vänligen logga in.</p>;
 
-  // Hantera borttagning av status
+  // Hantera borttagning av status med vår nya centraliserade service
   const handleDelete = async (id: number) => {
-    if (!confirm('Är du säker på att du vill ta bort denna status?')) return;
-    
-    try {
-      const res = await fetch(`/api/tickets/statuses/${id}`, { method: 'DELETE' });
-      if (res.ok) {
-        addToast({
-          title: 'Status borttagen',
-          description: 'Statusen togs bort.',
-          color: 'success',
-          variant: 'flat'
-        });
-        setStatuses((prev) => prev.filter((s) => s.id !== id));
-      } else {
-        const data = await res.json();
-        addToast({
-          title: 'Fel',
-          description: data.message || 'Kunde inte ta bort statusen.',
-          color: 'danger',
-          variant: 'flat'
-        });
-      }
-    } catch (error) {
-      console.error('Fel vid borttagning av status:', error);
-      addToast({
-        title: 'Fel',
-        description: 'Ett fel inträffade vid borttagning av statusen.',
-        color: 'danger',
-        variant: 'flat'
-      });
+    const success = await ticketStatusService.deleteStatus(id);
+    if (success) {
+      setCustomStatuses(prev => prev.filter(s => s.id !== id));
     }
   };
 
   // Öppna redigeringsmodal för en status
-  const handleEdit = (status: any) => {
+  const handleEdit = (status: TicketStatus) => {
     setEditingStatus(status);
   };
 
   // Hantera uppdatering av systemstatusar
-  const handleEditSystemStatus = async (systemStatus: any, templateId: number | null) => {
-    try {
-      // Om det är en befintlig status, uppdatera den
-      if (systemStatus.id) {
-        const res = await fetch(`/api/tickets/statuses/${systemStatus.id}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            mailTemplateId: templateId
-          })
+  const handleEditSystemStatus = async (systemStatus: SystemStatus, templateId: number | null) => {
+    // Eftersom systemstatusar redan har isSystemStatus = true, kan vi bara uppdatera mailTemplateId
+    const statusData = {
+      mailTemplateId: templateId
+    };
+    
+    // Anropa vår centraliserade service för att spara statusen
+    const updatedStatus = await ticketStatusService.saveStatus(statusData, 
+      // Om systemStatus har ett id, använd det (annars är det null)
+      'id' in systemStatus ? systemStatus.id : undefined
+    );
+    
+    if (updatedStatus) {
+      // Uppdatera systemStatuses med den uppdaterade statusen
+      setSystemStatuses(prev => {
+        return prev.map(s => {
+          if (s.systemName === systemStatus.systemName) {
+            // Behåll systemStatus-specifika egenskaper men uppdatera mailTemplateId
+            return {
+              ...s,
+              mailTemplateId: updatedStatus.mailTemplateId
+            };
+          }
+          return s;
         });
-
-        if (res.ok) {
-          const updatedStatus = await res.json();
-          addToast({
-            title: 'Mailmall uppdaterad',
-            description: `Mailmallen för ${systemStatus.name} har uppdaterats.`,
-            color: 'success',
-            variant: 'flat'
-          });
-          
-          // Uppdatera systemStatuses
-          setSystemStatuses(prev => 
-            prev.map(s => s.id === updatedStatus.id ? {
-              ...updatedStatus,
-              isSystemStatus: true,
-              systemName: systemStatus.systemName
-            } : s)
-          );
-        } else {
-          throw new Error('Kunde inte uppdatera statusen');
-        }
-      } 
-      // Om det inte är en befintlig status, skapa en ny för denna grundläggande status
-      else {
-        const res = await fetch('/api/tickets/statuses', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            name: systemStatus.name,
-            color: systemStatus.color,
-            mailTemplateId: templateId
-          })
-        });
-
-        if (res.ok) {
-          const newStatus = await res.json();
-          addToast({
-            title: 'Mailmall kopplad',
-            description: `Mailmallen har kopplats till ${systemStatus.name}.`,
-            color: 'success',
-            variant: 'flat'
-          });
-          
-          // Uppdatera systemStatuses
-          setSystemStatuses(prev => 
-            prev.map(s => s.systemName === systemStatus.systemName ? {
-              ...newStatus,
-              isSystemStatus: true,
-              systemName: systemStatus.systemName
-            } : s)
-          );
-        } else {
-          throw new Error('Kunde inte skapa statusen');
-        }
-      }
-    } catch (error) {
-      console.error('Fel vid hantering av systemstatus:', error);
-      addToast({
-        title: 'Fel',
-        description: 'Ett fel inträffade vid hantering av systemstatusen.',
-        color: 'danger',
-        variant: 'flat'
       });
     }
   };
 
-  // Hantera uppdatering av en status
+  // Hantera uppdatering av anpassad status
   const handleUpdateStatus = async (statusData: any) => {
     if (!editingStatus) return;
     
-    // Om det är en grundläggande status, uppdatera endast mailTemplateId
-    if (editingStatus.isSystemStatus) {
-      await handleEditSystemStatus(editingStatus, statusData.mailTemplateId);
+    // Om det är en systemstatus, uppdatera endast mailTemplateId
+    if ('isSystemStatus' in editingStatus && editingStatus.isSystemStatus) {
+      await handleEditSystemStatus(editingStatus as SystemStatus, statusData.mailTemplateId);
       setEditingStatus(null);
       return;
     }
     
-    // För anpassade statusar, uppdatera alla fält
-    try {
-      const res = await fetch(`/api/tickets/statuses/${editingStatus.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(statusData)
-      });
-      
-      if (res.ok) {
-        const updatedStatus = await res.json();
-        addToast({
-          title: 'Status uppdaterad',
-          description: 'Statusen uppdaterades framgångsrikt!',
-          color: 'success',
-          variant: 'flat'
-        });
-        
-        setStatuses((prev) =>
-          prev.map((s) => (s.id === updatedStatus.id ? updatedStatus : s))
-        );
-        setEditingStatus(null);
-      } else {
-        const data = await res.json();
-        addToast({
-          title: 'Fel',
-          description: data.message || 'Kunde inte uppdatera statusen.',
-          color: 'danger',
-          variant: 'flat'
-        });
-      }
-    } catch (error) {
-      console.error('Fel vid uppdatering av status:', error);
-      addToast({
-        title: 'Fel',
-        description: 'Ett fel inträffade vid uppdatering av statusen.',
-        color: 'danger',
-        variant: 'flat'
-      });
+    // För anpassade statusar, använd vår service för uppdatering
+    const updatedStatus = await ticketStatusService.saveStatus(
+      statusData, 
+      'id' in editingStatus ? editingStatus.id : undefined
+    );
+    
+    if (updatedStatus) {
+      // Uppdatera listan med statusar
+      setCustomStatuses(prev => prev.map(s => s.id === updatedStatus.id ? updatedStatus : s));
+      setEditingStatus(null);
     }
   };
 
-  // Hantera skapande av en ny status
+  // Hantera skapande av ny status
   const handleCreateStatus = async (statusData: any) => {
-    try {
-      const res = await fetch('/api/tickets/statuses', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(statusData)
-      });
-      
-      if (res.ok) {
-        const newStatus = await res.json();
-        addToast({
-          title: 'Status skapad',
-          description: 'Den nya statusen skapades framgångsrikt!',
-          color: 'success',
-          variant: 'flat'
-        });
-        
-        setStatuses((prev) => [...prev, newStatus]);
-        setCreateModalOpen(false);
-      } else {
-        const data = await res.json();
-        addToast({
-          title: 'Fel',
-          description: data.message || 'Något gick fel vid skapandet.',
-          color: 'danger',
-          variant: 'flat'
-        });
-      }
-    } catch (error) {
-      console.error('Fel vid skapande av status:', error);
-      addToast({
-        title: 'Fel',
-        description: 'Ett fel inträffade vid skapandet av statusen.',
-        color: 'danger',
-        variant: 'flat'
-      });
+    const newStatus = await ticketStatusService.saveStatus(statusData);
+    
+    if (newStatus) {
+      setCustomStatuses(prev => [...prev, newStatus]);
+      setCreateModalOpen(false);
     }
-  };
-
-  // Öppna modal för att koppla en mailmall till en systemstatus
-  const handleSelectMailTemplate = (systemStatus: any) => {
-    setEditingStatus({
-      ...systemStatus,
-      isSystemStatus: true
-    });
   };
 
   return (
@@ -393,7 +208,7 @@ export default function Arendestatusar() {
                 </p>
               </CardHeader>
               <CardBody>
-                {systemStatusesLoading ? (
+                {loading ? (
                   <div className="flex justify-center items-center py-8">
                     <Spinner size="md" />
                     <span className="ml-3 text-default-600">Laddar grundläggande statusar...</span>
@@ -443,7 +258,7 @@ export default function Arendestatusar() {
                                 variant="flat"
                                 color="primary"
                                 size="sm"
-                                onPress={() => handleSelectMailTemplate(s)}
+                                onPress={() => handleEdit(s)}
                               >
                                 Koppla mailmall
                               </Button>
@@ -464,7 +279,7 @@ export default function Arendestatusar() {
               <div className="flex items-center gap-2">
                 <span>Anpassade statusar</span>
                 <span className="bg-default-100 text-default-800 text-xs px-2 py-1 rounded-full">
-                  {statuses.length}
+                  {customStatuses.length}
                 </span>
               </div>
             }
@@ -505,7 +320,7 @@ export default function Arendestatusar() {
                       <TableColumn>Åtgärder</TableColumn>
                     </TableHeader>
                     <TableBody emptyContent="Inga anpassade statusar har skapats än.">
-                      {statuses.map((s) => (
+                      {customStatuses.map((s) => (
                         <TableRow key={s.id}>
                           <TableCell>{s.name}</TableCell>
                           <TableCell>
@@ -515,8 +330,8 @@ export default function Arendestatusar() {
                             />
                           </TableCell>
                           <TableCell>
-                            {s.mailTemplate ? (
-                              <div>{s.mailTemplate.name}</div>
+                            {s.mailTemplateId ? (
+                              <div>{mailTemplates.find(mt => mt.id === s.mailTemplateId)?.name || 'Okänd mall'}</div>
                             ) : (
                               <span className="text-default-400">Ingen mall kopplad</span>
                             )}

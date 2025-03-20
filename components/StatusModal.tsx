@@ -12,36 +12,31 @@ import {
   SelectItem,
   Tabs,
   Tab,
-  addToast,
   Badge
 } from '@heroui/react';
 import StatusMailTemplateIntegration from './email/StatusMailTemplateIntegration';
-import { hasMailTemplate } from '@/utils/ticketStatus';
+
+// Importera vår centraliserade statusservice
+import { TicketStatus, SystemStatus, CustomStatus, hasMailTemplate } from '@/utils/ticketStatusService';
 
 interface MailTemplate {
   id: number;
   name: string;
 }
 
-interface UserTicketStatus {
-  id: number;
-  name: string;
-  color: string;
-  mailTemplateId: number | null;
-  isSystemStatus?: boolean; // Flagga för grundläggande statusar
-}
-
 interface StatusModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSave: (status: any) => void;
-  editingStatus: UserTicketStatus | null;
+  editingStatus: TicketStatus | null;
   mailTemplates: MailTemplate[];
 }
 
 /**
  * Modal för att skapa eller redigera en status.
  * Hanterar både systemstatusar och anpassade statusar.
+ * 
+ * Använder centraliserad statushantering för konsekvent representation.
  */
 const StatusModal: React.FC<StatusModalProps> = ({
   isOpen,
@@ -64,7 +59,9 @@ const StatusModal: React.FC<StatusModalProps> = ({
       setName(editingStatus.name);
       setSelectedTemplateId(editingStatus.mailTemplateId ? String(editingStatus.mailTemplateId) : null);
       setColor(editingStatus.color);
-      setIsSystemStatus(!!editingStatus.isSystemStatus);
+      
+      // Kontrollera om det är en systemstatus
+      setIsSystemStatus('isSystemStatus' in editingStatus && editingStatus.isSystemStatus === true);
     } else {
       // Rensa formuläret för ny status
       setName('');
@@ -103,9 +100,11 @@ const StatusModal: React.FC<StatusModalProps> = ({
     // Förbered olika data beroende på om det är grundläggande status eller anpassad
     const statusData = isSystemStatus 
       ? {
+          // För systemstatusar behöver vi bara uppdatera mailTemplateId
           mailTemplateId: selectedTemplateId ? Number(selectedTemplateId) : null
         }
       : {
+          // För anpassade statusar uppdaterar vi allt
           name,
           mailTemplateId: selectedTemplateId ? Number(selectedTemplateId) : null,
           color
@@ -231,23 +230,16 @@ const StatusModal: React.FC<StatusModalProps> = ({
                 </div>
               </Tab>
               
-              {editingStatus && !isSystemStatus && (
+              {editingStatus && !isSystemStatus && 'id' in editingStatus && (
                 <Tab key="mail" title="Mail">
                   <div className="py-4">
                     <StatusMailTemplateIntegration 
                       statusId={editingStatus.id}
                       onTemplateUpdated={() => {
-                        // Uppdatera UI:n
-                        if (editingStatus.mailTemplateId) {
+                        // Om statusen har mailTemplateId, uppdatera UI
+                        if (editingStatus.mailTemplateId && selectedTemplateId !== String(editingStatus.mailTemplateId)) {
                           setSelectedTemplateId(String(editingStatus.mailTemplateId));
                         }
-                        
-                        addToast({
-                          title: 'Uppdaterad',
-                          description: 'Mailmall för statusen har uppdaterats',
-                          color: 'success',
-                          variant: 'flat'
-                        });
                       }}
                     />
                   </div>

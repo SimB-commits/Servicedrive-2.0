@@ -1,3 +1,4 @@
+// pages/arenden/[id].tsx
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import { useSession } from 'next-auth/react';
@@ -13,12 +14,19 @@ import {
   Dropdown, 
   DropdownTrigger, 
   DropdownMenu, 
-  DropdownItem,
-  addToast
+  DropdownItem
 } from '@heroui/react';
 import { title } from '@/components/primitives';
 import { PrinterIcon } from '@/components/icons';
 import StatusConfirmationDialog from '@/components/StatusConfirmationDialog';
+
+// Importera vår nya centraliserade statushantering
+import ticketStatusService, { 
+  TicketStatus, 
+  findStatusByUid, 
+  getStatusDisplay, 
+  hasMailTemplate
+} from '@/utils/ticketStatusService';
 
 interface Ticket {
   customStatus: any;
@@ -39,12 +47,12 @@ export default function TicketPage() {
   const { data: session, status } = useSession();
   const [loading, setLoading] = useState(true);
   const [ticket, setTicket] = useState<Ticket | null>(null);
-  const [statusOptions, setStatusOptions] = useState<Array<{ name: string; uid: string; color?: string; mailTemplateId?: number | null }>>([]);
+  const [statusOptions, setStatusOptions] = useState<TicketStatus[]>([]);
   const [activeTab, setActiveTab] = useState('details');
   
   // State för statusbekräftelsedialogrutan
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
-  const [selectedStatus, setSelectedStatus] = useState<{ uid: string; name: string; color: string; mailTemplateId?: number | null } | null>(null);
+  const [selectedStatus, setSelectedStatus] = useState<TicketStatus | null>(null);
 
   // Hämta ärende
   useEffect(() => {
@@ -69,150 +77,71 @@ export default function TicketPage() {
     fetchTicket();    
   }, [id, session]);
 
-  // Hämta statusar
+  // Hämta statusar via vår centraliserade service
   useEffect(() => {
-    if (!session) return;
-
-    const fetchStatuses = async () => {
-      try {
-        const res = await fetch('/api/tickets/statuses');
-        if (res.ok) {
-          const data = await res.json();
-          
-          // Viktigt: Skapa defaultstatusarna med EXPLICIT mailTemplateId
-          const defaultStatuses = [
-            // Dessa måste ha explicit mailTemplateId för att korrekt funktionalitet
-            { name: "Öppen", uid: "OPEN", color: "#ff9500", mailTemplateId: null },
-            { name: "Färdig", uid: "CLOSED", color: "#3BAB48", mailTemplateId: null },
-            { name: "Pågående", uid: "IN_PROGRESS", color: "#ffa500", mailTemplateId: null },
-          ];
-          
-          // Mappa de dynamiska statusarna och säkerställ att mailTemplateId hanteras korrekt
-          const dynamicStatuses = data.map((s) => {
-            // Se till att mailTemplateId hanteras konsekvent
-            let templateId = null;
-            
-            // Hantera olika möjliga dataformat från API
-            if (s.mailTemplateId !== undefined) {
-              templateId = s.mailTemplateId;
-            } else if (s.mailTemplate && s.mailTemplate.id) {
-              templateId = s.mailTemplate.id;
-            }
-            
-            return { 
-              ...s, 
-              uid: `CUSTOM_${s.id}`,
-              // Se till att mailTemplateId alltid finns, även om det är null
-              mailTemplateId: templateId
-            };
-          });
-          
-          const merged = [...defaultStatuses, ...dynamicStatuses];
-          setStatusOptions(merged);
-        }
-      } catch (error) {
-        console.error('Fel vid hämtning av statusar:', error);
-      }
+    const loadStatuses = async () => {
+      const allStatuses = await ticketStatusService.getAllStatuses();
+      setStatusOptions(allStatuses);
     };
-
-    fetchStatuses();
-  }, [session]);
+    
+    loadStatuses();
+  }, []);
 
   // Visa bekräftelsedialog istället för att uppdatera direkt
-  const handleStatusChange = (statusOption: any) => {
-    console.log('Status vald:', statusOption, 'har mailTemplateId:', statusOption.mailTemplateId);
+  const handleStatusChange = (statusOption: TicketStatus) => {
     setSelectedStatus(statusOption);
     setConfirmDialogOpen(true);
   };
 
-  // Faktisk uppdatering av status efter bekräftelse
+  // Faktisk uppdatering av status via den centraliserade servicen
   const updateStatus = async (newStatus: string, sendEmail: boolean) => {
     if (!ticket || !id) return;
 
     try {
-      console.log('Uppdaterar status till:', newStatus, 'Skicka mail:', sendEmail);
+      // Använd den centraliserade funktionen för statusuppdatering
+      const updatedTicket = await ticketStatusService.updateTicketStatus(
+        Number(id),
+        newStatus,
+        sendEmail
+      );
       
-      // Skapa ett fullständigt payload för att behålla alla befintliga värden
-      // men uppdatera status och mailNotification-flaggan
-      const payload = {
-        // Behåll befintliga värden från ticket
-        dynamicFields: ticket.dynamicFields,
-        
-        // För title/description: Använd befintliga värden om de finns
-        title: ticket.title,
-        
-        // För dueDate: Se till att det är i rätt format eller null
-        dueDate: ticket.dueDate,
-        
-        // Uppdatera status
-        status: newStatus,
-        
-        // Skicka med flaggan för om mail ska skickas eller inte
-        sendNotification: sendEmail
-      };
-
-      const res = await fetch(`/api/tickets/${id}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload),
-      });
-
-      if (!res.ok) {
-        // Försök läsa eventuella felmeddelanden från servern
-        const errorData = await res.json().catch(() => ({}));
-        console.error('Serverfel vid statusuppdatering:', errorData);
-        throw new Error('Kunde inte uppdatera status: ' + (errorData.message || res.statusText));
-      }
-
-      const updatedTicket = await res.json();
+      // Uppdatera det lokala ticketobjektet
       setTicket(updatedTicket);
-      
-      const statusMessage = sendEmail 
-        ? 'Ärendets status har uppdaterats och mail har skickats till kunden'
-        : 'Ärendets status har uppdaterats utan mailnotifiering';
-      
-      addToast({
-        title: 'Status uppdaterad',
-        description: statusMessage,
-        color: 'success',
-        variant: 'flat'
-      });
-
     } catch (error) {
-      console.error('Fel vid uppdatering av status:', error);
-      addToast({
-        title: 'Fel',
-        description: error instanceof Error ? error.message : 'Kunde inte uppdatera status',
-        color: 'danger',
-        variant: 'flat'
-      });
+      // Felhantering hanteras redan i servicen genom addToast
+      console.error('Fel vid statusuppdatering');
     }
   };
 
-  // Funktion för att hämta korrekt visat statusnamn och färg
-  const getStatusDisplay = () => {
-    if (ticket?.customStatus) {
-      return {
-        name: ticket.customStatus.name,
-        color: ticket.customStatus.color || '#cccccc'
-      };
+  // Funktion för att formatera kundinformation
+  const getCustomerInfo = () => {
+    if (!ticket?.customer) return 'Okänd kund';
+
+    let customerName = '';
+    if (ticket.customer.firstName || ticket.customer.lastName) {
+      customerName = `${ticket.customer.firstName || ''} ${ticket.customer.lastName || ''}`.trim();
+    } else if (ticket.customer.name) {
+      // Bakåtkompatibilitet med äldre kundmodell
+      customerName = ticket.customer.name;
+    } else {
+      customerName = ticket.customer.email || `Kund #${ticket.customer.id}`;
     }
 
-    // Standardfärger och namn för grundstatusar
-    const statusMap: Record<string, { name: string; color: string }> = {
-      'OPEN': { name: 'Öppen', color: '#ff9500' },
-      'CLOSED': { name: 'Färdig', color: '#3BAB48' },
-      'IN_PROGRESS': { name: 'Pågående', color: '#ffa500' },
-      'RESOLVED': { name: 'Löst', color: '#4da6ff' }
+    return {
+      name: customerName,
+      email: ticket.customer.email,
+      phone: ticket.customer.phoneNumber,
+      address: ticket.customer.address,
+      postalCode: ticket.customer.postalCode,
+      city: ticket.customer.city
     };
-
-    return statusMap[ticket?.status || ''] || { name: ticket?.status || 'Okänd', color: '#cccccc' };
   };
 
   // Funktion för att generera HTML för utskriftsfönstret
   const generatePrintContent = (ticket: Ticket) => {
+    // Använd vår centraliserade funktion för att få statusvisning
+    const statusInfo = getStatusDisplay(ticket);
+    
     return `
       <!DOCTYPE html>
       <html>
@@ -308,7 +237,7 @@ export default function TicketPage() {
             <table>
               <tr>
                 <th>Kund</th>
-                <td>${getCustomerDisplayName(ticket.customer)}</td>
+                <td>${getCustomerInfo().name}</td>
               </tr>
               ${ticket.customer?.email ? `
               <tr>
@@ -335,7 +264,7 @@ export default function TicketPage() {
               </tr>
               <tr>
                 <th>Status</th>
-                <td>${getStatusDisplay().name}</td>
+                <td>${statusInfo.name}</td>
               </tr>
               ${ticket.dueDate ? `
               <tr>
@@ -403,50 +332,6 @@ export default function TicketPage() {
       })
       .join('');
   };
-  
-  // Hjälpfunktion för att visa kundnamn
-  const getCustomerDisplayName = (customer: any) => {
-    if (!customer) return "-";
-    
-    if (customer.name) {
-      return customer.name;
-    }
-
-    if (customer.firstName || customer.lastName) {
-      const fullName = `${customer.firstName || ''} ${customer.lastName || ''}`.trim();
-      if (fullName) return fullName;
-    }
-
-    if (customer.id) {
-      return `Kund #${customer.id}`;
-    }
-
-    return "Okänd kund";
-  };
-
-  // Funktion för att formatera kundinformation
-  const getCustomerInfo = () => {
-    if (!ticket?.customer) return 'Okänd kund';
-
-    let customerName = '';
-    if (ticket.customer.firstName || ticket.customer.lastName) {
-      customerName = `${ticket.customer.firstName || ''} ${ticket.customer.lastName || ''}`.trim();
-    } else if (ticket.customer.name) {
-      // Bakåtkompatibilitet med äldre kundmodell
-      customerName = ticket.customer.name;
-    } else {
-      customerName = ticket.customer.email || `Kund #${ticket.customer.id}`;
-    }
-
-    return {
-      name: customerName,
-      email: ticket.customer.email,
-      phone: ticket.customer.phoneNumber,
-      address: ticket.customer.address,
-      postalCode: ticket.customer.postalCode,
-      city: ticket.customer.city
-    };
-  };
 
   if (status === 'loading' || loading) {
     return (
@@ -473,7 +358,8 @@ export default function TicketPage() {
     );
   }
 
-  const statusDisplay = getStatusDisplay();
+  // Använd vår centraliserade funktion för att få statusvisning
+  const statusDisplay = getStatusDisplay(ticket);
   const customerInfo = getCustomerInfo();
 
   return (
@@ -742,20 +628,22 @@ export default function TicketPage() {
         )}
 
         {/* StatusConfirmationDialog för att bekräfta statusändring */}
-        <StatusConfirmationDialog
-          isOpen={confirmDialogOpen}
-          onClose={() => setConfirmDialogOpen(false)}
-          onConfirm={(sendEmail) => {
-            if (selectedStatus) {
-              updateStatus(selectedStatus.uid, sendEmail);
-              setConfirmDialogOpen(false);
-            }
-          }}
-          statusName={selectedStatus?.name || ''}
-          statusColor={selectedStatus?.color || '#000000'}
-          ticketId={ticket.id}
-          hasMailTemplate={Boolean(selectedStatus?.mailTemplateId)}
-        />
+        {selectedStatus && (
+          <StatusConfirmationDialog
+            isOpen={confirmDialogOpen}
+            onClose={() => setConfirmDialogOpen(false)}
+            onConfirm={(sendEmail) => {
+              if (selectedStatus) {
+                updateStatus(selectedStatus.uid, sendEmail);
+                setConfirmDialogOpen(false);
+              }
+            }}
+            statusName={selectedStatus.name}
+            statusColor={selectedStatus.color}
+            ticketId={ticket.id}
+            hasMailTemplate={hasMailTemplate(selectedStatus)}
+          />
+        )}
       </div>
     </section>
   );

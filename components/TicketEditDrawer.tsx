@@ -22,7 +22,7 @@ import {
   findStatusByUid, 
   hasMailTemplate,
   getEffectiveStatus 
-} from "@/utils/ticketStatus";
+} from "@/utils/ticketStatusService";
 
 // Definiera typer
 type Customer = {
