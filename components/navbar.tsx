@@ -106,11 +106,11 @@ export const Navbar = () => {
       isBordered={!scrolled}
     >
       {/* Left section: Logo and main navigation */}
-      <NavbarContent className="gap-6">
+      <NavbarContent className="gap-10">
         <NavbarBrand>
-          <NextLink href="/" className="flex items-center gap-2">
-            <Logo className="text-primary h-8 w-8" />
-            <span className="font-bold text-xl text-inherit hidden sm:block">Servicedrive</span>
+          <NextLink href="/dashboard" className="flex items-center gap-2">
+            <Logo className="text-primary h-10 w-10" />
+            <span className="font-bold text-lg text-inherit hidden sm:block">Servicedrive</span>
           </NextLink>
         </NavbarBrand>
 
