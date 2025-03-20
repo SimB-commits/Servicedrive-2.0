@@ -17,7 +17,7 @@ import {
 import StatusMailTemplateIntegration from './email/StatusMailTemplateIntegration';
 
 // Importera vår centraliserade statusservice
-import { TicketStatus, SystemStatus, CustomStatus, hasMailTemplate } from '@/utils/ticketStatusService';
+import { TicketStatus, SystemStatus, CustomStatus } from '@/utils/ticketStatusService';
 
 interface MailTemplate {
   id: number;
@@ -100,8 +100,11 @@ const StatusModal: React.FC<StatusModalProps> = ({
     // Förbered olika data beroende på om det är grundläggande status eller anpassad
     const statusData = isSystemStatus 
       ? {
-          // För systemstatusar behöver vi bara uppdatera mailTemplateId
-          mailTemplateId: selectedTemplateId ? Number(selectedTemplateId) : null
+          // För systemstatusar inkluderar vi namn och färg för att uppfylla API-valideringen
+          // även om vi egentligen bara vill uppdatera mailTemplateId
+          name: editingStatus?.name || '',
+          mailTemplateId: selectedTemplateId ? Number(selectedTemplateId) : null,
+          color: editingStatus?.color || '#ffffff'
         }
       : {
           // För anpassade statusar uppdaterar vi allt

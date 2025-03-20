@@ -104,8 +104,12 @@ export default function Arendestatusar() {
   // Hantera uppdatering av systemstatusar
   const handleEditSystemStatus = async (systemStatus: SystemStatus, templateId: number | null) => {
     // Eftersom systemstatusar redan har isSystemStatus = true, kan vi bara uppdatera mailTemplateId
+    // MEN vi måste inkludera alla obligatoriska fält för att tillfredsställa API-valideringen
     const statusData = {
-      mailTemplateId: templateId
+      mailTemplateId: templateId,
+      // Inkludera dessa fält som krävs av API-valideringen
+      name: systemStatus.name,
+      color: systemStatus.color
     };
     
     // Anropa vår centraliserade service för att spara statusen
