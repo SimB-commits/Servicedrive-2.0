@@ -22,10 +22,13 @@ const EmailReplySettings: React.FC<EmailReplySettingsProps> = ({ className }) =>
   const [useSharedDomain, setUseSharedDomain] = useState(true);
   const [domainSetting, setDomainSetting] = useState('');
   const [currentDomain, setCurrentDomain] = useState('');
+  const [verifiedDomains, setVerifiedDomains] = useState<string[]>([]);
+  const [validationError, setValidationError] = useState('');
 
-  // Hämta nuvarande inställningar
+  // Hämta nuvarande inställningar och verifierade domäner
   useEffect(() => {
     fetchSettings();
+    fetchVerifiedDomains();
   }, []);
 
   const fetchSettings = async () => {
@@ -60,14 +63,68 @@ const EmailReplySettings: React.FC<EmailReplySettingsProps> = ({ className }) =>
     }
   };
 
+  const fetchVerifiedDomains = async () => {
+    try {
+      // Hämta alla verifierade domäner för butiken
+      const res = await fetch('/api/mail/domains');
+      if (res.ok) {
+        const data = await res.json();
+        
+        // Extrahera domännamnen från svaret
+        const domains = data.map((d: any) => d.domain.toLowerCase());
+        setVerifiedDomains(domains);
+      }
+    } catch (error) {
+      console.error('Fel vid hämtning av verifierade domäner:', error);
+    }
+  };
+
+  const validateDomain = (domain: string): boolean => {
+    if (!domain || domain === 'reply.servicedrive.se') {
+      // Standarddomänen är alltid giltig
+      setValidationError('');
+      return true;
+    }
+    
+    // Kontrollera om domänen har reply-prefix
+    if (!domain.startsWith('reply.')) {
+      setValidationError('Svarsdomänen måste börja med "reply."');
+      return false;
+    }
+    
+    // Extrahera basdomänen (ta bort reply.)
+    const baseDomain = domain.substring(6); // "reply.".length = 6
+    
+    // Kontrollera om basdomänen eller den fullständiga domänen är verifierad
+    if (verifiedDomains.includes(domain) || verifiedDomains.includes(baseDomain)) {
+      setValidationError('');
+      return true;
+    }
+    
+    // Om inget av ovanstående, är domänen ogiltig
+    setValidationError(`Domänen '${domain}' är inte verifierad. Endast verifierade domäner kan användas för e-postsvar.`);
+    return false;
+  };
+
   const handleSaveSettings = async () => {
     try {
-      setSaving(true);
-      
       // Bestäm vilket domänvärde som ska sparas
       const domainToSave = useSharedDomain 
         ? 'reply.servicedrive.se' 
         : (domainSetting || currentDomain);
+      
+      // Validera domänen innan vi sparar
+      if (!useSharedDomain && !validateDomain(domainToSave)) {
+        addToast({
+          title: 'Ogiltig domän',
+          description: validationError || 'Domänen måste vara verifierad för att användas',
+          color: 'danger',
+          variant: 'flat'
+        });
+        return;
+      }
+      
+      setSaving(true);
       
       // Spara inställningar via API
       const res = await fetch('/api/settings/email', {
@@ -142,14 +199,31 @@ const EmailReplySettings: React.FC<EmailReplySettingsProps> = ({ className }) =>
                   label="Egen svarsdomän"
                   placeholder="t.ex. reply.dindomän.se"
                   value={domainSetting}
-                  onValueChange={setDomainSetting}
-                  description="Kräver DNS-konfiguration. Använd endast om du har verifierat din domän."
+                  onValueChange={(val) => {
+                    setDomainSetting(val);
+                    validateDomain(val);
+                  }}
+                  description="Domänen måste vara verifierad i systemet"
                   isDisabled={useSharedDomain}
+                  isInvalid={!!validationError}
+                  errorMessage={validationError}
                 />
-                <p className="text-xs text-warning-500 mt-1">
-                  OBS: För att använda egen svarsdomän måste du konfigurera DNS-poster.
-                  Kontakta support för instruktioner.
-                </p>
+                {verifiedDomains.length > 0 ? (
+                  <div className="mt-2">
+                    <p className="text-xs text-default-500 mb-1">Verifierade domäner:</p>
+                    <div className="flex flex-wrap gap-1">
+                      {verifiedDomains.map(domain => (
+                        <span key={domain} className="text-xs bg-default-100 px-2 py-1 rounded">
+                          {domain}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-xs text-warning-500 mt-1">
+                    Inga verifierade domäner hittades. Du måste först verifiera en domän under Domänverifiering.
+                  </p>
+                )}
               </div>
             )}
 
@@ -175,7 +249,7 @@ const EmailReplySettings: React.FC<EmailReplySettingsProps> = ({ className }) =>
           color="primary" 
           onPress={handleSaveSettings}
           isLoading={saving}
-          isDisabled={saving || loading}
+          isDisabled={saving || loading || (!useSharedDomain && !!validationError)}
         >
           Spara inställningar
         </Button>

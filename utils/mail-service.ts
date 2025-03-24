@@ -43,6 +43,75 @@ const handleMailError = (error: any, contextInfo?: { ticketId?: number, recipien
 };
 
 /**
+ * Hämtar den konfigurerade svarsdomänen för en butik
+ * Om ingen domän är konfigurerad eller om den inte är verifierad, används standarddomänen
+ */
+export async function getReplyDomain(storeId: number): Promise<string> {
+  try {
+    // Först, kontrollera om det finns en inställning sparad i databasen
+    const setting = await prisma.setting.findUnique({
+      where: {
+        key_storeId: {
+          key: 'REPLY_DOMAIN',
+          storeId: storeId
+        }
+      }
+    });
+
+    // Om en inställning finns, använd den
+    if (setting && setting.value) {
+      // Kontrollera om domänen faktiskt är verifierad
+      const isVerified = await isVerifiedReplyDomain(setting.value, storeId);
+      
+      if (isVerified) {
+        return setting.value;
+      } else {
+        logger.warn(`Konfigurerad svarsdomän '${setting.value}' är inte verifierad, använder standard`, {
+          storeId,
+          configuredDomain: setting.value
+        });
+      }
+    }
+
+    // Fallback till miljövariabel eller standardvärde
+    return process.env.REPLY_DOMAIN || 'reply.servicedrive.se';
+  } catch (error) {
+    logger.error('Fel vid hämtning av svarsdomän', { 
+      error: error instanceof Error ? error.message : 'Okänt fel',
+      storeId
+    });
+    
+    // Vid fel, använd den säkra standarddomänen
+    return 'reply.servicedrive.se';
+  }
+}
+
+/**
+ * Kontrollerar om en svarsdomän är verifierad för butiken
+ */
+async function isVerifiedReplyDomain(domain: string, storeId: number): Promise<boolean> {
+  try {
+    // Kontrollera om domänen finns i VerifiedDomain-tabellen med status='verified'
+    const verifiedDomain = await prisma.verifiedDomain.findFirst({
+      where: {
+        domain: domain,
+        storeId: storeId,
+        status: 'verified'
+      }
+    });
+    
+    return !!verifiedDomain;
+  } catch (error) {
+    logger.error('Fel vid kontroll av domänverifiering', { 
+      error: error instanceof Error ? error.message : 'Okänt fel',
+      domain,
+      storeId
+    });
+    return false;
+  }
+}
+
+/**
  * Genererar en Reply-To adress baserad på ärende-ID och domän
  */
 export function generateReplyToAddress(ticketId: number, domain?: string): string {
@@ -522,11 +591,42 @@ export async function sendTemplatedEmail(
     
     // Om detta är relaterat till ett ärende, lägg till Reply-To
     if (variables.ärendeID) {
-      // Använd alltid den delade domänen för e-postsvar
-      const verifiedDomain = process.env.REPLY_DOMAIN || 'reply.servicedrive.se';
+      // Hämta den konfigurerade eller verifierade domänen för butiken
+      // Viktigt: Använd storeId från ärendet för att få rätt inställning
+      let replyDomain = 'reply.servicedrive.se'; // Standard-fallback
       
-      // Sätt Reply-To adressen
-      emailData.replyTo = generateReplyToAddress(variables.ärendeID, verifiedDomain);
+      if (typeof variables.ärendeID === 'number') {
+        try {
+          // Vi behöver hämta storeId för ärendet om det inte finns i variables
+          let storeId = null;
+          if ('storeId' in variables && variables.storeId) {
+            storeId = Number(variables.storeId);
+          } else {
+            // Hämta storeId för ärendet från databasen
+            const ticket = await prisma.ticket.findUnique({
+              where: { id: variables.ärendeID },
+              select: { storeId: true }
+            });
+            
+            if (ticket) {
+              storeId = ticket.storeId;
+            }
+          }
+          
+          if (storeId) {
+            // Hämta den konfigurerade svarsdomänen för butiken
+            replyDomain = await getReplyDomain(storeId);
+          }
+        } catch (error) {
+          logger.warn('Kunde inte hämta svarsdomän för butik, använder standard', {
+            error: error instanceof Error ? error.message : 'Okänt fel'
+          });
+          // Fortsätt med standarddomänen vid fel
+        }
+      }
+      
+      // Sätt Reply-To adressen med den korrekt hämtade domänen
+      emailData.replyTo = generateReplyToAddress(variables.ärendeID, replyDomain);
       
       // Lägg till X-Headers som kan användas för spårning och säkerhet
       emailData.headers = {
@@ -568,7 +668,8 @@ export async function sendTemplatedEmail(
       anonymous_recipient: toEmail.split('@')[0].substring(0, 2) + '***@' + toEmail.split('@')[1].split('.')[0],
       categories,
       sender: senderEmail.split('@')[0].substring(0, 2) + '***@' + senderEmail.split('@')[1],
-      hasReplyTo: !!emailData.replyTo
+      hasReplyTo: !!emailData.replyTo,
+      replyDomain: emailData.replyTo ? emailData.replyTo.split('@')[1] : null
     });
 
     // Skapa ett nytt utgående meddelande i databasen om detta är ett ärende-mail
