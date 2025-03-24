@@ -6,6 +6,103 @@ import { logger } from './logger';
 const prisma = new PrismaClient();
 
 /**
+ * Genererar en Reply-To adress baserad på ärende-ID och domän
+ */
+export function generateReplyToAddress(ticketId: number, domain?: string): string {
+  // Använd verifierad domän eller fallback till standarddomän
+  const replyDomain = domain || process.env.REPLY_DOMAIN || 'reply.servicedrive.se';
+  return `ticket-${ticketId}@${replyDomain}`;
+}
+
+/**
+ * Skickar en notifikation till handläggaren när ett nytt kundmeddelande mottagits
+ */
+export async function sendNewMessageNotification(
+  ticket: any,
+  message: any,
+  recipientEmail: string,
+): Promise<any> {
+  try {
+    // Skapa en förenklad version av det inkommande meddelandet
+    const truncatedContent = message.content.length > 300 
+      ? message.content.substring(0, 300) + '...' 
+      : message.content;
+
+    // Bygg HTML för notifikationen
+    const htmlContent = `
+      <h2>Nytt kundmeddelande på ärende #${ticket.id}</h2>
+      <p>Kunden ${ticket.customer.firstName || ''} ${ticket.customer.lastName || ''} har svarat på ärende #${ticket.id}.</p>
+      
+      <div style="margin: 20px 0; padding: 10px; border-left: 4px solid #f0f0f0; background-color: #f9f9f9;">
+        <p><strong>Meddelande:</strong></p>
+        <p>${truncatedContent}</p>
+      </div>
+      
+      <p>
+        <a href="${process.env.NEXT_PUBLIC_APP_URL}/arenden/${ticket.id}" 
+           style="display:inline-block; background-color:#4CAF50; color:white; padding:10px 15px; text-decoration:none; border-radius:4px;">
+          Visa ärendet
+        </a>
+      </p>
+      
+      <p style="color:#666; font-size:12px;">
+        Detta är en automatisk notifikation från Servicedrive. 
+        För att svara på kundens meddelande, logga in i systemet och gå till ärendet.
+      </p>
+    `;
+
+    // Skapa variabler för mailmallen
+    const variables = {
+      ärendeID: ticket.id,
+      kundNamn: `${ticket.customer.firstName || ''} ${ticket.customer.lastName || ''}`.trim() || ticket.customer.email,
+      kundEmail: ticket.customer.email,
+      ärendeTyp: ticket.ticketType?.name || '',
+      ärendeStatus: ticket.customStatus?.name || ticket.status || '',
+      meddelande: truncatedContent,
+      länk: `${process.env.NEXT_PUBLIC_APP_URL}/arenden/${ticket.id}`,
+      företagsNamn: process.env.COMPANY_NAME || 'Servicedrive',
+    };
+
+    // Försök hitta en mall för meddelande-notifikationer
+    const notificationTemplate = await prisma.mailTemplate.findFirst({
+      where: {
+        storeId: ticket.storeId,
+        name: { contains: 'notif' } // Försök hitta en mall som innehåller "notif"
+      }
+    });
+
+    if (notificationTemplate) {
+      // Använd den befintliga mallen om en hittades
+      return await sendTemplatedEmail(
+        recipientEmail,
+        notificationTemplate,
+        variables,
+        ['message-notification', `ticket-${ticket.id}`]
+      );
+    } else {
+      // Annars, skicka ett enkelt email utan mall
+      const emailData = {
+        to: recipientEmail,
+        from: process.env.EMAIL_FROM || 'no-reply@servicedrive.se',
+        subject: `Nytt kundmeddelande på ärende #${ticket.id}`,
+        html: htmlContent,
+        text: `Nytt kundmeddelande på ärende #${ticket.id}\n\nKunden har svarat på ärendet. Logga in för att se och svara på meddelandet: ${process.env.NEXT_PUBLIC_APP_URL}/arenden/${ticket.id}`,
+        categories: ['message-notification', `ticket-${ticket.id}`]
+      };
+      
+      return await sendEmail(emailData);
+    }
+  } catch (error) {
+    logger.error(`Fel vid skickande av meddelande-notifikation för ärende #${ticket.id}`, {
+      error: error.message,
+      ticketId: ticket.id,
+      messageId: message.id
+    });
+    throw error;
+  }
+}
+
+/**
  * Anonymiserade versioner av kundnamn för loggning (GDPR-kompatibelt)
  */
 const getAnonymizedCustomerName = (customer: any): string => {
@@ -333,14 +430,14 @@ export const buildTicketVariables = (ticket: any, store?: any): TemplateVariable
  * @param fromName Avsändarens visningsnamn (valfri)
  * @returns Promise med resultat av mailsändning
  */
-export const sendTemplatedEmail = async (
+export async function sendTemplatedEmail(
   toEmail: string,
   template: { id: number; name: string; subject: string; body: string },
   variables: TemplateVariables,
   categories: string[] = [],
   fromEmail?: string,
   fromName?: string
-): Promise<any | null> => {
+): Promise<any | null> {
   try {
     // Använd angiven avsändare eller fall tillbaka på standardvärdet
     const senderEmail = fromEmail || process.env.EMAIL_FROM || 'no-reply@servicedrive.se';
@@ -356,6 +453,27 @@ export const sendTemplatedEmail = async (
     
     // Lägg till kategorier för spårning
     emailData.categories = categories;
+    
+    // Om detta är relaterat till ett ärende, lägg till Reply-To
+    if (variables.ärendeID) {
+      // Extrahera domänen från avsändaradressen för att använda för reply
+      const domain = senderEmail.split('@')[1];
+      const domainParts = domain.split('.');
+      // Vi bör bara använda den verifierade domänen om det är ett riktigt domännamn
+      const verifiedDomain = domainParts.length >= 2 ? 
+        `reply.${domainParts.slice(-2).join('.')}` : 
+        process.env.REPLY_DOMAIN || 'reply.servicedrive.se';
+      
+      // Sätt Reply-To adressen
+      emailData.replyTo = generateReplyToAddress(variables.ärendeID, verifiedDomain);
+      
+      // Lägg till X-Headers som kan användas för spårning och säkerhet
+      emailData.headers = {
+        ...(emailData.headers || {}),
+        'X-Ticket-ID': `${variables.ärendeID}`,
+        'X-Auto-Response-Suppress': 'OOF, AutoReply',
+      };
+    }
     
     // Lägg till ett GDPR-footer om det inte redan finns i mallen
     if (!emailData.html.includes('GDPR') && !emailData.html.includes('dataskydd')) {
@@ -378,8 +496,36 @@ export const sendTemplatedEmail = async (
       templateName: template.name,
       anonymous_recipient: toEmail.split('@')[0].substring(0, 2) + '***@' + toEmail.split('@')[1].split('.')[0],
       categories,
-      sender: senderEmail.split('@')[0].substring(0, 2) + '***@' + senderEmail.split('@')[1]
+      sender: senderEmail.split('@')[0].substring(0, 2) + '***@' + senderEmail.split('@')[1],
+      hasReplyTo: !!emailData.replyTo
     });
+
+    // Skapa ett nytt utgående meddelande i databasen om detta är ett ärende-mail
+    if (variables.ärendeID && typeof variables.ärendeID === 'number') {
+      try {
+        const ticketId = variables.ärendeID;
+        await prisma.message.create({
+          data: {
+            ticketId: ticketId,
+            content: emailData.html || emailData.text || '',
+            senderId: 'system', // Eller värdena från 'userId' om den finns
+            isFromCustomer: false,
+            emailFrom: emailData.from,
+            emailTo: emailData.to,
+            emailSubject: emailData.subject,
+            emailMessageId: response.headers['x-message-id'],
+            emailReplyTo: emailData.replyTo,
+            createdAt: new Date(),
+          }
+        });
+      } catch (dbError) {
+        logger.error('Kunde inte spara utgående meddelande i databasen', { 
+          error: dbError.message, 
+          ticketId: variables.ärendeID 
+        });
+        // Fortsätt trots databasfel - mailet har skickats
+      }
+    }
     
     return response;
   } catch (error) {
@@ -389,7 +535,7 @@ export const sendTemplatedEmail = async (
     });
     throw error;
   }
-};
+}
 
 /**
  * Skickar anpassat mail med valfri mall och variabler
@@ -454,3 +600,4 @@ export const sendCustomEmail = async (
     throw error;
   }
 };
+

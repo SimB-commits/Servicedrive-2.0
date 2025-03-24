@@ -24,11 +24,11 @@ enum TicketStatus {
 
 // Definierar enum för olika användningsområden för mailmallar
 enum MailTemplateUsage {
-  NEW_TICKET        // Bekräftelsemail för nya ärenden
-  STATUS_UPDATE     // Mail vid statusuppdateringar
-  MANUAL            // För manuella utskick
-  REMINDER          // Påminnelser
-  FOLLOW_UP         // Uppföljningsmail
+  NEW_TICKET // Bekräftelsemail för nya ärenden
+  STATUS_UPDATE // Mail vid statusuppdateringar
+  MANUAL // För manuella utskick
+  REMINDER // Påminnelser
+  FOLLOW_UP // Uppföljningsmail
 }
 
 model UserPreference {
@@ -91,20 +91,21 @@ model VerificationToken {
 }
 
 model Store {
-  id                 Int               @id @default(autoincrement())
-  name               String
-  company            String
-  address            String
-  users              UserStore[]
-  customers          Customer[]
-  tickets            Ticket[]
-  ticketTypes        TicketType[]
-  CustomerCards      CustomerCard[]
-  createdAt          DateTime          @default(now())
-  updatedAt          DateTime          @updatedAt
-  SenderAddress      SenderAddress[]
-  VerifiedDomain     VerifiedDomain[]
-  templateSettings   MailTemplateSettings[]
+  id               Int                    @id @default(autoincrement())
+  name             String
+  company          String
+  address          String
+  users            UserStore[]
+  customers        Customer[]
+  tickets          Ticket[]
+  ticketTypes      TicketType[]
+  CustomerCards    CustomerCard[]
+  createdAt        DateTime               @default(now())
+  updatedAt        DateTime               @updatedAt
+  SenderAddress    SenderAddress[]
+  VerifiedDomain   VerifiedDomain[]
+  templateSettings MailTemplateSettings[]
+  Setting          Setting[]
 }
 
 model UserStore {
@@ -235,39 +236,55 @@ model UserTicketStatus {
 
 model Message {
   id        Int      @id @default(autoincrement())
-  content   String
-  senderId  String
+  content   String   @db.Text
+  senderId  String? // Användaren som skickade meddelandet (null för kundmeddelanden)
   ticketId  Int
-  sender    User     @relation("UserMessages", fields: [senderId], references: [id])
   ticket    Ticket   @relation(fields: [ticketId], references: [id])
+  sender    User?    @relation("UserMessages", fields: [senderId], references: [id])
   createdAt DateTime @default(now())
+
+  // Nya fält för email-kommunikation
+  isFromCustomer  Boolean @default(false) // Anger om meddelandet kom från kunden
+  emailFrom       String? // Avsändarens email
+  emailTo         String? // Mottagarens email
+  emailSubject    String? // Ämne
+  emailMessageId  String? // SendGrid:s Message ID
+  emailInReplyTo  String? // In-Reply-To header
+  emailReferences String? // References header
+  emailReplyTo    String? // Reply-To header som användes
+
+  // Indexera för snabbare sökningar
+  @@index([ticketId, createdAt])
+  @@index([senderId])
+  @@index([isFromCustomer])
+  @@index([emailMessageId])
 }
 
 model MailTemplate {
-  id                   Int                   @id @default(autoincrement())
-  name                 String
-  subject              String
-  body                 String
-  storeId              Int
-  createdAt            DateTime              @default(now())
-  updatedAt            DateTime              @updatedAt
-  
-  statuses             UserTicketStatus[]
-  templateSettings     MailTemplateSettings[]
+  id        Int      @id @default(autoincrement())
+  name      String
+  subject   String
+  body      String
+  storeId   Int
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  statuses         UserTicketStatus[]
+  templateSettings MailTemplateSettings[]
 }
 
 model MailTemplateSettings {
-  id           Int               @id @default(autoincrement())
-  storeId      Int
-  templateId   Int?
-  usage        MailTemplateUsage
-  
-  store        Store             @relation(fields: [storeId], references: [id])
-  template     MailTemplate?     @relation(fields: [templateId], references: [id])
-  
-  createdAt    DateTime          @default(now())
-  updatedAt    DateTime          @updatedAt
-  
+  id         Int               @id @default(autoincrement())
+  storeId    Int
+  templateId Int?
+  usage      MailTemplateUsage
+
+  store    Store         @relation(fields: [storeId], references: [id])
+  template MailTemplate? @relation(fields: [templateId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   @@unique([storeId, usage])
   @@index([storeId, usage])
 }
@@ -300,4 +317,16 @@ model VerifiedDomain {
   updatedAt  DateTime  @updatedAt
 
   @@unique([domain, storeId])
+}
+
+model Setting {
+  key       String
+  value     String
+  storeId   Int
+  store     Store    @relation(fields: [storeId], references: [id])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@id([key, storeId])
+  @@index([storeId])
 }
