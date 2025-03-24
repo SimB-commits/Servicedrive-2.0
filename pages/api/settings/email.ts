@@ -44,9 +44,20 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         }
       });
 
+      // Hämta även inställningen för om det är automatiskt konfigurerat
+      const autoConfiguredSetting = await prisma.setting.findUnique({
+        where: {
+          key_storeId: {
+            key: 'REPLY_DOMAIN_AUTO_CONFIGURED',
+            storeId
+          }
+        }
+      });
+
       // Returnera inställningarna
       return res.status(200).json({
-        replyDomain: replyDomainSetting?.value || 'reply.servicedrive.se'
+        replyDomain: replyDomainSetting?.value || 'reply.servicedrive.se',
+        autoConfigured: autoConfiguredSetting?.value === 'true'
       });
     }
 
@@ -70,47 +81,50 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }
 
       // Verifiera att domänen (utan reply.-prefix) är verifierad i systemet
+      let autoConfigured = false;
       if (replyDomain !== 'reply.servicedrive.se') {
-        // Extrahera basdomänen (ta bort reply.)
-        const baseDomain = replyDomain.substring(6); // "reply.".length = 6
-        
-        // Kontrollera om basdomänen eller den fullständiga reply-domänen är verifierad
-        const verifiedDomain = await prisma.verifiedDomain.findFirst({
+        // Kontrollera om hela reply-domänen finns i databasen (utan att kräva verifierad status)
+        const actualReplyDomain = await prisma.verifiedDomain.findFirst({
           where: {
-            OR: [
-              { domain: replyDomain, storeId },
-              { domain: baseDomain, storeId }
-            ],
-            status: 'verified'
+            domain: replyDomain,
+            storeId
           }
         });
         
-        if (!verifiedDomain) {
-          // Kontrollera även om reply-domänen finns men är ej verifierad
-          const unverifiedDomain = await prisma.verifiedDomain.findFirst({
+        if (actualReplyDomain) {
+          if (actualReplyDomain.status !== 'verified') {
+            return res.status(400).json({ 
+              error: 'Domänen är inte verifierad', 
+              message: `Domänen '${replyDomain}' finns i systemet men är inte verifierad. Verifiera domänen först under Domänverifiering.` 
+            });
+          }
+          
+          // Kontrollera om den skapades automatiskt (om den har samma domainId-prefix)
+          if (actualReplyDomain.domainId.startsWith('reply-')) {
+            autoConfigured = true;
+          }
+        } else {
+          // Om reply-domänen inte finns, extrahera basdomänen och kontrollera den
+          const baseDomain = replyDomain.substring(6); // "reply.".length = 6
+          
+          const baseVerifiedDomain = await prisma.verifiedDomain.findFirst({
             where: {
-              OR: [
-                { domain: replyDomain, storeId },
-                { domain: baseDomain, storeId }
-              ]
+              domain: baseDomain,
+              storeId,
+              status: 'verified'
             }
           });
           
-          if (unverifiedDomain) {
+          if (!baseVerifiedDomain) {
             return res.status(400).json({ 
               error: 'Domänen är inte verifierad', 
-              message: `Domänen '${unverifiedDomain.domain}' finns i systemet men är inte verifierad. Verifiera domänen först under Domänverifiering.` 
-            });
-          } else {
-            return res.status(400).json({ 
-              error: 'Domänen är inte verifierad', 
-              message: `Domänen '${baseDomain}' är inte verifierad i systemet. Verifiera domänen först under Domänverifiering.` 
+              message: `Varken '${replyDomain}' eller basdomänen '${baseDomain}' är verifierad i systemet. Verifiera domänen först under Domänverifiering.` 
             });
           }
         }
       }
 
-      // Upsert (uppdatera eller skapa) inställningen
+      // Upsert (uppdatera eller skapa) inställningen för svarsdomän
       await prisma.setting.upsert({
         where: {
           key_storeId: {
@@ -129,10 +143,30 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         }
       });
 
+      // Uppdatera även inställningen för om det är automatiskt konfigurerat
+      await prisma.setting.upsert({
+        where: {
+          key_storeId: {
+            key: 'REPLY_DOMAIN_AUTO_CONFIGURED',
+            storeId
+          }
+        },
+        update: {
+          value: autoConfigured.toString(),
+          updatedAt: new Date()
+        },
+        create: {
+          key: 'REPLY_DOMAIN_AUTO_CONFIGURED',
+          value: autoConfigured.toString(),
+          storeId
+        }
+      });
+
       // Logga ändringen
       logger.info('Svarsdomän uppdaterad', { 
         storeId, 
         domain: replyDomain,
+        autoConfigured,
         userId: session.user.id
       });
 
@@ -140,7 +174,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(200).json({
         success: true,
         message: 'E-postinställningar uppdaterade framgångsrikt',
-        replyDomain
+        replyDomain,
+        autoConfigured
       });
     }
 

@@ -10,7 +10,9 @@ import {
   Button,
   addToast,
   Spinner,
-  Divider
+  Divider,
+  Tooltip,
+  Chip
 } from '@heroui/react';
 
 interface EmailReplySettingsProps {
@@ -28,8 +30,10 @@ const EmailReplySettings: React.FC<EmailReplySettingsProps> = ({
   const [domainSetting, setDomainSetting] = useState('');
   const [currentDomain, setCurrentDomain] = useState('');
   const [verifiedDomains, setVerifiedDomains] = useState<string[]>([]);
+  const [replyDomains, setReplyDomains] = useState<string[]>([]);
   const [validationError, setValidationError] = useState('');
   const [hasChanges, setHasChanges] = useState(false);
+  const [autoConfigured, setAutoConfigured] = useState(false);
 
   // Hämta nuvarande inställningar och verifierade domäner
   useEffect(() => {
@@ -69,6 +73,10 @@ const EmailReplySettings: React.FC<EmailReplySettingsProps> = ({
           // Om det är en egen domän, visa den i inställningen
           if (!isSharedDomain) {
             setDomainSetting(data.replyDomain);
+            // Om domänen börjar med "reply." och inte är den delade domänen, markera som automatiskt konfigurerad
+            if (data.replyDomain.startsWith('reply.') && data.autoConfigured) {
+              setAutoConfigured(true);
+            }
           }
         } else {
           // Om inget svar, använd standardinställningar
@@ -112,9 +120,21 @@ const EmailReplySettings: React.FC<EmailReplySettingsProps> = ({
       if (res.ok) {
         const data = await res.json();
         
-        // Extrahera domännamnen från svaret
-        const domains = data.map((d: any) => d.domain.toLowerCase());
-        setVerifiedDomains(domains);
+        // Sortera domänerna i reguljära domäner och reply-domäner
+        const regular: string[] = [];
+        const reply: string[] = [];
+        
+        data.forEach((d: any) => {
+          const domain = d.domain.toLowerCase();
+          if (domain.startsWith('reply.')) {
+            reply.push(domain);
+          } else {
+            regular.push(domain);
+          }
+        });
+        
+        setVerifiedDomains(regular);
+        setReplyDomains(reply);
       } else {
         console.error('Kunde inte hämta verifierade domäner');
       }
@@ -139,11 +159,17 @@ const EmailReplySettings: React.FC<EmailReplySettingsProps> = ({
       return false;
     }
     
+    // Kontrollera om hela reply-domänen är verifierad
+    if (replyDomains.includes(normalizedDomain)) {
+      setValidationError('');
+      return true;
+    }
+    
     // Extrahera basdomänen (ta bort reply.)
     const baseDomain = normalizedDomain.substring(6); // "reply.".length = 6
     
-    // Kontrollera om basdomänen eller den fullständiga domänen är verifierad
-    if (verifiedDomains.includes(normalizedDomain) || verifiedDomains.includes(baseDomain)) {
+    // Kontrollera om basdomänen är verifierad
+    if (verifiedDomains.includes(baseDomain)) {
       setValidationError('');
       return true;
     }
@@ -191,6 +217,11 @@ const EmailReplySettings: React.FC<EmailReplySettingsProps> = ({
         setCurrentDomain(data.replyDomain);
         setHasChanges(false);
         
+        // Om nya domänen inte är den delade och inte är samma som tidigare, återställ autoConfigured
+        if (data.replyDomain !== 'reply.servicedrive.se' && data.replyDomain !== currentDomain) {
+          setAutoConfigured(data.autoConfigured || false);
+        }
+        
         addToast({
           title: 'Framgång',
           description: 'E-postinställningar sparade',
@@ -220,10 +251,66 @@ const EmailReplySettings: React.FC<EmailReplySettingsProps> = ({
     }
   };
 
+  // Renderar en lista med tillgängliga domäner
+  const renderAvailableDomains = () => {
+    if (verifiedDomains.length === 0 && replyDomains.length === 0) {
+      return (
+        <p className="text-xs text-warning-500 mt-1">
+          Inga verifierade domäner hittades. Du måste först verifiera en domän under Domänverifiering.
+        </p>
+      );
+    }
+    
+    return (
+      <div className="mt-2">
+        <p className="text-xs text-default-500 mb-1">Tillgängliga svarsdomäner:</p>
+        <div className="flex flex-wrap gap-1">
+          {replyDomains.map(domain => (
+            <Chip 
+              key={domain}
+              className="cursor-pointer"
+              color="primary"
+              variant="flat"
+              size="sm"
+              onClick={() => setDomainSetting(domain)}
+            >
+              {domain}
+              {autoConfigured && domain === currentDomain && (
+                <span className="ml-1 text-xs text-success-700">✓</span>
+              )}
+            </Chip>
+          ))}
+          
+          {verifiedDomains.map(domain => (
+            <Tooltip content={`Klicka för att använda reply.${domain}`}>
+              <Chip 
+                key={domain}
+                className="cursor-pointer"
+                color="default"
+                variant="flat"
+                size="sm"
+                onClick={() => setDomainSetting(`reply.${domain}`)}
+              >
+                {domain} → reply.{domain}
+              </Chip>
+            </Tooltip>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
   return (
     <Card className={className}>
       <CardHeader>
-        <h2 className="text-lg font-semibold">E-postsvarsinställningar</h2>
+        <div className="flex justify-between items-center">
+          <h2 className="text-lg font-semibold">E-postsvarsinställningar</h2>
+          {autoConfigured && (
+            <Chip color="success" variant="flat" size="sm">
+              Automatiskt konfigurerad
+            </Chip>
+          )}
+        </div>
       </CardHeader>
       
       <CardBody>
@@ -262,45 +349,35 @@ const EmailReplySettings: React.FC<EmailReplySettingsProps> = ({
                     setDomainSetting(val);
                     validateDomain(val);
                   }}
-                  description="Domänen måste vara verifierad i systemet och börja med 'reply.'"
+                  description={autoConfigured ? "Denna svarsdomän konfigurerades automatiskt när du verifierade huvuddomänen" : "Domänen måste vara verifierad i systemet och börja med 'reply.'"}
                   isDisabled={useSharedDomain}
                   isInvalid={!!validationError}
                   errorMessage={validationError}
                 />
                 
-                {verifiedDomains.length > 0 ? (
-                  <div className="mt-2">
-                    <p className="text-xs text-default-500 mb-1">Dina verifierade domäner:</p>
-                    <div className="flex flex-wrap gap-1">
-                      {verifiedDomains.map(domain => (
-                        <span 
-                          key={domain} 
-                          className="text-xs bg-default-100 px-2 py-1 rounded cursor-pointer hover:bg-default-200"
-                          onClick={() => setDomainSetting(`reply.${domain}`)}
-                          title={`Klicka för att använda reply.${domain}`}
-                        >
-                          {domain}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                ) : (
-                  <p className="text-xs text-warning-500 mt-1">
-                    Inga verifierade domäner hittades. Du måste först verifiera en domän under Domänverifiering.
-                  </p>
-                )}
+                {renderAvailableDomains()}
               </div>
             )}
 
             <Divider className="my-4" />
             
-            <div className="bg-success-50 border border-success-200 p-3 rounded text-success-700">
-              <p className="text-sm">
-                <strong>Förenkling:</strong> Du kan använda vårt delade system för e-postsvar 
-                utan någon ytterligare konfiguration. Detta innebär att kunder som svarar på 
-                mail från systemet kommer använda vår domän reply.servicedrive.se.
-              </p>
-            </div>
+            {autoConfigured ? (
+              <div className="bg-success-50 border border-success-200 p-3 rounded text-success-700">
+                <p className="text-sm">
+                  <strong>Automatiskt konfigurerad:</strong> Reply-domänen har skapats och 
+                  konfigurerats automatiskt när du verifierade huvuddomänen. Systemet är nu 
+                  redo att ta emot e-postsvar från dina kunder.
+                </p>
+              </div>
+            ) : (
+              <div className="bg-info-50 border border-info-200 p-3 rounded text-info-700">
+                <p className="text-sm">
+                  <strong>Information:</strong> Du kan använda vårt delade system för e-postsvar 
+                  utan någon ytterligare konfiguration, eller välja en egen reply-domän som 
+                  skapats automatiskt när du verifierade en domän.
+                </p>
+              </div>
+            )}
             
             <div className="mt-4">
               <p className="text-sm text-default-500">

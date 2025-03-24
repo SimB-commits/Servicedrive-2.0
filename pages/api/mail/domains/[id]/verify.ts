@@ -6,6 +6,7 @@ import { authOptions } from '../../../auth/authOptions';
 import rateLimiter from '@/lib/rateLimiterApi';
 import { getDomainAuthenticationById, verifyDomainAuthentication } from '@/utils/sendgridDomain';
 import { logger } from '@/utils/logger';
+import { createAutoReplyDomain } from '@/utils/autoReplyDomainHelper';
 
 const prisma = new PrismaClient();
 
@@ -77,6 +78,36 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           }
         });
         
+        // Kontrollera om detta är en basdomän (inte en reply-domän eller annan subdomän)
+        // Om det är en basdomän, försök skapa en reply-domän automatiskt
+        if (!domainRecord.domain.startsWith('reply.')) {
+          // Starta en asynkron process för att skapa reply-domänen
+          // Vi väntar inte på resultatet för att inte blockera huvudprocessen
+          createAutoReplyDomain(domainRecord.domain, storeId)
+            .then(result => {
+              if (result.success) {
+                logger.info('Automatisk reply-domän skapad', {
+                  baseDomain: domainRecord.domain,
+                  replyDomain: result.replyDomain,
+                  storeId
+                });
+              } else {
+                logger.warn('Kunde inte skapa automatisk reply-domän', {
+                  baseDomain: domainRecord.domain,
+                  error: result.message,
+                  storeId
+                });
+              }
+            })
+            .catch(error => {
+              logger.error('Fel vid automatiskt skapande av reply-domän', {
+                error: error.message,
+                baseDomain: domainRecord.domain,
+                storeId
+              });
+            });
+        }
+        
         // Om domänverifiering lyckades, uppdatera även konfigurationen
         // för att lägga till domänen i listan över verifierade domäner
         const currentDomains = process.env.SENDGRID_VERIFIED_DOMAINS?.split(',') || [];
@@ -94,7 +125,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         verified: verified,
         status: verified ? 'verified' : 'pending',
         dkimVerified: domainStatus.dkim?.valid || false,
-        spfVerified: domainStatus.spf?.valid || false
+        spfVerified: domainStatus.spf?.valid || false,
+        // Lägg till information om att en reply-domän kommer att skapas
+        autoReplyDomain: !domainRecord.domain.startsWith('reply.') && verified,
       });
       
     } catch (error) {

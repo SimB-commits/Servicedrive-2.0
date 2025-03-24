@@ -46,6 +46,7 @@ const handleMailError = (error: any, contextInfo?: { ticketId?: number, recipien
  * Hämtar den konfigurerade svarsdomänen för en butik
  * Om ingen domän är konfigurerad eller om den inte är verifierad, används standarddomänen
  */
+// Uppdaterad getReplyDomain funktion med ytterligare loggning
 export async function getReplyDomain(storeId: number): Promise<string> {
   try {
     // Först, kontrollera om det finns en inställning sparad i databasen
@@ -64,6 +65,7 @@ export async function getReplyDomain(storeId: number): Promise<string> {
       const isVerified = await isVerifiedReplyDomain(setting.value, storeId);
       
       if (isVerified) {
+        logger.debug(`Använder konfigurerad reply-domän: ${setting.value}`, { storeId });
         return setting.value;
       } else {
         logger.warn(`Konfigurerad svarsdomän '${setting.value}' är inte verifierad, använder standard`, {
@@ -71,6 +73,8 @@ export async function getReplyDomain(storeId: number): Promise<string> {
           configuredDomain: setting.value
         });
       }
+    } else {
+      logger.debug(`Ingen konfigurerad reply-domän hittades för storeId ${storeId}, använder standard`);
     }
 
     // Fallback till miljövariabel eller standardvärde
@@ -88,16 +92,40 @@ export async function getReplyDomain(storeId: number): Promise<string> {
 
 /**
  * Kontrollerar om en svarsdomän är verifierad för butiken
+ * Uppdaterad för att hantera både reply-prefix och basdomänen
  */
 async function isVerifiedReplyDomain(domain: string, storeId: number): Promise<boolean> {
   try {
-    // Kontrollera om domänen finns i VerifiedDomain-tabellen med status='verified'
+    // Normalisera domänen (lowercase)
+    const normalizedDomain = domain.trim().toLowerCase();
+    
+    // Kontrollera om detta är standarddomänen - alltid tillåten
+    if (normalizedDomain === 'reply.servicedrive.se') {
+      return true;
+    }
+    
+    // Om domänen börjar med reply., extrahera basdomänen
+    const hasReplyPrefix = normalizedDomain.startsWith('reply.');
+    const baseDomain = hasReplyPrefix ? normalizedDomain.substring(6) : normalizedDomain;
+    const replyDomain = hasReplyPrefix ? normalizedDomain : `reply.${normalizedDomain}`;
+    
+    // Kontrollera om antingen reply-versionen eller basdomänen är verifierad
     const verifiedDomain = await prisma.verifiedDomain.findFirst({
       where: {
-        domain: domain,
-        storeId: storeId,
+        OR: [
+          { domain: replyDomain, storeId },
+          { domain: baseDomain, storeId }
+        ],
         status: 'verified'
       }
+    });
+    
+    // Logga resultatet för felsökning
+    logger.debug(`Domain verification check for ${normalizedDomain}`, {
+      storeId,
+      result: !!verifiedDomain,
+      checkedReplyDomain: replyDomain,
+      checkedBaseDomain: baseDomain
     });
     
     return !!verifiedDomain;
