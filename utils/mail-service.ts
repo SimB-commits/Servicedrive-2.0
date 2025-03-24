@@ -1,6 +1,6 @@
 // utils/mail-service.ts
 import { PrismaClient, Ticket, MailTemplate, UserTicketStatus, MailTemplateUsage } from '@prisma/client';
-import { buildEmailFromTemplate, sendEmail, TemplateVariables } from './sendgrid';
+import { buildEmailFromTemplate, sendEmail as sendGridEmail, TemplateVariables } from './sendgrid';
 import { logger } from './logger';
 
 const prisma = new PrismaClient();
@@ -94,7 +94,7 @@ export async function sendNewMessageNotification(
     }
   } catch (error) {
     logger.error(`Fel vid skickande av meddelande-notifikation för ärende #${ticket.id}`, {
-      error: error.message,
+      error: error instanceof Error ? error.message : "Okänt fel",
       ticketId: ticket.id,
       messageId: message.id
     });
@@ -153,7 +153,7 @@ export const sendTicketStatusEmail = async (
         });
       } catch (error) {
         logger.warn(`Kunde inte hämta butiksinformation för ärende #${ticket.id}, använder standardnamn`, {
-          error: error.message,
+          error: error instanceof Error ? error.message : "Okänt fel",
           ticketId: ticket.id,
           storeId: ticket.storeId
         });
@@ -211,7 +211,7 @@ export const sendTicketStatusEmail = async (
       } catch (error) {
         // Ignorera fel vid hämtning av gammal status
         logger.warn(`Kunde inte hämta gammal anpassad status för ärende #${ticket.id}`, { 
-          error: error.message,
+          error: error instanceof Error ? error.message : "Okänt fel",
           oldCustomStatusId
         });
       }
@@ -254,7 +254,7 @@ export const sendTicketStatusEmail = async (
     return response;
   } catch (error) {
     logger.error(`Fel vid skickande av statusmail för ärende #${ticket.id}`, {
-      error: error.message,
+      error: error instanceof Error ? error.message : "Okänt fel",
       ticketId: ticket.id,
       status: ticket.status,
       customStatusId: ticket.customStatusId
@@ -284,8 +284,6 @@ const getStatusSpecificText = (status?: string, customStatusName?: string): stri
       return 'Status på ditt ärende har uppdaterats.';
   }
 };
-
-// Resten av filen är oförändrad...
 
 /**
  * Skickar bekräftelsemail när ett nytt ärende skapas om det finns en standardmall
@@ -378,7 +376,7 @@ export const sendNewTicketEmail = async (
     );
   } catch (error) {
     logger.error(`Fel vid skickande av bekräftelsemail för ärende #${ticket.id}`, {
-      error: error.message,
+      error: error instanceof Error ? error.message : "Okänt fel",
       ticketId: ticket.id
     });
     throw error;
@@ -520,7 +518,7 @@ export async function sendTemplatedEmail(
         });
       } catch (dbError) {
         logger.error('Kunde inte spara utgående meddelande i databasen', { 
-          error: dbError.message, 
+          error: dbError instanceof Error ? dbError.message : "Okänt fel", 
           ticketId: variables.ärendeID 
         });
         // Fortsätt trots databasfel - mailet har skickats
@@ -530,7 +528,7 @@ export async function sendTemplatedEmail(
     return response;
   } catch (error) {
     logger.error(`Fel vid skickande av mail med mall "${template.name}"`, {
-      error: error.message,
+      error: error instanceof Error ? error.message : "Okänt fel",
       templateId: template.id
     });
     throw error;
@@ -594,10 +592,15 @@ export const sendCustomEmail = async (
     return response;
   } catch (error) {
     logger.error(`Fel vid skickande av anpassat mail`, {
-      error: error.message,
+      error: error instanceof Error ? error.message : "Okänt fel",
       templateId
     });
     throw error;
   }
 };
 
+/**
+ * Re-exportera sendEmail från sendgrid men med vårt eget namn för att undvika konflikter
+ * Detta ger API-rutter tillgång till att skicka enkla emails utan mallar
+ */
+export const sendEmail = sendGridEmail;

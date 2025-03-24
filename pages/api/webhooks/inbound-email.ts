@@ -14,19 +14,62 @@ const WEBHOOK_MAX_SIZE = 5 * 1024 * 1024; // 5MB maxgräns
 const WEBHOOK_SECRET = process.env.SENDGRID_WEBHOOK_SECRET || 'missing-secret'; // Bör ställas in i miljövariabler
 
 /**
- * Verifierar webhook-signaturen från SendGrid för att säkerställa att förfrågan faktiskt kommer från SendGrid
+ * Verifierar webhook-signaturen från SendGrid enligt SendGrid's dokumentation
+ * https://docs.sendgrid.com/for-developers/parsing-email/setting-up-the-inbound-parse-webhook#security
  */
 function verifyWebhookSignature(req: NextApiRequest): boolean {
-  // I produktion bör du använda SendGrid's eget signatursystem
-  // I denna implementation använder vi ett enkelt token för demo
-  const token = req.headers['x-webhook-token'];
+  // I produktion bör vi använda SendGrid's egna signaturverifikation
+  if (process.env.NODE_ENV !== 'production') {
+    logger.info('Utvecklingsläge: Skippar webhook-verifiering');
+    return true;
+  }
   
-  // Validera signatur med constant-time jämförelse (för att motverka timing attacks)
-  if (typeof token !== 'string') return false;
-  return crypto.timingSafeEqual(
-    Buffer.from(token), 
-    Buffer.from(WEBHOOK_SECRET)
-  );
+  const signature = req.headers['x-sendgrid-signature'] as string;
+  const timestamp = req.headers['x-sendgrid-request-timestamp'] as string;
+  
+  // Kontrollera att nödvändiga headers finns
+  if (!signature || !timestamp) {
+    logger.warn('Webhook saknar nödvändiga headers för verifiering', {
+      hasSignature: !!signature,
+      hasTimestamp: !!timestamp
+    });
+    return false;
+  }
+  
+  // Validera att timestamp är rimligt (förhindra replay-attacker)
+  const requestTime = parseInt(timestamp, 10);
+  const currentTime = Math.floor(Date.now() / 1000);
+  
+  // Avvisa förfrågningar som är äldre än 5 minuter
+  if (isNaN(requestTime) || (currentTime - requestTime) > 300) {
+    logger.warn('Webhook-timestamp är för gammalt eller ogiltigt', {
+      timestamp,
+      currentTime,
+      diff: currentTime - requestTime
+    });
+    return false;
+  }
+  
+  try {
+    // Skapa verifikationssträng enligt SendGrid's dokumentation
+    // concatenate timestamp + webhook_token
+    const verificationString = timestamp + WEBHOOK_SECRET;
+    
+    // Beräkna förväntad signature med HMAC-SHA256
+    const expectedSignature = crypto
+      .createHmac('sha256', WEBHOOK_SECRET)
+      .update(verificationString, 'utf8')
+      .digest('hex');
+    
+    // Jämför med konstant-tid för att förhindra timing attacks
+    return crypto.timingSafeEqual(
+      Buffer.from(expectedSignature),
+      Buffer.from(signature)
+    );
+  } catch (error) {
+    logger.error('Fel vid webhook signaturverifiering', { error });
+    return false;
+  }
 }
 
 /**
@@ -35,11 +78,23 @@ function verifyWebhookSignature(req: NextApiRequest): boolean {
  */
 function extractTicketIdFromEmail(to: string): number | null {
   try {
-    // Matcha formatet ticket-123@reply.*
-    const match = to.match(/ticket-(\d+)@reply\./i);
+    // Normalisera adressen först (lowercase och trimma)
+    const normalizedTo = to.trim().toLowerCase();
+    
+    // Matcha endast ticket-123@reply.* (utan flaggan i för case-insensitive)
+    // för att säkerställa att endast lowercase matchas
+    const match = normalizedTo.match(/^ticket-(\d+)@reply\./);
+    
     if (match && match[1]) {
-      return parseInt(match[1], 10);
+      const ticketId = parseInt(match[1], 10);
+      
+      // Validera att det är ett rimligt ärende-ID (inte för stort)
+      if (ticketId > 0 && ticketId < 10000000) {
+        return ticketId;
+      }
     }
+    
+    logger.warn('Ogiltigt format på mottagaradress', { to: normalizedTo });
     return null;
   } catch (error) {
     logger.error('Fel vid extrahering av ticket-ID från email', { error, to });

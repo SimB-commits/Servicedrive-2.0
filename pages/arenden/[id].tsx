@@ -559,48 +559,6 @@ export default function TicketPage() {
   />
 )}
 
-
-{activeTab === 'messages' && (
-  <Card>
-    <CardHeader className="px-6 py-4">
-      <h2 className="text-lg font-medium">Meddelanden</h2>
-    </CardHeader>
-    <CardBody className="px-6 py-4">
-      {ticket.messages && ticket.messages.length > 0 ? (
-        <div className="space-y-4">
-          {ticket.messages.map((message) => (
-            <div key={message.id} className="p-4 border rounded-md">
-              <div className="flex justify-between mb-2">
-                <span className="font-medium">
-                  {message.sender?.email || `Användare ${message.senderId}`}
-                </span>
-                <span className="text-default-500 text-sm">
-                  {new Date(message.createdAt).toLocaleDateString('sv-SE', {
-                    hour: '2-digit',
-                    minute: '2-digit'
-                  })}
-                </span>
-              </div>
-              <p>{message.content}</p>
-            </div>
-          ))}
-        </div>
-      ) : (
-        <div className="text-center py-6">
-          <p className="text-default-500">Inga meddelanden ännu</p>
-          <Button
-            color="primary"
-            variant="flat"
-            className="mt-4"
-          >
-            Skicka meddelande till kund
-          </Button>
-        </div>
-      )}
-    </CardBody>
-  </Card>
-)}
-
         {activeTab === 'history' && (
           <Card>
             <CardHeader className="px-6 py-4">

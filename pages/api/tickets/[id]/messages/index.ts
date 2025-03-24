@@ -4,7 +4,7 @@ import { PrismaClient } from '@prisma/client';
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from '../../../auth/authOptions';
 import rateLimiter from '@/lib/rateLimiterApi';
-import { sendCustomEmail } from '@/utils/mail-service';
+import { sendCustomEmail, sendEmail } from '@/utils/mail-service';
 import { logger } from '@/utils/logger';
 import { getAuthenticatedSession } from '@/utils/authHelper';
 
@@ -84,14 +84,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           
           return res.status(200).json(messages);
         } catch (error) {
-          logger.error('Fel vid hämtning av meddelanden', { error: error.message, ticketId });
+          logger.error('Fel vid hämtning av meddelanden', { 
+            error: error instanceof Error ? error.message : 'Okänt fel', 
+            ticketId 
+          });
           return res.status(500).json({ error: 'Kunde inte hämta meddelanden' });
         }
 
       case 'POST':
         // Skapa ett nytt meddelande
         try {
-          const { content, sendEmail = true } = req.body;
+          const { content, sendEmail: shouldSendEmail = true } = req.body;
           
           if (!content || typeof content !== 'string' || content.trim() === '') {
             return res.status(400).json({ error: 'Meddelande saknas eller är ogiltigt' });
@@ -121,7 +124,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           logger.info('Nytt meddelande skapat', { ticketId, messageId: message.id });
           
           // Skicka mail till kunden om så önskas
-          if (sendEmail && ticket.customer.email) {
+          if (shouldSendEmail && ticket.customer.email) {
             try {
               // Sök efter en lämplig mailmall för meddelanden
               const messageTemplate = await prisma.mailTemplate.findFirst({
@@ -139,7 +142,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
                   kundEmail: ticket.customer.email,
                   ärendeTyp: ticket.ticketType?.name || '',
                   ärendeStatus: ticket.customStatus?.name || ticket.status || '',
-                  handläggare: `${session.user.firstName || ''} ${session.user.lastName || ''}`.trim() || session.user.email,
+                  handläggare: `${session.user.firstName || ''}`.trim() || session.user.email,
                   meddelande: content,
                   aktuellDatum: new Date(),
                 };
@@ -151,39 +154,114 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
                   ['message', `ticket-${ticketId}`]
                 );
               } else {
-                // Annars bygg ett mail manuellt
-                // Här kan funktionaliteten från mail-service.ts användas för att skicka ett mail
-                // med det nya meddelandet och korrekt Reply-To adress
+                // Bygg ett enkelt mail manuellt om ingen mall finns
+                const senderName = `${session.user.firstName || ''}`.trim() || 
+                                    session.user.email || 'Servicedrive';
+                const senderEmail = session.user.email || process.env.EMAIL_FROM || 'no-reply@servicedrive.se';
                 
-                // Uppdatera message med e-postinformation när mailet är skickat
-                await prisma.message.update({
-                  where: { id: message.id },
-                  data: {
-                    emailTo: ticket.customer.email,
-                    emailFrom: session.user.email || process.env.EMAIL_FROM || 'no-reply@servicedrive.se',
-                    emailSubject: `Re: Ärende #${ticketId}`,
-                  },
+                // Hitta din standard avsändaradress
+                const defaultSender = await prisma.senderAddress.findFirst({
+                  where: {
+                    storeId: ticket.storeId,
+                    isDefault: true
+                  }
                 });
+                
+                // Använd standardavsändaren om den finns
+                const fromEmail = defaultSender?.email || senderEmail;
+                const fromName = defaultSender?.name || senderName;
+                
+                // Extrahera domänen för reply-to adress
+                const domain = fromEmail.split('@')[1];
+                const domainParts = domain.split('.');
+                const replyDomain = domainParts.length >= 2 
+                  ? `reply.${domainParts.slice(-2).join('.')}` 
+                  : process.env.REPLY_DOMAIN || 'reply.servicedrive.se';
+                
+                // Skapa reply-to adress
+                const replyTo = `ticket-${ticketId}@${replyDomain}`;
+                
+                // Bygg mail-innehållet
+                const subject = `Re: Ärende #${ticketId}`;
+                const htmlContent = `
+                  <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+                    <h2>Meddelande angående ärende #${ticketId}</h2>
+                    
+                    <div style="padding: 15px; border-left: 4px solid #4a90e2; background-color: #f8f9fa; margin: 20px 0;">
+                      ${content}
+                    </div>
+                    
+                    <p>Vänliga hälsningar,<br>${senderName}</p>
+                    
+                    <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;">
+                    <p style="color: #666; font-size: 12px;">
+                      Detta mail har skickats från Servicedrive ärendehanteringssystem.
+                      Du kan svara direkt på detta mail för att besvara ärendet.
+                    </p>
+                  </div>
+                `;
+                
+                // Sätt upp e-postdata
+                const emailData = {
+                  to: ticket.customer.email,
+                  from: fromName ? `${fromName} <${fromEmail}>` : fromEmail,
+                  subject: subject,
+                  html: htmlContent,
+                  text: content,
+                  replyTo: replyTo,
+                  headers: {
+                    'X-Ticket-ID': `${ticketId}`,
+                    'X-Auto-Response-Suppress': 'OOF, AutoReply',
+                  },
+                  categories: ['message', `ticket-${ticketId}`]
+                };
+                
+                try {
+                  // Skicka mailet
+                  const [response] = await sendEmail(emailData);
+                  
+                  // Uppdatera message med e-postinformation
+                  await prisma.message.update({
+                    where: { id: message.id },
+                    data: {
+                      emailTo: ticket.customer.email,
+                      emailFrom: fromEmail,
+                      emailSubject: subject,
+                      emailMessageId: response.headers['x-message-id'],
+                      emailReplyTo: replyTo
+                    },
+                  });
+                  
+                  logger.info('Mail skickat manuellt till kund för nytt meddelande', { 
+                    ticketId, 
+                    messageId: message.id,
+                    recipientEmail: ticket.customer.email.substring(0, 3) + '***'
+                  });
+                } catch (mailError) {
+                  logger.error('Fel vid skickande av mail till kund', { 
+                    error: mailError instanceof Error ? mailError.message : 'Okänt fel', 
+                    ticketId, 
+                    messageId: message.id 
+                  });
+                  // Fortsätt trots mailfel - meddelandet har sparats i databasen
+                }
               }
-              
-              logger.info('Mail skickat till kund för nytt meddelande', { 
-                ticketId, 
-                messageId: message.id,
-                recipientEmail: ticket.customer.email.substring(0, 3) + '***'
-              });
-            } catch (mailError) {
-              logger.error('Fel vid skickande av mail till kund', { 
-                error: mailError.message, 
+            } catch (emailError) {
+              logger.error('Fel vid hantering av mail till kund', { 
+                error: emailError instanceof Error ? emailError.message : 'Okänt fel', 
                 ticketId, 
                 messageId: message.id 
               });
-              // Fortsätt trots mailfel - meddelandet har sparats
+              // Fortsätt trots mailfel - meddelandet har sparats i databasen
             }
           }
           
           return res.status(201).json(message);
         } catch (error) {
-          logger.error('Fel vid skapande av meddelande', { error: error.message, ticketId });
+          logger.error('Fel vid skapande av meddelande', { 
+            error: error instanceof Error ? error.message : 'Okänt fel', 
+            ticketId 
+          });
           return res.status(500).json({ error: 'Kunde inte skapa meddelande' });
         }
 
@@ -192,9 +270,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         return res.status(405).end(`Method ${req.method} Not Allowed`);
     }
   } catch (error) {
-    logger.error('Error in tickets/[id]/messages/index.ts:', { error: error.message });
+    logger.error('Error in tickets/[id]/messages/index.ts:', { 
+      error: error instanceof Error ? error.message : 'Okänt fel' 
+    });
     
-    if (error.constructor.name === 'RateLimiterRes') {
+    if (error instanceof Error && error.constructor.name === 'RateLimiterRes') {
       return res.status(429).json({ message: 'För många förfrågningar. Försök igen senare.' });
     }
     

@@ -1,4 +1,4 @@
-// components/MessageThread.tsx
+// components/email/MessageThread.tsx
 import React, { useState, useEffect } from 'react';
 import { 
   Card, 
@@ -12,6 +12,7 @@ import {
   addToast
 } from '@heroui/react';
 import { useSession } from 'next-auth/react';
+import DOMPurify from 'dompurify';
 
 interface Message {
   id: number;
@@ -171,6 +172,15 @@ const MessageThread: React.FC<MessageThreadProps> = ({
     }
   };
 
+  // Sanera HTML-innehåll för säker rendering
+  const sanitizeHtml = (html: string) => {
+    return DOMPurify.sanitize(html, {
+      ALLOWED_TAGS: ['p', 'br', 'b', 'i', 'em', 'strong', 'a', 'ul', 'ol', 'li', 'span', 'div'],
+      ALLOWED_ATTR: ['href', 'class', 'style'],
+      FORBID_TAGS: ['script', 'iframe', 'object', 'embed', 'form', 'input', 'button']
+    });
+  };
+
   return (
     <Card className="w-full">
       <CardHeader className="px-6 py-4 flex justify-between items-center">
@@ -221,11 +231,11 @@ const MessageThread: React.FC<MessageThreadProps> = ({
                   </p>
                 )}
                 
-                {/* Visa innehållet på ett säkert sätt */}
+                {/* Visa innehållet på ett säkert sätt med sanitering */}
                 {message.content.includes('<') && message.content.includes('>') ? (
                   <div 
                     className="mt-2 prose prose-sm max-w-none"
-                    dangerouslySetInnerHTML={{ __html: message.content }}
+                    dangerouslySetInnerHTML={{ __html: sanitizeHtml(message.content) }}
                   />
                 ) : (
                   <p className="mt-2 whitespace-pre-wrap">{message.content}</p>
