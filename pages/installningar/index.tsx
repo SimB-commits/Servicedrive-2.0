@@ -19,14 +19,13 @@ import { title } from '@/components/primitives';
 import ArendetyperContent from '../arendetyper/index';
 import KundkortContent from '../kundkort/index';
 import MailmallsContent from '../mailmallar/index';
-import ArendestatusarContent from '../arendestatusar/index'; // Ny import för ärendestatusar
+import ArendestatusarContent from '../arendestatusar/index';
 import AccountSettings from '@/components/AccountSettings';
 import ImportExportManager from '@/components/ImportExport';
 import StoreManager from '@/components/StoreManager';
-import DomainVerificationPage from './domainVerification';
 
 // Typer för att hantera aktiv tab
-type TabKey = 'konto' | 'arendetyper' | 'kundkortsmallar' | 'mailmallar' | 'dataimport' | 'butiker' | 'arendestatusar' | 'domainVerification';
+type TabKey = 'konto' | 'arendetyper' | 'kundkortsmallar' | 'mailmallar' | 'dataimport' | 'butiker' | 'arendestatusar' | 'email';
 
 export default function InstallningarPage() {
   const { data: session, status } = useSession();
@@ -40,7 +39,7 @@ export default function InstallningarPage() {
     if (tab && typeof tab === 'string') {
       // Validera att tab är en giltig flik
       const isValidTab = (tab: string): tab is TabKey => 
-        ['konto', 'arendetyper', 'kundkortsmallar', 'mailmallar', 'dataimport', 'butiker', 'arendestatusar', 'domainVerification'].includes(tab);
+        ['konto', 'arendetyper', 'kundkortsmallar', 'mailmallar', 'dataimport', 'butiker', 'arendestatusar', 'email'].includes(tab);
       
       if (isValidTab(tab)) {
         setSelectedTab(tab);
@@ -69,10 +68,12 @@ export default function InstallningarPage() {
         return <ImportExportManager />;
       case 'butiker':
         return <StoreManager />;
-      case 'arendestatusar': // Nytt case för ärendestatusar
+      case 'arendestatusar':
         return <ArendestatusarContent />;
-      case 'domainVerification':
-        return <DomainVerificationPage />;  
+      case 'email':
+        // Omdirektion till email-sidan för att hantera alla e-postrelaterade inställningar
+        router.push('/installningar/email');
+        return <div>Omdirigerar till e-postinställningar...</div>;
       default:
         return <div>Välj en inställningskategori</div>;
     }
@@ -125,12 +126,12 @@ export default function InstallningarPage() {
           >
             <Tab key="konto" title="Konto" />
             <Tab key="arendetyper" title="Ärendetyper" />
-            <Tab key="arendestatusar" title="Ärendestatusar" /> {/* Ny flik för ärendestatusar */}
+            <Tab key="arendestatusar" title="Ärendestatusar" />
             <Tab key="kundkortsmallar" title="Kundkortsmallar" />
             <Tab key="mailmallar" title="Mailmallar" />
             <Tab key="dataimport" title="Import/Export" />
             <Tab key="butiker" title="Butiker" />
-            <Tab key="domainVerification" title="Domänverifiering" />
+            <Tab key="email" title="E-postinställningar" />
           </Tabs>
         </div>
         
