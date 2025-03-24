@@ -454,13 +454,8 @@ export async function sendTemplatedEmail(
     
     // Om detta är relaterat till ett ärende, lägg till Reply-To
     if (variables.ärendeID) {
-      // Extrahera domänen från avsändaradressen för att använda för reply
-      const domain = senderEmail.split('@')[1];
-      const domainParts = domain.split('.');
-      // Vi bör bara använda den verifierade domänen om det är ett riktigt domännamn
-      const verifiedDomain = domainParts.length >= 2 ? 
-        `reply.${domainParts.slice(-2).join('.')}` : 
-        process.env.REPLY_DOMAIN || 'reply.servicedrive.se';
+      // Använd alltid den delade domänen för e-postsvar
+      const verifiedDomain = process.env.REPLY_DOMAIN || 'reply.servicedrive.se';
       
       // Sätt Reply-To adressen
       emailData.replyTo = generateReplyToAddress(variables.ärendeID, verifiedDomain);
@@ -487,6 +482,7 @@ export async function sendTemplatedEmail(
     
     // Skicka emailet
     const [response] = await sendEmail(emailData);
+
     
     // Logga att vi skickat mailet (anonymiserad)
     logger.info(`Mail skickat med mall "${template.name}"`, {
@@ -578,8 +574,19 @@ export const sendCustomEmail = async (
     // Lägg till kategorier för spårning
     emailData.categories = categories;
     
+
+    
     // Skicka emailet
-    const [response] = await sendEmail(emailData);
+    let response;
+    try {
+      [response] = await sendEmail(emailData);
+    } catch (error) {
+      return handleMailError(error, { 
+        ticketId: variables.ärendeID && typeof variables.ärendeID === 'number' ? 
+                  variables.ärendeID : undefined,
+        recipient: emailData.to
+      });
+    }
     
     // Logga att vi skickat mailet
     logger.info(`Anpassat mail skickat med mall "${mailTemplate.name}"`, {
