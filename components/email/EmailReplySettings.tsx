@@ -34,6 +34,7 @@ const EmailReplySettings: React.FC<EmailReplySettingsProps> = ({
   const [validationError, setValidationError] = useState('');
   const [hasChanges, setHasChanges] = useState(false);
   const [autoConfigured, setAutoConfigured] = useState(false);
+  const [justConfigured, setJustConfigured] = useState(false);
 
   // Hämta nuvarande inställningar och verifierade domäner
   useEffect(() => {
@@ -76,6 +77,14 @@ const EmailReplySettings: React.FC<EmailReplySettingsProps> = ({
             // Om domänen börjar med "reply." och inte är den delade domänen, markera som automatiskt konfigurerad
             if (data.replyDomain.startsWith('reply.') && data.autoConfigured) {
               setAutoConfigured(true);
+              
+              // Kontrollera om användaren kommer från domänverifiering genom att kolla URL-parametrar
+              const urlParams = new URLSearchParams(window.location.search);
+              if (urlParams.get('justConfigured') === 'true') {
+                setJustConfigured(true);
+                // Rensa parametern från URL för att undvika upprepning vid uppdatering
+                window.history.replaceState({}, document.title, window.location.pathname);
+              }
             }
           }
         } else {
@@ -321,6 +330,18 @@ const EmailReplySettings: React.FC<EmailReplySettingsProps> = ({
           </div>
         ) : (
           <div className="space-y-4">
+            {/* Visa en mer framträdande notis om domänen just har konfigurerats */}
+            {justConfigured && (
+              <div className="bg-success-50 border border-success-200 p-4 rounded mb-4">
+                <h3 className="text-lg font-medium text-success-700 mb-1">Svarsdomän skapad automatiskt!</h3>
+                <p className="text-sm text-success-700">
+                  En svarsdomän har skapats automatiskt för din verifierade domän. Detta gör att
+                  kunders svar på e-post kan kopplas till rätt ärende automatiskt. Nedan kan du se och
+                  hantera den konfigurerade svarsdomänen.
+                </p>
+              </div>
+            )}
+          
             <div className="flex items-start space-x-3">
               <Switch 
                 isSelected={useSharedDomain}

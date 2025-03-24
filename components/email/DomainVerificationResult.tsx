@@ -24,6 +24,7 @@ const DomainVerificationResult: React.FC<VerificationResultProps> = ({
 }) => {
   const [replyStatus, setReplyStatus] = useState<'pending' | 'success' | 'error' | null>(null);
   const [replyMessage, setReplyMessage] = useState<string | null>(null);
+  const [replyDomain, setReplyDomain] = useState<string>('');
 
   // Lyssna på ändringar i verifikationsresultatet
   useEffect(() => {
@@ -31,6 +32,7 @@ const DomainVerificationResult: React.FC<VerificationResultProps> = ({
       // Om vi har autoReplyDomain i resultatet, kommer en reply-subdomän att skapas
       setReplyStatus('pending');
       setReplyMessage('Skapar automatiskt en reply-subdomän för inkommande mail...');
+      setReplyDomain(`reply.${domain}`);
       
       // Simulera att reply-domänen skapas efter en kort stund
       // I en verklig implementation skulle vi pollra eller använda WebSockets
@@ -98,21 +100,21 @@ const DomainVerificationResult: React.FC<VerificationResultProps> = ({
           )}
         </div>
         
-        {/* Reply-domän status */}
-        {replyStatus && (
+        {/* Reply-domän status - förtydligad och mer prominent */}
+        {replyStatus && verificationResult?.verified && (
           <div className={`p-4 rounded-md mt-4 ${
             replyStatus === 'success' ? 'bg-success-50 border border-success-200' :
             replyStatus === 'error' ? 'bg-danger-50 border border-danger-200' :
             'bg-info-50 border border-info-200'
           }`}>
-            <h4 className={`font-medium ${
+            <h4 className={`font-medium text-lg ${
               replyStatus === 'success' ? 'text-success-700' :
               replyStatus === 'error' ? 'text-danger-700' :
               'text-info-700'
             }`}>
-              {replyStatus === 'success' ? '✓ Reply-domän klar!' :
-               replyStatus === 'error' ? '✗ Problem med reply-domän' :
-               '⟳ Skapar reply-domän...'}
+              {replyStatus === 'success' ? '✓ Svarsdomän skapad!' :
+               replyStatus === 'error' ? '✗ Problem med svarsdomän' :
+               '⟳ Skapar svarsdomän...'}
             </h4>
             
             <p className={`mt-2 text-sm ${
@@ -124,11 +126,27 @@ const DomainVerificationResult: React.FC<VerificationResultProps> = ({
             </p>
             
             {replyStatus === 'success' && (
-              <div className="mt-3">
+              <div className="mt-3 space-y-3">
                 <p className="text-sm text-success-700">
+                  En svarsdomän (<strong>{replyDomain}</strong>) har automatiskt skapats och konfigurerats.
                   Du kan nu ta emot automatiska svar från kunder via mail. När kunder svarar på mail 
                   från systemet kommer deras svar automatiskt att registreras i rätt ärende.
                 </p>
+                
+                <div>
+                  <Button 
+                    color="primary" 
+                    size="sm"
+                    className="mt-2"
+                    onPress={() => {
+                      // Stäng denna dialog och låt parent-komponenten ta hand om navigeringen
+                      if (onVerified) onVerified();
+                      onClose();
+                    }}
+                  >
+                    Gå till e-postsvarsinställningar
+                  </Button>
+                </div>
               </div>
             )}
           </div>
@@ -143,7 +161,7 @@ const DomainVerificationResult: React.FC<VerificationResultProps> = ({
                 Du kan nu konfigurera valfri avsändaradress med domänen <strong>{domain}</strong> i systemet
               </li>
               <li>
-                En reply-subdomän (<strong>reply.{domain}</strong>) skapas automatiskt för hantering av e-postsvar
+                En svarsdomän (<strong>reply.{domain}</strong>) skapas automatiskt för hantering av e-postsvar
               </li>
               <li>
                 Verifiera alla mailmallar och testa att skicka e-post

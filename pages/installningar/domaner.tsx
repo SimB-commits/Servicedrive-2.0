@@ -92,6 +92,21 @@ export default function DomanerPage() {
     setRefreshTrigger(prev => prev + 1);
     // Återgå till domänlistan
     setShowAddDomain(false);
+    
+    // Guida användaren till e-postsvarsinställningar-tabben
+    setTimeout(() => {
+      setActiveTab('reply');
+      
+      // Visa ett tydligt meddelande om att en svarsdomän skapats automatiskt
+      addToast({
+        title: 'Svarsdomän skapad automatiskt',
+        description: 'Din domän har verifierats och en svarsdomän har skapats automatiskt. Du kan konfigurera den här.',
+        color: 'success',
+        variant: 'flat',
+        // Visa toasten längre tid för att användaren ska hinna läsa
+        duration: 6000
+      });
+    }, 500); // Liten fördröjning för att säkerställa att UI har uppdaterats
   };
 
   // Laddar-tillstånd
@@ -167,6 +182,24 @@ export default function DomanerPage() {
                           onDelete={() => handleDeleteDomain(domain.id)}
                         />
                       ))}
+                      
+                      {/* Informationsruta om automatisk reply-domän */}
+                      <div className="bg-info-50 border border-info-200 p-4 rounded mt-6">
+                        <h3 className="text-md font-medium text-info-700 mb-2">Automatisk svarsdomän</h3>
+                        <p className="text-sm text-info-700">
+                          När du verifierar en domän skapar systemet automatiskt en svarsdomän (reply.dindomän.se)
+                          som används för att ta emot svar på e-postmeddelanden och koppla dem till rätt ärende.
+                        </p>
+                        <Button 
+                          color="primary" 
+                          variant="flat"
+                          size="sm"
+                          className="mt-3"
+                          onPress={() => setActiveTab('reply')}
+                        >
+                          Gå till e-postsvarsinställningar
+                        </Button>
+                      </div>
                     </div>
                   )}
                 </div>
