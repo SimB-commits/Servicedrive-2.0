@@ -6,8 +6,12 @@ import {
   CardBody, 
   CardFooter,
   Button,
-  addToast
+  Modal,
+  ModalContent,
+  addToast,
+  Divider
 } from '@heroui/react';
+import ReplyDomainVerifier from '@/components/email/ReplyDomainVerifier';
 
 interface VerificationResultProps {
   verificationResult: any;
@@ -22,166 +26,227 @@ const DomainVerificationResult: React.FC<VerificationResultProps> = ({
   onClose,
   onVerified
 }) => {
-  const [replyStatus, setReplyStatus] = useState<'pending' | 'success' | 'error' | null>(null);
-  const [replyMessage, setReplyMessage] = useState<string | null>(null);
-  const [replyDomain, setReplyDomain] = useState<string>('');
+  const [replyDomainVerifierOpen, setReplyDomainVerifierOpen] = useState(false);
+  const [replyVerified, setReplyVerified] = useState(false);
+  
+  // Generera reply-domännamnet
+  const replyDomain = `reply.${domain}`;
 
-  // Lyssna på ändringar i verifikationsresultatet
+  // Hantera reply-domänverifieringsresultat
   useEffect(() => {
-    if (verificationResult?.verified && verificationResult?.autoReplyDomain) {
-      // Om vi har autoReplyDomain i resultatet, kommer en reply-subdomän att skapas
-      setReplyStatus('pending');
-      setReplyMessage('Skapar automatiskt en reply-subdomän för inkommande mail...');
-      setReplyDomain(`reply.${domain}`);
-      
-      // Simulera att reply-domänen skapas efter en kort stund
-      // I en verklig implementation skulle vi pollra eller använda WebSockets
-      const timer = setTimeout(() => {
-        setReplyStatus('success');
-        setReplyMessage(`En reply-subdomän (reply.${domain}) har skapats automatiskt!`);
-        
-        // Meddela att verifieringen är klar, inklusive reply-domänen
-        if (onVerified) {
-          onVerified();
-        }
-      }, 3000);
-      
-      return () => clearTimeout(timer);
+    if (verificationResult?.verified && verificationResult?.replyDomainInfo) {
+      // Om det finns info om reply-domänen, visa popup om den behöver verifieras
+      const replyInfo = verificationResult.replyDomainInfo;
+      if (replyInfo.status === 'pending') {
+        // Automatiskt öppna reply-domänverifieraren om verifieringen av huvuddomänen lyckades
+        setTimeout(() => {
+          setReplyDomainVerifierOpen(true);
+        }, 1000);
+      } else if (replyInfo.status === 'verified') {
+        setReplyVerified(true);
+      }
     }
-  }, [verificationResult, domain]);
+  }, [verificationResult]);
+
+  const handleReplyVerificationSuccess = () => {
+    setReplyVerified(true);
+    setReplyDomainVerifierOpen(false);
+    
+    addToast({
+      title: 'Framgång',
+      description: 'Både domänen och reply-domänen har verifierats!',
+      color: 'success',
+      variant: 'flat'
+    });
+    
+    // Meddela att hela verifieringen är klar
+    if (onVerified) {
+      onVerified();
+    }
+  };
 
   return (
-    <Card>
-      <CardHeader>
-        <h3 className="text-lg font-semibold">
-          Verifieringsresultat för {domain}
-        </h3>
-      </CardHeader>
-      
-      <CardBody>
-        {/* Domänverifieringsresultat */}
-        <div className={`p-4 rounded-md mb-4 ${
-          verificationResult?.verified 
-            ? 'bg-success-50 border border-success-200' 
-            : 'bg-warning-50 border border-warning-200'
-        }`}>
-          <h4 className={`font-medium ${
-            verificationResult?.verified ? 'text-success-700' : 'text-warning-700'
+    <>
+      <Card>
+        <CardHeader>
+          <h3 className="text-lg font-semibold">
+            Verifieringsresultat för {domain}
+          </h3>
+        </CardHeader>
+        
+        <CardBody>
+          {/* Domänverifieringsresultat */}
+          <div className={`p-4 rounded-md mb-4 ${
+            verificationResult?.verified 
+              ? 'bg-success-50 border border-success-200' 
+              : 'bg-warning-50 border border-warning-200'
           }`}>
-            {verificationResult?.verified
-              ? '✓ Domänen har verifierats!'
-              : '⚠️ Domänen har inte verifierats än'
-            }
-          </h4>
+            <h4 className={`font-medium ${
+              verificationResult?.verified ? 'text-success-700' : 'text-warning-700'
+            }`}>
+              {verificationResult?.verified
+                ? '✓ Domänen har verifierats!'
+                : '⚠️ Domänen har inte verifierats än'
+              }
+            </h4>
+            
+            <p className={`mt-2 text-sm ${
+              verificationResult?.verified ? 'text-success-700' : 'text-warning-700'
+            }`}>
+              {verificationResult?.verified
+                ? `Din domän ${domain} är nu verifierad och kan användas för mailutskick!`
+                : `Domänen ${domain} kunde inte verifieras. Kontrollera att DNS-posterna är korrekt inställda och försök igen.`
+              }
+            </p>
+            
+            {verificationResult?.verified && (
+              <div className="mt-3">
+                <p className="text-sm text-success-700">
+                  Detaljer:
+                </p>
+                <ul className="list-disc list-inside text-sm text-success-700 mt-1">
+                  <li>
+                    DKIM: {verificationResult.dkimVerified ? 'Verifierad' : 'Ej verifierad'}
+                  </li>
+                  <li>
+                    SPF: {verificationResult.spfVerified ? 'Verifierad' : 'Ej verifierad'}
+                  </li>
+                </ul>
+              </div>
+            )}
+          </div>
           
-          <p className={`mt-2 text-sm ${
-            verificationResult?.verified ? 'text-success-700' : 'text-warning-700'
-          }`}>
-            {verificationResult?.verified
-              ? `Din domän ${domain} är nu verifierad och kan användas för mailutskick!`
-              : `Domänen ${domain} kunde inte verifieras. Kontrollera att DNS-posterna är korrekt inställda och försök igen.`
-            }
-          </p>
-          
+          {/* Separator */}
           {verificationResult?.verified && (
-            <div className="mt-3">
-              <p className="text-sm text-success-700">
-                Detaljer:
+            <Divider className="my-4" />
+          )}
+          
+          {/* Reply-domän status - bara om huvuddomänen är verifierad */}
+          {verificationResult?.verified && verificationResult?.replyDomainInfo && (
+            <div className={`p-4 rounded-md ${
+              replyVerified 
+                ? 'bg-success-50 border border-success-200' 
+                : 'bg-warning-50 border border-warning-200'
+            }`}>
+              <h4 className={`font-medium text-lg ${
+                replyVerified ? 'text-success-700' : 'text-warning-700'
+              }`}>
+                {replyVerified 
+                  ? '✓ Reply-domän verifierad!' 
+                  : '⚠️ Reply-domän kräver verifiering'}
+              </h4>
+              
+              <p className={`mt-2 text-sm ${
+                replyVerified ? 'text-success-700' : 'text-warning-700'
+              }`}>
+                {replyVerified
+                  ? `Din reply-domän ${replyDomain} är nu verifierad och kan användas för att ta emot svar på e-post!`
+                  : `För att kunna ta emot svar på e-post behöver du verifiera reply-domänen ${replyDomain}. Detta kräver ytterligare DNS-konfiguration.`
+                }
               </p>
-              <ul className="list-disc list-inside text-sm text-success-700 mt-1">
+              
+              {!replyVerified && (
+                <div className="mt-3">
+                  <Button 
+                    color="primary" 
+                    size="sm"
+                    onPress={() => setReplyDomainVerifierOpen(true)}
+                  >
+                    Verifiera reply-domän
+                  </Button>
+                </div>
+              )}
+            </div>
+          )}
+          
+          {/* Information om nästa steg */}
+          {verificationResult?.verified && (
+            <div className="mt-6 border-t pt-4">
+              <h4 className="font-medium mb-2">Vad händer nu?</h4>
+              <ul className="list-disc list-inside space-y-2 text-sm">
                 <li>
-                  DKIM: {verificationResult.dkimVerified ? 'Verifierad' : 'Ej verifierad'}
+                  Du kan nu konfigurera valfri avsändaradress med domänen <strong>{domain}</strong> i systemet
+                </li>
+                {replyVerified ? (
+                  <li>
+                    Din reply-domän (<strong>{replyDomain}</strong>) är verifierad och kan användas för att ta emot e-postsvar
+                  </li>
+                ) : (
+                  <li>
+                    För att kunna ta emot svar, verifiera reply-domänen <strong>{replyDomain}</strong>
+                  </li>
+                )}
+                <li>
+                  Verifiera alla mailmallar och testa att skicka e-post
                 </li>
                 <li>
-                  SPF: {verificationResult.spfVerified ? 'Verifierad' : 'Ej verifierad'}
+                  Gå till E-postsvarsinställningar för att konfigurera hur svar ska hanteras
                 </li>
               </ul>
             </div>
           )}
-        </div>
+        </CardBody>
         
-        {/* Reply-domän status - förtydligad och mer prominent */}
-        {replyStatus && verificationResult?.verified && (
-          <div className={`p-4 rounded-md mt-4 ${
-            replyStatus === 'success' ? 'bg-success-50 border border-success-200' :
-            replyStatus === 'error' ? 'bg-danger-50 border border-danger-200' :
-            'bg-info-50 border border-info-200'
-          }`}>
-            <h4 className={`font-medium text-lg ${
-              replyStatus === 'success' ? 'text-success-700' :
-              replyStatus === 'error' ? 'text-danger-700' :
-              'text-info-700'
-            }`}>
-              {replyStatus === 'success' ? '✓ Svarsdomän skapad!' :
-               replyStatus === 'error' ? '✗ Problem med svarsdomän' :
-               '⟳ Skapar svarsdomän...'}
-            </h4>
-            
-            <p className={`mt-2 text-sm ${
-              replyStatus === 'success' ? 'text-success-700' :
-              replyStatus === 'error' ? 'text-danger-700' :
-              'text-info-700'
-            }`}>
-              {replyMessage}
-            </p>
-            
-            {replyStatus === 'success' && (
-              <div className="mt-3 space-y-3">
-                <p className="text-sm text-success-700">
-                  En svarsdomän (<strong>{replyDomain}</strong>) har automatiskt skapats och konfigurerats.
-                  Du kan nu ta emot automatiska svar från kunder via mail. När kunder svarar på mail 
-                  från systemet kommer deras svar automatiskt att registreras i rätt ärende.
-                </p>
-                
-                <div>
-                  <Button 
-                    color="primary" 
-                    size="sm"
-                    className="mt-2"
-                    onPress={() => {
-                      // Stäng denna dialog och låt parent-komponenten ta hand om navigeringen
-                      if (onVerified) onVerified();
-                      onClose();
-                    }}
-                  >
-                    Gå till e-postsvarsinställningar
-                  </Button>
-                </div>
+        <CardFooter>
+          <div className="flex justify-end">
+            {verificationResult?.verified && replyVerified ? (
+              <Button
+                color="primary"
+                onPress={() => {
+                  onClose();
+                  // Meddela att hela verifieringen är klar
+                  if (onVerified) {
+                    onVerified();
+                  }
+                }}
+              >
+                Klart
+              </Button>
+            ) : verificationResult?.verified ? (
+              <div className="flex gap-2">
+                <Button
+                  variant="flat"
+                  onPress={onClose}
+                >
+                  Skjut upp reply-verifiering
+                </Button>
+                <Button
+                  color="primary"
+                  onPress={() => setReplyDomainVerifierOpen(true)}
+                >
+                  Verifiera reply-domän
+                </Button>
               </div>
+            ) : (
+              <Button
+                onPress={onClose}
+              >
+                Stäng
+              </Button>
             )}
           </div>
-        )}
-        
-        {/* Information om nästa steg */}
-        {verificationResult?.verified && (
-          <div className="mt-6 border-t pt-4">
-            <h4 className="font-medium mb-2">Vad händer nu?</h4>
-            <ul className="list-disc list-inside space-y-2 text-sm">
-              <li>
-                Du kan nu konfigurera valfri avsändaradress med domänen <strong>{domain}</strong> i systemet
-              </li>
-              <li>
-                En svarsdomän (<strong>reply.{domain}</strong>) skapas automatiskt för hantering av e-postsvar
-              </li>
-              <li>
-                Verifiera alla mailmallar och testa att skicka e-post
-              </li>
-            </ul>
-          </div>
-        )}
-      </CardBody>
+        </CardFooter>
+      </Card>
       
-      <CardFooter>
-        <div className="flex justify-end">
-          <Button
-            onPress={onClose}
-            color={verificationResult?.verified ? "primary" : "default"}
-          >
-            {verificationResult?.verified ? "Klart" : "Stäng"}
-          </Button>
-        </div>
-      </CardFooter>
-    </Card>
+      {/* Reply-domänverifierare */}
+      <Modal
+        isOpen={replyDomainVerifierOpen}
+        onOpenChange={(open) => setReplyDomainVerifierOpen(open)}
+        size="2xl"
+      >
+        <ModalContent>
+          {() => (
+            <ReplyDomainVerifier
+              replyDomainId={verificationResult?.replyDomainInfo?.domainId}
+              replyDomain={replyDomain}
+              dnsRecords={verificationResult?.replyDomainInfo?.dnsRecords}
+              onClose={() => setReplyDomainVerifierOpen(false)}
+              onVerificationSuccess={handleReplyVerificationSuccess}
+            />
+          )}
+        </ModalContent>
+      </Modal>
+    </>
   );
 };
 

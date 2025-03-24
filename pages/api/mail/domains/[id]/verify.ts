@@ -6,7 +6,7 @@ import { authOptions } from '../../../auth/authOptions';
 import rateLimiter from '@/lib/rateLimiterApi';
 import { getDomainAuthenticationById, verifyDomainAuthentication } from '@/utils/sendgridDomain';
 import { logger } from '@/utils/logger';
-import { createAutoReplyDomain } from '@/utils/autoReplyDomainHelper';
+import { createAutoReplyDomain, verifyReplyDomain } from '@/utils/autoReplyDomainHelper';
 
 const prisma = new PrismaClient();
 
@@ -46,6 +46,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(404).json({ error: 'Domänen hittades inte för denna butik' });
     }
 
+    // Kontrollera om detta är en reply-domän (subdomän som börjar med "reply.")
+    const isReplyDomain = domainRecord.domain.startsWith('reply.');
+
     // Endast POST-metod är tillåten (för att trigga verifiering)
     if (req.method !== 'POST') {
       res.setHeader('Allow', ['POST']);
@@ -78,58 +81,57 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           }
         });
         
-        // Kontrollera om detta är en basdomän (inte en reply-domän eller annan subdomän)
-        // Om det är en basdomän, försök skapa en reply-domän automatiskt
-        if (!domainRecord.domain.startsWith('reply.')) {
-          // Starta en asynkron process för att skapa reply-domänen
-          // Vi väntar inte på resultatet för att inte blockera huvudprocessen
-          createAutoReplyDomain(domainRecord.domain, storeId)
-            .then(result => {
-              if (result.success) {
-                logger.info('Automatisk reply-domän skapad', {
-                  baseDomain: domainRecord.domain,
-                  replyDomain: result.replyDomain,
-                  storeId
-                });
-              } else {
-                logger.warn('Kunde inte skapa automatisk reply-domän', {
-                  baseDomain: domainRecord.domain,
-                  error: result.message,
-                  storeId
-                });
-              }
-            })
-            .catch(error => {
-              logger.error('Fel vid automatiskt skapande av reply-domän', {
-                error: error.message,
-                baseDomain: domainRecord.domain,
-                storeId
-              });
-            });
+        // Olika hantering beroende på om det är en basdomän eller reply-domän
+        if (isReplyDomain) {
+          // För reply-domän: Uppdatera inställningarna för e-postsvar
+          await updateReplyDomainSettings(domainRecord.domain, storeId, true);
+          
+          return res.status(200).json({
+            id: domainStatus.id,
+            domain: domainStatus.domain,
+            verified: verified,
+            status: verified ? 'verified' : 'pending',
+            isReplyDomain: true,
+            dkimVerified: domainStatus.dkim?.valid || false,
+            spfVerified: domainStatus.spf?.valid || false,
+          });
+        } else {
+          // För basdomän: Starta processen för att skapa reply-domän
+          // Returnera resultatet innan reply-domänskapandet är klart
+          // (reply-domänen kräver separat verifiering)
+          const autoReplyResult = await createAutoReplyDomain(domainRecord.domain, storeId);
+          
+          return res.status(200).json({
+            id: domainStatus.id,
+            domain: domainStatus.domain,
+            verified: verified,
+            status: verified ? 'verified' : 'pending',
+            dkimVerified: domainStatus.dkim?.valid || false,
+            spfVerified: domainStatus.spf?.valid || false,
+            // Lägg till information om reply-domänen
+            autoReplyDomain: autoReplyResult.success,
+            replyDomainInfo: {
+              domain: autoReplyResult.replyDomain,
+              domainId: autoReplyResult.domainId,
+              status: autoReplyResult.needsVerification ? 'pending' : 'verified',
+              dnsRecords: autoReplyResult.dnsRecords || [],
+              message: autoReplyResult.message
+            }
+          });
         }
-        
-        // Om domänverifiering lyckades, uppdatera även konfigurationen
-        // för att lägga till domänen i listan över verifierade domäner
-        const currentDomains = process.env.SENDGRID_VERIFIED_DOMAINS?.split(',') || [];
-        
-        if (!currentDomains.includes(domainRecord.domain)) {
-          // I en verklig produktionsmiljö skulle man uppdatera miljövariabeln eller
-          // lagra detta på ett annat sätt. För demo syften, vi simulerar en uppdatering.
-          logger.info(`Domän ${domainRecord.domain} skulle läggas till i SENDGRID_VERIFIED_DOMAINS`);
-        }
+      } else {
+        // Om verifieringen misslyckades
+        return res.status(200).json({
+          id: domainStatus.id,
+          domain: domainStatus.domain,
+          verified: false,
+          status: 'pending',
+          isReplyDomain,
+          dkimVerified: domainStatus.dkim?.valid || false,
+          spfVerified: domainStatus.spf?.valid || false,
+          message: 'Domänen kunde inte verifieras. Kontrollera att DNS-posterna är korrekt inställda.'
+        });
       }
-      
-      return res.status(200).json({
-        id: domainStatus.id,
-        domain: domainStatus.domain,
-        verified: verified,
-        status: verified ? 'verified' : 'pending',
-        dkimVerified: domainStatus.dkim?.valid || false,
-        spfVerified: domainStatus.spf?.valid || false,
-        // Lägg till information om att en reply-domän kommer att skapas
-        autoReplyDomain: !domainRecord.domain.startsWith('reply.') && verified,
-      });
-      
     } catch (error) {
       logger.error('Fel vid verifiering av domän', {
         error: error.message,
@@ -149,5 +151,81 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(500).json({ message: 'Ett internt serverfel uppstod.', details: error.message });
   } finally {
     await prisma.$disconnect();
+  }
+}
+
+/**
+ * Uppdaterar inställningen för svarsdomän i databasen
+ */
+async function updateReplyDomainSettings(replyDomain: string, storeId: number, verified: boolean): Promise<void> {
+  try {
+    // Uppdatera eller skapa inställningen för reply-domän
+    await prisma.setting.upsert({
+      where: {
+        key_storeId: {
+          key: 'REPLY_DOMAIN',
+          storeId
+        }
+      },
+      update: {
+        value: replyDomain,
+        updatedAt: new Date()
+      },
+      create: {
+        key: 'REPLY_DOMAIN',
+        value: replyDomain,
+        storeId
+      }
+    });
+    
+    // Markera denna reply-domän som automatiskt konfigurerad
+    await prisma.setting.upsert({
+      where: {
+        key_storeId: {
+          key: 'REPLY_DOMAIN_AUTO_CONFIGURED',
+          storeId
+        }
+      },
+      update: {
+        value: 'true',
+        updatedAt: new Date()
+      },
+      create: {
+        key: 'REPLY_DOMAIN_AUTO_CONFIGURED',
+        value: 'true',
+        storeId
+      }
+    });
+    
+    // Uppdatera verifieringsstatus
+    await prisma.setting.upsert({
+      where: {
+        key_storeId: {
+          key: 'REPLY_DOMAIN_VERIFIED',
+          storeId
+        }
+      },
+      update: {
+        value: verified.toString(),
+        updatedAt: new Date()
+      },
+      create: {
+        key: 'REPLY_DOMAIN_VERIFIED',
+        value: verified.toString(),
+        storeId
+      }
+    });
+    
+    logger.info(`Reply-domäninställning uppdaterad (${verified ? 'verifierad' : 'ej verifierad'})`, { 
+      replyDomain, 
+      storeId 
+    });
+  } catch (error) {
+    logger.error('Fel vid uppdatering av reply-domäninställning', {
+      error: error.message,
+      replyDomain,
+      storeId
+    });
+    throw error;
   }
 }
