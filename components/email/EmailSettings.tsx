@@ -4,7 +4,10 @@ import {
   Tabs, 
   Tab,
   Spinner,
-  addToast
+  addToast,
+  Alert,
+  AlertDescription,
+  AlertTitle
 } from '@heroui/react';
 
 // Importera komponenter för e-postinställningar
@@ -20,6 +23,7 @@ const EmailSettings: React.FC = () => {
   const [loadingDomains, setLoadingDomains] = useState(true);
   const [showAddDomain, setShowAddDomain] = useState(false);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
+  const [pendingReplyDomains, setPendingReplyDomains] = useState<any[]>([]);
 
   // Hämta domäner när komponenten laddas
   useEffect(() => {
@@ -34,6 +38,14 @@ const EmailSettings: React.FC = () => {
       if (res.ok) {
         const data = await res.json();
         setDomains(data);
+        
+        // Hitta reply-domäner som inte är verifierade
+        const pendingReplies = data.filter(d => 
+          d.domain.startsWith('reply.') && 
+          (d.status === 'pending' || !d.verified)
+        );
+        
+        setPendingReplyDomains(pendingReplies);
       } else {
         console.error('Kunde inte hämta domäner');
         addToast({
@@ -95,9 +107,10 @@ const EmailSettings: React.FC = () => {
       // Visa ett tydligt meddelande om att en svarsdomän skapats automatiskt
       addToast({
         title: 'Svarsdomän skapad automatiskt',
-        description: 'Din domän har verifierats och en svarsdomän har skapats automatiskt. Du kan konfigurera den här.',
-        color: 'success',
+        description: 'Din domän har verifierats och en svarsdomän har skapats automatiskt, men den behöver också verifieras. Se fliken "E-postsvarsinställningar".',
+        color: 'warning',
         variant: 'flat',
+        duration: 8000
       });
     }, 500);
   };
@@ -123,6 +136,17 @@ const EmailSettings: React.FC = () => {
         {/* Domänhantering */}
         <Tab key="domains" title="Domänverifiering">
           <div className="space-y-6 mt-4">
+            {pendingReplyDomains.length > 0 && (
+              <Alert variant="solid" color="warning">
+                <AlertTitle>Verifiering krävs för reply-domäner!</AlertTitle>
+                <AlertDescription>
+                  Du har {pendingReplyDomains.length} reply-domän(er) som behöver verifieras med separata DNS-poster. 
+                  Reply-domäner är nödvändiga för att systemet ska kunna ta emot e-postsvar från dina kunder.
+                  Gå till fliken "E-postsvarsinställningar" för att slutföra verifieringen.
+                </AlertDescription>
+              </Alert>
+            )}
+          
             {showAddDomain ? (
               // Visa domänverifieringshanteraren när man lägger till ny domän
               <DomainVerificationManager
@@ -140,6 +164,16 @@ const EmailSettings: React.FC = () => {
                   >
                     Verifiera ny domän
                   </button>
+                </div>
+                
+                <div className="bg-info-50 border border-info-200 rounded p-4 mb-4">
+                  <h3 className="text-md font-medium text-info-700 mb-2">Verifieringsprocess</h3>
+                  <ol className="list-decimal list-inside space-y-1">
+                    <li className="text-info-700">Verifiera din huvuddomän (t.ex. dindomän.se) genom att lägga till DNS-poster</li>
+                    <li className="text-info-700">Efter verifiering skapas en reply-domän (reply.dindomän.se) automatiskt</li>
+                    <li className="text-info-700">Gå till fliken "E-postsvarsinställningar" för att verifiera reply-domänen (kräver ytterligare DNS-poster)</li>
+                    <li className="text-info-700">När både huvuddomänen och reply-domänen är verifierade kan du använda dem för e-postkommunikation</li>
+                  </ol>
                 </div>
                 
                 {loadingDomains ? (
@@ -160,21 +194,6 @@ const EmailSettings: React.FC = () => {
                         onDelete={() => handleDeleteDomain(domain.id)}
                       />
                     ))}
-                    
-                    {/* Informationsruta om automatisk reply-domän */}
-                    <div className="bg-info-50 border border-info-200 p-4 rounded mt-6">
-                      <h3 className="text-md font-medium text-info-700 mb-2">Automatisk svarsdomän</h3>
-                      <p className="text-sm text-info-700">
-                        När du verifierar en domän skapar systemet automatiskt en svarsdomän (reply.dindomän.se)
-                        som används för att ta emot svar på e-postmeddelanden och koppla dem till rätt ärende.
-                      </p>
-                      <button 
-                        className="heroui-button heroui-button-flat heroui-button-primary heroui-button-sm mt-3"
-                        onClick={() => setActiveTab('reply')}
-                      >
-                        Gå till e-postsvarsinställningar
-                      </button>
-                    </div>
                   </div>
                 )}
               </div>
@@ -183,8 +202,27 @@ const EmailSettings: React.FC = () => {
         </Tab>
         
         {/* E-postsvarsinställningar */}
-        <Tab key="reply" title="E-postsvarsinställningar">
+        <Tab key="reply" title={
+          <div className="flex items-center">
+            E-postsvarsinställningar
+            {pendingReplyDomains.length > 0 && (
+              <span className="ml-2 bg-warning-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs">
+                {pendingReplyDomains.length}
+              </span>
+            )}
+          </div>
+        }>
           <div className="space-y-6 mt-4">
+            {pendingReplyDomains.length > 0 && (
+              <Alert variant="solid" color="warning">
+                <AlertTitle>Åtgärd krävs för att aktivera e-postsvar!</AlertTitle>
+                <AlertDescription>
+                  För att kunna ta emot e-postsvar från kunder behöver du slutföra verifieringen av din reply-domän. 
+                  Detta kräver att du lägger till ytterligare DNS-poster specifikt för reply-domänen.
+                </AlertDescription>
+              </Alert>
+            )}
+            
             <EmailReplySettings
               onSettingsUpdated={() => setRefreshTrigger(prev => prev + 1)}
             />
