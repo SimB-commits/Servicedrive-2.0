@@ -1,6 +1,7 @@
 // pages/kunder/index.tsx
 import React, { useState, useEffect, useMemo } from 'react';
 import { useSession } from 'next-auth/react';
+import { useRouter } from 'next/router';
 import {
   addToast,
   Form,
@@ -27,6 +28,8 @@ import {
 import { title, subtitle } from '@/components/primitives';
 import { DeleteIcon, EditIcon, EyeIcon } from '@/components/icons';
 import CustomerDrawer from '@/components/CustomerDrawer';
+
+
 
 // Hjälpfunktion för att formatera datum för input[type="date"]
 const formatDateForInput = (dateString: string | undefined): string => {
@@ -79,6 +82,7 @@ export default function KundPage() {
   const [filterValue, setFilterValue] = useState("");
   const [page, setPage] = useState(1);
   const [rowsPerPage, setRowsPerPage] = useState(10);
+  const router = useRouter();
 
   // State för att hantera CustomerDrawer
   const [viewDrawerOpen, setViewDrawerOpen] = useState(false);
@@ -748,60 +752,69 @@ export default function KundPage() {
           <TableBody emptyContent="Inga kunder hittades">
             {displayedCustomers.map((customer) => (
               <TableRow key={customer.id}>
-                {/* Checkbox för varje kund */}
-                <TableCell>
-                  <Checkbox
-                    isSelected={selectedIds.includes(customer.id)}
-                    onValueChange={() => toggleSelectCustomer(customer.id)}
-                  />
-                </TableCell>
-                <TableCell>
-                  {(customer.firstName || customer.lastName) 
-                    ? `${customer.firstName || ''} ${customer.lastName || ''}`.trim() 
-                    : '-'}
-                </TableCell>
-                <TableCell>{customer.email || '-'}</TableCell>
-                <TableCell>{customer.phoneNumber || '-'}</TableCell>
-                <TableCell>
-                  {customer.address 
-                    ? `${customer.address}, ${customer.postalCode || ''} ${customer.city || ''}`.trim() 
-                    : '-'}
-                </TableCell>
-                <TableCell>
-                  {customer.loyal ? 
-                    <span className="text-success">Stamkund</span> : 
-                    <span className="text-default-500">Standard</span>}
-                </TableCell>
-                <TableCell>
-                  <div className="flex items-center gap-2">
-                    <Button 
-                      type="button" 
-                      variant="flat" 
-                      isIconOnly
-                      onPress={() => handleOpenViewDrawer(customer)}
-                    >
-                      <EyeIcon />
-                    </Button>
-                    <Button 
-                      type="button" 
-                      variant="flat" 
-                      isIconOnly
-                      onPress={() => handleEdit(customer)}
-                    >
-                      <EditIcon />
-                    </Button>
-                    <Button 
-                      type="button" 
-                      variant="flat" 
-                      isIconOnly
-                      color="danger"
-                      onPress={() => handleDelete(customer.id)}
-                    >
-                      <DeleteIcon />
-                    </Button>
-                  </div>
-                </TableCell>
-              </TableRow>
+              {/* Checkbox för varje kund */}
+              <TableCell>
+                <Checkbox
+                  isSelected={selectedIds.includes(customer.id)}
+                  onValueChange={() => toggleSelectCustomer(customer.id)}
+                />
+              </TableCell>
+              <TableCell>
+  {/* Klickbart kundnamn som navigerar till kundsidan */}
+  <div
+    className="cursor-pointer text-primary hover:underline"
+    onClick={(e) => {
+      e.stopPropagation(); // Förhindra eventuell bubbling
+      router.push(`/kunder/${customer.id}`);
+    }}
+  >
+    {(customer.firstName || customer.lastName) 
+      ? `${customer.firstName || ''} ${customer.lastName || ''}`.trim() 
+      : `-`}
+  </div>
+</TableCell>
+              <TableCell>{customer.email || '-'}</TableCell>
+              <TableCell>{customer.phoneNumber || '-'}</TableCell>
+              <TableCell>
+                {customer.address 
+                  ? `${customer.address}, ${customer.postalCode || ''} ${customer.city || ''}`.trim() 
+                  : '-'}
+              </TableCell>
+              <TableCell>
+                {customer.loyal ? 
+                  <span className="text-success">Stamkund</span> : 
+                  <span className="text-default-500">Standard</span>}
+              </TableCell>
+              <TableCell>
+                <div className="flex items-center gap-2">
+                  <Button 
+                    type="button" 
+                    variant="flat" 
+                    isIconOnly
+                    onPress={() => handleOpenViewDrawer(customer)}
+                  >
+                    <EyeIcon />
+                  </Button>
+                  <Button 
+                    type="button" 
+                    variant="flat" 
+                    isIconOnly
+                    onPress={() => handleEdit(customer)}
+                  >
+                    <EditIcon />
+                  </Button>
+                  <Button 
+                    type="button" 
+                    variant="flat" 
+                    isIconOnly
+                    color="danger"
+                    onPress={() => handleDelete(customer.id)}
+                  >
+                    <DeleteIcon />
+                  </Button>
+                </div>
+              </TableCell>
+            </TableRow>
             ))}
           </TableBody>
         </Table>

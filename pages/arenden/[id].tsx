@@ -473,14 +473,14 @@ export default function TicketPage() {
                 <Divider className="my-4" />
                 
                 <Button 
-                  size="sm"
-                  variant="flat"
-                  color="primary"
-                  className="w-full"
-                  onPress={() => router.push(`/kunder?id=${ticket.customer?.id}`)}
-                >
-                  Visa kundprofil
-                </Button>
+  size="sm"
+  variant="flat"
+  color="primary"
+  className="w-full"
+  onPress={() => router.push(`/kunder/${ticket.customer?.id}`)}
+>
+  Visa kundprofil
+</Button>
               </CardBody>
             </Card>
             
