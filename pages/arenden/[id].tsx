@@ -55,26 +55,27 @@ export default function TicketPage() {
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
   const [selectedStatus, setSelectedStatus] = useState<TicketStatus | null>(null);
 
+  // Flytta fetchTicket-funktionen utanför useEffect
+  const fetchTicket = async () => {
+    if (!id || !session) return;
+    
+    try {
+      setLoading(true);
+      const res = await fetch(`/api/tickets/${id}`);
+      if (!res.ok) {
+        throw new Error('Kunde inte hämta ärende');
+      }
+      const data = await res.json();
+      setTicket(data);
+    } catch (error) {
+      console.error('Fel vid hämtning av ärende:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // Hämta ärende
   useEffect(() => {
-    if (!id || !session) return;
-
-    const fetchTicket = async () => {
-      try {
-        setLoading(true);
-        const res = await fetch(`/api/tickets/${id}`);
-        if (!res.ok) {
-          throw new Error('Kunde inte hämta ärende');
-        }
-        const data = await res.json();
-        setTicket(data);
-      } catch (error) {
-        console.error('Fel vid hämtning av ärende:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
     fetchTicket();    
   }, [id, session]);
 
