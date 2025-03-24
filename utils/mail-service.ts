@@ -6,6 +6,43 @@ import { logger } from './logger';
 const prisma = new PrismaClient();
 
 /**
+ * Förbättrad felhantering för mail-relaterade problem
+ * Centraliserad hantering av mail-fel för konsekvent loggning och rapportering
+ */
+const handleMailError = (error: any, contextInfo?: { ticketId?: number, recipient?: string, templateId?: number }) => {
+  // Formatera felmeddelandet för loggning
+  const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+  
+  // Identifiera olika typer av fel för bättre diagnostik
+  const isReplyToError = errorMessage.toLowerCase().includes('reply') || 
+                         errorMessage.toLowerCase().includes('address not found');
+  const isRateLimitError = errorMessage.toLowerCase().includes('rate limit') || 
+                          errorMessage.toLowerCase().includes('too many requests');
+  const isAuthError = errorMessage.toLowerCase().includes('authentication') || 
+                     errorMessage.toLowerCase().includes('unauthorized');
+  
+  // Anonymisera mottagarens e-post för GDPR-compliance
+  const safeRecipient = contextInfo?.recipient ? 
+    (contextInfo.recipient.substring(0, 3) + '***@' + contextInfo.recipient.split('@')[1]) : 
+    undefined;
+  
+  // Logga felet med relevant kategori och kontext
+  logger.error(`E-postfel${isReplyToError ? ' (svarsadress)' : isRateLimitError ? ' (rate limit)' : isAuthError ? ' (autentisering)' : ''}`, {
+    error: errorMessage,
+    ticketId: contextInfo?.ticketId,
+    templateId: contextInfo?.templateId,
+    recipient: safeRecipient,
+    type: isReplyToError ? 'reply_domain_error' : 
+          isRateLimitError ? 'rate_limit_error' :
+          isAuthError ? 'auth_error' : 'general_mail_error',
+    stack: error instanceof Error ? error.stack?.substring(0, 500) : undefined
+  });
+  
+  // Kasta felet vidare för hantering högre upp
+  throw error;
+};
+
+/**
  * Genererar en Reply-To adress baserad på ärende-ID och domän
  */
 export function generateReplyToAddress(ticketId: number, domain?: string): string {
@@ -33,7 +70,7 @@ export async function sendNewMessageNotification(
       <h2>Nytt kundmeddelande på ärende #${ticket.id}</h2>
       <p>Kunden ${ticket.customer.firstName || ''} ${ticket.customer.lastName || ''} har svarat på ärende #${ticket.id}.</p>
       
-      <div style="margin: 20px 0; padding: 10px; border-left: 4px solid #f0f0f0; background-color: #f9f9f9;">
+      <div style="margin: 20px 0; padding: 10px; border-left: 4px solid #4a90e2; background-color: #f9f9f9;">
         <p><strong>Meddelande:</strong></p>
         <p>${truncatedContent}</p>
       </div>
@@ -46,7 +83,7 @@ export async function sendNewMessageNotification(
       </p>
       
       <p style="color:#666; font-size:12px;">
-        Detta är en automatisk notifikation från Servicedrive. 
+        Detta mail har skickats från Servicedrive ärendehanteringssystem. 
         För att svara på kundens meddelande, logga in i systemet och gå till ärendet.
       </p>
     `;
@@ -90,7 +127,14 @@ export async function sendNewMessageNotification(
         categories: ['message-notification', `ticket-${ticket.id}`]
       };
       
-      return await sendEmail(emailData);
+      try {
+        return await sendEmail(emailData);
+      } catch (error) {
+        return handleMailError(error, { 
+          ticketId: ticket.id, 
+          recipient: recipientEmail 
+        });
+      }
     }
   } catch (error) {
     logger.error(`Fel vid skickande av meddelande-notifikation för ärende #${ticket.id}`, {
@@ -232,28 +276,36 @@ export const sendTicketStatusEmail = async (
     }
     
     // Skicka mail med statusmallen
-    const response = await sendTemplatedEmail(
-      ticket.customer.email,
-      mailTemplate,
-      variables,
-      ['status-update', `ticket-${ticket.id}`, `status-${ticket.status || 'custom'}`],
-      senderAddress?.email,
-      senderAddress?.name
-    );
-    
-    // Logga framgångsrikt mail
-    logger.info(`Mail skickat för statusändring på ärende #${ticket.id}`, {
-      ticketId: ticket.id, 
-      status: ticket.status,
-      customStatusId: ticket.customStatusId,
-      mailSource: 'custom-status',
-      anonymizedRecipient: getAnonymizedCustomerName(ticket.customer),
-      storeName: store?.name || 'Okänd butik'
-    });
-    
-    return response;
+    try {
+      const response = await sendTemplatedEmail(
+        ticket.customer.email,
+        mailTemplate,
+        variables,
+        ['status-update', `ticket-${ticket.id}`, `status-${ticket.status || 'custom'}`],
+        senderAddress?.email,
+        senderAddress?.name
+      );
+      
+      // Logga framgångsrikt mail
+      logger.info(`Mail skickat för statusändring på ärende #${ticket.id}`, {
+        ticketId: ticket.id, 
+        status: ticket.status,
+        customStatusId: ticket.customStatusId,
+        mailSource: 'custom-status',
+        anonymizedRecipient: getAnonymizedCustomerName(ticket.customer),
+        storeName: store?.name || 'Okänd butik'
+      });
+      
+      return response;
+    } catch (error) {
+      return handleMailError(error, { 
+        ticketId: ticket.id, 
+        recipient: ticket.customer.email,
+        templateId: mailTemplate.id
+      });
+    }
   } catch (error) {
-    logger.error(`Fel vid skickande av statusmail för ärende #${ticket.id}`, {
+    logger.error(`Fel vid förberedelse av statusmail för ärende #${ticket.id}`, {
       error: error instanceof Error ? error.message : "Okänt fel",
       ticketId: ticket.id,
       status: ticket.status,
@@ -346,14 +398,22 @@ export const sendNewTicketEmail = async (
       }
       
       // Använd fallback-mallen om den finns
-      return await sendTemplatedEmail(
-        ticket.customer.email,
-        fallbackTemplate,
-        buildTicketVariables(ticket, storeId),
-        ['new-ticket-confirmation', `ticket-${ticket.id}`],
-        senderAddress?.email,
-        senderAddress?.name
-      );
+      try {
+        return await sendTemplatedEmail(
+          ticket.customer.email,
+          fallbackTemplate,
+          buildTicketVariables(ticket, storeId),
+          ['new-ticket-confirmation', `ticket-${ticket.id}`],
+          senderAddress?.email,
+          senderAddress?.name
+        );
+      } catch (error) {
+        return handleMailError(error, { 
+          ticketId: ticket.id, 
+          recipient: ticket.customer.email,
+          templateId: fallbackTemplate.id
+        });
+      }
     }
     
     // Bygg utökade variabler med länkar
@@ -366,16 +426,24 @@ export const sendNewTicketEmail = async (
     }
     
     // Skicka mail med konfigurerad mall
-    return await sendTemplatedEmail(
-      ticket.customer.email,
-      mailTemplateSetting.template,
-      variables,
-      ['new-ticket-confirmation', `ticket-${ticket.id}`],
-      senderAddress?.email,
-      senderAddress?.name
-    );
+    try {
+      return await sendTemplatedEmail(
+        ticket.customer.email,
+        mailTemplateSetting.template,
+        variables,
+        ['new-ticket-confirmation', `ticket-${ticket.id}`],
+        senderAddress?.email,
+        senderAddress?.name
+      );
+    } catch (error) {
+      return handleMailError(error, { 
+        ticketId: ticket.id, 
+        recipient: ticket.customer.email,
+        templateId: mailTemplateSetting.template.id
+      });
+    }
   } catch (error) {
-    logger.error(`Fel vid skickande av bekräftelsemail för ärende #${ticket.id}`, {
+    logger.error(`Fel vid förberedelse av bekräftelsemail för ärende #${ticket.id}`, {
       error: error instanceof Error ? error.message : "Okänt fel",
       ticketId: ticket.id
     });
@@ -481,8 +549,17 @@ export async function sendTemplatedEmail(
     }
     
     // Skicka emailet
-    const [response] = await sendEmail(emailData);
-
+    let response;
+    try {
+      [response] = await sendEmail(emailData);
+    } catch (error) {
+      return handleMailError(error, { 
+        ticketId: variables.ärendeID && typeof variables.ärendeID === 'number' ? 
+                  variables.ärendeID : undefined,
+        recipient: emailData.to,
+        templateId: template.id
+      });
+    }
     
     // Logga att vi skickat mailet (anonymiserad)
     logger.info(`Mail skickat med mall "${template.name}"`, {
@@ -523,7 +600,7 @@ export async function sendTemplatedEmail(
     
     return response;
   } catch (error) {
-    logger.error(`Fel vid skickande av mail med mall "${template.name}"`, {
+    logger.error(`Fel vid förberedelse av mail med mall "${template.name}"`, {
       error: error instanceof Error ? error.message : "Okänt fel",
       templateId: template.id
     });
@@ -574,8 +651,6 @@ export const sendCustomEmail = async (
     // Lägg till kategorier för spårning
     emailData.categories = categories;
     
-
-    
     // Skicka emailet
     let response;
     try {
@@ -584,7 +659,8 @@ export const sendCustomEmail = async (
       return handleMailError(error, { 
         ticketId: variables.ärendeID && typeof variables.ärendeID === 'number' ? 
                   variables.ärendeID : undefined,
-        recipient: emailData.to
+        recipient: emailData.to,
+        templateId: mailTemplate.id
       });
     }
     
@@ -598,7 +674,7 @@ export const sendCustomEmail = async (
     
     return response;
   } catch (error) {
-    logger.error(`Fel vid skickande av anpassat mail`, {
+    logger.error(`Fel vid förberedelse av anpassat mail`, {
       error: error instanceof Error ? error.message : "Okänt fel",
       templateId
     });
