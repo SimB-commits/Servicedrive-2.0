@@ -23,6 +23,7 @@ import ArendestatusarContent from '../arendestatusar/index';
 import AccountSettings from '@/components/AccountSettings';
 import ImportExportManager from '@/components/ImportExport';
 import StoreManager from '@/components/StoreManager';
+import EmailSettings from '@/components/email/EmailSettings';
 
 // Typer för att hantera aktiv tab
 type TabKey = 'konto' | 'arendetyper' | 'kundkortsmallar' | 'mailmallar' | 'dataimport' | 'butiker' | 'arendestatusar' | 'email';
@@ -71,9 +72,7 @@ export default function InstallningarPage() {
       case 'arendestatusar':
         return <ArendestatusarContent />;
       case 'email':
-        // Omdirektion till email-sidan för att hantera alla e-postrelaterade inställningar
-        router.push('/installningar/email');
-        return <div>Omdirigerar till e-postinställningar...</div>;
+        return <EmailSettings />;
       default:
         return <div>Välj en inställningskategori</div>;
     }
