@@ -1,5 +1,5 @@
 // components/email/ReplyDomainVerifier.tsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Card,
   CardHeader,
@@ -30,19 +30,28 @@ const ReplyDomainVerifier: React.FC<ReplyDomainVerifierProps> = ({
   const [verificationResult, setVerificationResult] = useState<any>(null);
   const [finalDnsRecords, setFinalDnsRecords] = useState<any[]>(dnsRecords);
   const [loadingDnsRecords, setLoadingDnsRecords] = useState(dnsRecords.length === 0);
+  const hasFetchedRecords = useRef(false); // Använd useRef för att spåra om vi redan har hämtat poster
 
-  // Om inga DNS-poster skickades med, hämta dem direkt vid komponentladdning
+  // Ändrad useEffect för att undvika loopar
   useEffect(() => {
+    // Om vi redan har DNS-poster, använd dem
     if (dnsRecords && dnsRecords.length > 0) {
       setFinalDnsRecords(dnsRecords);
       setLoadingDnsRecords(false);
-    } else if (replyDomainId) {
+      hasFetchedRecords.current = true; // Markera att vi har poster
+    } 
+    // Annars, hämta poster ENDAST om vi inte redan har gjort det
+    else if (replyDomainId && !hasFetchedRecords.current) {
+      hasFetchedRecords.current = true; // Markera INNAN anrop för att undvika dubbla anrop
       fetchDnsRecords();
     }
-  }, [replyDomainId, dnsRecords]);
+  }, [replyDomainId]); // Ta bort dnsRecords från dependency array
 
-  // Funktion för att hämta DNS-poster
+  // Funktion för att hämta DNS-poster (lägg till debounce)
   const fetchDnsRecords = async () => {
+    // Om vi redan laddar, avbryt för att undvika dubbla anrop
+    if (loadingDnsRecords) return;
+    
     try {
       setLoadingDnsRecords(true);
       

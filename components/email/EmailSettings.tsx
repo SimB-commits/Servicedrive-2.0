@@ -1,13 +1,11 @@
-// components/EmailSettings.tsx
+// components/email/EmailSettings.tsx
 import React, { useState, useEffect } from 'react';
 import { 
   Tabs, 
   Tab,
   Spinner,
   addToast,
-  Alert,
-  AlertDescription,
-  AlertTitle
+  Alert
 } from '@heroui/react';
 
 // Importera komponenter för e-postinställningar
@@ -17,13 +15,22 @@ import DomainVerificationManager from '@/components/email/DomainVerificationMana
 import DomainVerificationStatus from '@/components/email/DomainVerificationStatus';
 import DomainVerificationInfo from '@/components/email/DomainVerificationInfo';
 
+// Typ-definition för domäner
+interface Domain {
+  id: string;
+  domain: string;
+  status: string;
+  verified: boolean;
+  [key: string]: any;
+}
+
 const EmailSettings: React.FC = () => {
   const [activeTab, setActiveTab] = useState('general');
-  const [domains, setDomains] = useState<any[]>([]);
+  const [domains, setDomains] = useState<Domain[]>([]);
   const [loadingDomains, setLoadingDomains] = useState(true);
   const [showAddDomain, setShowAddDomain] = useState(false);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
-  const [pendingReplyDomains, setPendingReplyDomains] = useState<any[]>([]);
+  const [pendingReplyDomains, setPendingReplyDomains] = useState<Domain[]>([]);
 
   // Hämta domäner när komponenten laddas
   useEffect(() => {
@@ -40,7 +47,7 @@ const EmailSettings: React.FC = () => {
         setDomains(data);
         
         // Hitta reply-domäner som inte är verifierade
-        const pendingReplies = data.filter(d => 
+        const pendingReplies = data.filter((d: Domain) => 
           d.domain.startsWith('reply.') && 
           (d.status === 'pending' || !d.verified)
         );
@@ -109,8 +116,8 @@ const EmailSettings: React.FC = () => {
         title: 'Svarsdomän skapad automatiskt',
         description: 'Din domän har verifierats och en svarsdomän har skapats automatiskt, men den behöver också verifieras. Se fliken "E-postsvarsinställningar".',
         color: 'warning',
-        variant: 'flat',
-        duration: 8000
+        variant: 'flat'
+        // Ta bort 'duration' property som orsakar TypeScript-fel
       });
     }, 500);
   };
@@ -138,12 +145,12 @@ const EmailSettings: React.FC = () => {
           <div className="space-y-6 mt-4">
             {pendingReplyDomains.length > 0 && (
               <Alert variant="solid" color="warning">
-                <AlertTitle>Verifiering krävs för reply-domäner!</AlertTitle>
-                <AlertDescription>
+                <div className="font-bold">Verifiering krävs för reply-domäner!</div>
+                <div>
                   Du har {pendingReplyDomains.length} reply-domän(er) som behöver verifieras med separata DNS-poster. 
                   Reply-domäner är nödvändiga för att systemet ska kunna ta emot e-postsvar från dina kunder.
                   Gå till fliken "E-postsvarsinställningar" för att slutföra verifieringen.
-                </AlertDescription>
+                </div>
               </Alert>
             )}
           
@@ -215,11 +222,11 @@ const EmailSettings: React.FC = () => {
           <div className="space-y-6 mt-4">
             {pendingReplyDomains.length > 0 && (
               <Alert variant="solid" color="warning">
-                <AlertTitle>Åtgärd krävs för att aktivera e-postsvar!</AlertTitle>
-                <AlertDescription>
+                <div className="font-bold">Åtgärd krävs för att aktivera e-postsvar!</div>
+                <div>
                   För att kunna ta emot e-postsvar från kunder behöver du slutföra verifieringen av din reply-domän. 
                   Detta kräver att du lägger till ytterligare DNS-poster specifikt för reply-domänen.
-                </AlertDescription>
+                </div>
               </Alert>
             )}
             
