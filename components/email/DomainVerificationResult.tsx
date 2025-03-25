@@ -37,13 +37,16 @@ const DomainVerificationResult: React.FC<VerificationResultProps> = ({
     if (verificationResult?.verified && verificationResult?.replyDomainInfo) {
       // Om det finns info om reply-domänen, visa popup om den behöver verifieras
       const replyInfo = verificationResult.replyDomainInfo;
-      if (replyInfo.status === 'pending') {
-        // Automatiskt öppna reply-domänverifieraren om verifieringen av huvuddomänen lyckades
+      
+      // Om status är verified, markera reply-domänen som verifierad
+      if (replyInfo.status === 'verified') {
+        setReplyVerified(true);
+      } 
+      // Annars, om det är pending, öppna reply-domänverifieraren automatiskt efter en kort fördröjning
+      else if (replyInfo.status === 'pending') {
         setTimeout(() => {
           setReplyDomainVerifierOpen(true);
         }, 1000);
-      } else if (replyInfo.status === 'verified') {
-        setReplyVerified(true);
       }
     }
   }, [verificationResult]);
@@ -122,7 +125,7 @@ const DomainVerificationResult: React.FC<VerificationResultProps> = ({
           )}
           
           {/* Reply-domän status - bara om huvuddomänen är verifierad */}
-          {verificationResult?.verified && verificationResult?.replyDomainInfo && (
+          {verificationResult?.verified && (
             <div className={`p-4 rounded-md ${
               replyVerified 
                 ? 'bg-success-50 border border-success-200' 
@@ -133,7 +136,8 @@ const DomainVerificationResult: React.FC<VerificationResultProps> = ({
               }`}>
                 {replyVerified 
                   ? '✓ Reply-domän verifierad!' 
-                  : '⚠️ Reply-domän kräver verifiering'}
+                  : '⚠️ Reply-domänen behöver verifieras'
+                }
               </h4>
               
               <p className={`mt-2 text-sm ${
@@ -144,6 +148,17 @@ const DomainVerificationResult: React.FC<VerificationResultProps> = ({
                   : `För att kunna ta emot svar på e-post behöver du verifiera reply-domänen ${replyDomain}. Detta kräver ytterligare DNS-konfiguration.`
                 }
               </p>
+              
+              {/* Extra information till användaren för att vara tydlig */}
+              {!replyVerified && (
+                <div className="mt-2 text-sm text-warning-700">
+                  <p><strong>Varför behöver jag detta?</strong> Reply-domänen används för att hantera svar på e-postmeddelanden som skickas från systemet. 
+                  När en kund svarar på ett e-postmeddelande behöver svaret gå till denna domän så att systemet kan koppla svaret till rätt ärende.</p>
+                  
+                  <p className="mt-2"><strong>Vad behöver jag göra?</strong> Du behöver lägga till ytterligare DNS-poster specifikt för reply-domänen. 
+                  Klicka på knappen nedan för att se vilka DNS-poster som behövs.</p>
+                </div>
+              )}
               
               {!replyVerified && (
                 <div className="mt-3">
@@ -173,7 +188,7 @@ const DomainVerificationResult: React.FC<VerificationResultProps> = ({
                   </li>
                 ) : (
                   <li>
-                    För att kunna ta emot svar, verifiera reply-domänen <strong>{replyDomain}</strong>
+                    <strong>För att kunna ta emot svar</strong>, verifiera reply-domänen <strong>{replyDomain}</strong> (ny DNS-konfiguration krävs)
                   </li>
                 )}
                 <li>
@@ -239,7 +254,7 @@ const DomainVerificationResult: React.FC<VerificationResultProps> = ({
             <ReplyDomainVerifier
               replyDomainId={verificationResult?.replyDomainInfo?.domainId}
               replyDomain={replyDomain}
-              dnsRecords={verificationResult?.replyDomainInfo?.dnsRecords}
+              dnsRecords={verificationResult?.replyDomainInfo?.dnsRecords || []}
               onClose={() => setReplyDomainVerifierOpen(false)}
               onVerificationSuccess={handleReplyVerificationSuccess}
             />

@@ -29,13 +29,86 @@ const ReplyDomainVerifier: React.FC<ReplyDomainVerifierProps> = ({
   const [verifying, setVerifying] = useState(false);
   const [verificationResult, setVerificationResult] = useState<any>(null);
   const [finalDnsRecords, setFinalDnsRecords] = useState<any[]>(dnsRecords);
+  const [loadingDnsRecords, setLoadingDnsRecords] = useState(dnsRecords.length === 0);
 
-  // Om DNS-poster skickades med som prop, använd dem
+  // Om inga DNS-poster skickades med, hämta dem direkt vid komponentladdning
   useEffect(() => {
     if (dnsRecords && dnsRecords.length > 0) {
       setFinalDnsRecords(dnsRecords);
+      setLoadingDnsRecords(false);
+    } else if (replyDomainId) {
+      fetchDnsRecords();
     }
-  }, [dnsRecords]);
+  }, [replyDomainId, dnsRecords]);
+
+  // Funktion för att hämta DNS-poster
+  const fetchDnsRecords = async () => {
+    try {
+      setLoadingDnsRecords(true);
+      
+      // Anropa en GET-endpoint för att hämta DNS-poster
+      // Alternativt, använd POST men utan att faktiskt försöka verifiera
+      const response = await fetch('/api/mail/domains/verify-reply', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          domainId: replyDomainId,
+          onlyFetchDns: true // Sätt en flagga att vi bara vill hämta DNS-poster
+        }),
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || errorData.message || 'Kunde inte hämta DNS-poster');
+      }
+      
+      const result = await response.json();
+      
+      // Om vi fick DNS-poster, använd dem
+      if (result.dnsRecords && result.dnsRecords.length > 0) {
+        setFinalDnsRecords(result.dnsRecords);
+      } else {
+        // Annars generera fallback DNS-poster
+        const fallbackRecords = generateFallbackDnsRecords(replyDomain);
+        setFinalDnsRecords(fallbackRecords);
+        console.warn('Inga DNS-poster returnerades från API, använder fallback-poster');
+      }
+    } catch (error) {
+      console.error('Fel vid hämtning av DNS-poster:', error);
+      // Generera fallback DNS-poster vid fel
+      const fallbackRecords = generateFallbackDnsRecords(replyDomain);
+      setFinalDnsRecords(fallbackRecords);
+    } finally {
+      setLoadingDnsRecords(false);
+    }
+  };
+
+  // Generera fallback DNS-poster om API inte svarar korrekt
+  const generateFallbackDnsRecords = (domain: string) => {
+    return [
+      {
+        type: 'MX',
+        host: domain,
+        data: 'mx.sendgrid.net',
+        priority: 10,
+        name: 'För hantering av inkommande mail'
+      },
+      {
+        type: 'TXT',
+        host: domain,
+        data: 'v=spf1 include:sendgrid.net ~all',
+        name: 'SPF-post för mailautentisering'
+      },
+      {
+        type: 'CNAME',
+        host: `em.${domain}`,
+        data: 'u17504275.wl.sendgrid.net', // Kan behöva ändras beroende på SendGrid-konfiguration
+        name: 'För verifiering av subdomän'
+      }
+    ];
+  };
 
   const handleVerifyDomain = async () => {
     try {
@@ -53,14 +126,18 @@ const ReplyDomainVerifier: React.FC<ReplyDomainVerifierProps> = ({
       
       if (!response.ok) {
         const errorData = await response.json();
+        // Även om det är ett felmeddelande, kolla om det returnerar DNS-poster
+        if (errorData.dnsRecords && errorData.dnsRecords.length > 0) {
+          setFinalDnsRecords(errorData.dnsRecords);
+        }
         throw new Error(errorData.error || errorData.message || 'Fel vid verifiering');
       }
       
       const result = await response.json();
       setVerificationResult(result);
       
-      // Om API returnerade DNS-poster och vi inte redan har några, använd dem
-      if (result.dnsRecords && result.dnsRecords.length > 0 && finalDnsRecords.length === 0) {
+      // Uppdatera DNS-posterna om vi fick nya
+      if (result.dnsRecords && result.dnsRecords.length > 0) {
         setFinalDnsRecords(result.dnsRecords);
       }
       
@@ -124,9 +201,22 @@ const ReplyDomainVerifier: React.FC<ReplyDomainVerifierProps> = ({
             </p>
           </div>
           
-          {finalDnsRecords.length === 0 ? (
+          {loadingDnsRecords ? (
+            <div className="flex justify-center items-center p-6">
+              <Spinner size="sm" />
+              <p className="ml-2">Hämtar DNS-poster...</p>
+            </div>
+          ) : finalDnsRecords.length === 0 ? (
             <div className="text-center p-4 border rounded">
               <p className="text-default-500">Inga DNS-poster tillgängliga. Försök verifiera för att hämta DNS-poster.</p>
+              <Button 
+                color="primary" 
+                size="sm" 
+                className="mt-2"
+                onPress={fetchDnsRecords}
+              >
+                Hämta DNS-poster
+              </Button>
             </div>
           ) : (
             <div className="space-y-4">
@@ -154,21 +244,21 @@ const ReplyDomainVerifier: React.FC<ReplyDomainVerifierProps> = ({
                 {verificationResult.message || 
                   (verificationResult.verified 
                     ? `Din reply-domän ${replyDomain} är nu verifierad och kan användas för att ta emot svar på e-post.` 
-                    : `Kontrollera att alla DNS-poster är korrekt konfigurerade och försök igen.`)
+                    : `Kontrollera att alla DNS-poster är korrekt konfigurerade och försök igen. Det kan ta upp till 48 timmar för DNS-ändringar att spridas.`)
                 }
               </p>
             </div>
           )}
           
           <div className="bg-info-50 border border-info-200 p-4 rounded mt-4">
-            <h4 className="text-md font-medium text-info-700 mb-2">Varför behöver jag verifiera reply-domänen?</h4>
-            <p className="text-sm text-info-700">
-              Reply-domänen är nödvändig för att kunder ska kunna svara på e-post från systemet. När en kund svarar på ett mail 
-              skickas svaret till en adress på formen ticket-X@{replyDomain}, vilket gör att systemet kan koppla svaret till rätt ärende.
-            </p>
-            <p className="text-sm text-info-700 mt-2">
-              Varje domän och subdomän måste verifieras separat i SendGrid för att förhindra missbruk och säkerställa legitima mailavsändare.
-            </p>
+            <h4 className="text-md font-medium text-info-700 mb-2">Tips för framgångsrik verifiering</h4>
+            <ul className="list-disc list-inside text-sm text-info-700 space-y-1">
+              <li>Lägg till alla DNS-poster exakt som de visas ovan</li>
+              <li>För MX-posten, var noga med att ange prioriteten (10)</li>
+              <li>DNS-ändringar kan ta mellan några minuter och 48 timmar att spridas</li>
+              <li>Kontrollera med din DNS-leverantör om du är osäker på hur du lägger till poster</li>
+              <li>Se till att du lägger till posterna för <strong>{replyDomain}</strong>, inte för huvuddomänen</li>
+            </ul>
           </div>
         </div>
       </CardBody>
@@ -185,7 +275,7 @@ const ReplyDomainVerifier: React.FC<ReplyDomainVerifierProps> = ({
             color="primary"
             onPress={handleVerifyDomain}
             isLoading={verifying}
-            isDisabled={verifying || (verificationResult && verificationResult.verified)}
+            isDisabled={verifying || loadingDnsRecords || (verificationResult && verificationResult.verified)}
           >
             {verifying ? 'Verifierar...' : 'Verifiera DNS-poster'}
           </Button>

@@ -54,8 +54,16 @@ export async function createAutoReplyDomain(baseDomain: string, storeId: number)
         try {
           const domainDetails = await getDomainAuthenticationById(existingReplyDomain.domainId);
           
-          // Formatera DNS-records för enklare presentation
-          const dnsRecords = extractDnsRecords(domainDetails);
+          // Försök extrahera DNS-poster från domainDetails
+          let dnsRecords = [];
+          if (domainDetails && domainDetails.dns) {
+            dnsRecords = extractDnsRecords(domainDetails);
+          }
+          
+          // Om inga DNS-poster hittades, generera fallback-poster
+          if (dnsRecords.length === 0) {
+            dnsRecords = generateFallbackDnsRecords(replyDomain);
+          }
           
           logger.info('Reply-domän finns men behöver verifieras', { 
             replyDomain, 
@@ -77,12 +85,16 @@ export async function createAutoReplyDomain(baseDomain: string, storeId: number)
             domainId: existingReplyDomain.domainId
           });
           
+          // Generera fallback DNS-poster om vi inte kan hämta dem från SendGrid
+          const fallbackDnsRecords = generateFallbackDnsRecords(replyDomain);
+          
           // Fortsätt ändå för att kunna se att domänen finns men behöver verifieras
           return {
             success: true,
             message: 'Reply-domän finns men behöver verifieras',
             replyDomain,
             domainId: existingReplyDomain.domainId,
+            dnsRecords: fallbackDnsRecords,
             needsVerification: true
           };
         }
@@ -109,27 +121,7 @@ export async function createAutoReplyDomain(baseDomain: string, storeId: number)
       });
       
       // Skapa simulerade DNS-poster för utvecklingsläge
-      const mockDnsRecords = [
-        {
-          type: 'MX',
-          host: replyDomain,
-          data: 'mx.sendgrid.net',
-          priority: 10,
-          name: 'För hantering av inkommande mail'
-        },
-        {
-          type: 'CNAME',
-          host: `em.${replyDomain}`,
-          data: 'u12345.wl.sendgrid.net',
-          name: 'För verifiering av subdomän'
-        },
-        {
-          type: 'TXT',
-          host: replyDomain,
-          data: 'v=spf1 include:sendgrid.net ~all',
-          name: 'SPF-post för e-postautentisering'
-        }
-      ];
+      const mockDnsRecords = generateFallbackDnsRecords(replyDomain);
       
       return {
         success: true,
@@ -144,6 +136,7 @@ export async function createAutoReplyDomain(baseDomain: string, storeId: number)
     // I produktion, gör faktiskt API-anrop till SendGrid
     try {
       // Skapa reply-domänen med 'reply' som subdomän till huvuddomänen
+      // Notera: för SendGrid API behöver vi skicka bara huvuddomänen och ange "reply" som subdomän
       const domainAuthResult = await createDomainAuthentication(normalizedDomain, 'reply');
       
       if (!domainAuthResult) {
@@ -153,8 +146,16 @@ export async function createAutoReplyDomain(baseDomain: string, storeId: number)
       // Konvertera domainId till string om nödvändigt
       const domainId = String(domainAuthResult.id);
       
-      // Extrahera DNS-poster från resultatet för presentation till användaren
-      const dnsRecords = extractDnsRecords(domainAuthResult);
+      // Försök extrahera DNS-poster från domainAuthResult
+      let dnsRecords = [];
+      if (domainAuthResult.dns) {
+        dnsRecords = extractDnsRecords(domainAuthResult);
+      }
+      
+      // Om inga DNS-poster hittades, generera fallback-poster
+      if (dnsRecords.length === 0) {
+        dnsRecords = generateFallbackDnsRecords(replyDomain);
+      }
       
       // Spara den nya domänen i databasen med status 'pending'
       const newDomain = await prisma.verifiedDomain.create({
@@ -185,10 +186,41 @@ export async function createAutoReplyDomain(baseDomain: string, storeId: number)
         storeId
       });
       
-      return {
-        success: false,
-        message: `Kunde inte skapa reply-domän: ${error.message}`
-      };
+      // Försök skapa en enkel post i databasen så vi kan försöka igen senare
+      try {
+        const fallbackDomainId = `reply-error-${Date.now()}`;
+        await prisma.verifiedDomain.create({
+          data: {
+            domain: replyDomain,
+            domainId: fallbackDomainId,
+            storeId,
+            status: 'pending',
+            createdAt: new Date()
+          }
+        });
+        
+        // Även om vi misslyckades med SendGrid, ge användaren dns-poster att använda
+        const fallbackDnsRecords = generateFallbackDnsRecords(replyDomain);
+        
+        return {
+          success: false,
+          message: `Kunde inte skapa reply-domän i SendGrid: ${error.message}. Vi har skapat en lokal post som du kan försöka verifiera senare.`,
+          replyDomain,
+          domainId: fallbackDomainId,
+          dnsRecords: fallbackDnsRecords,
+          needsVerification: true
+        };
+      } catch (dbError) {
+        logger.error('Kunde inte skapa fallback för reply-domän i databasen', {
+          error: dbError.message,
+          baseDomain
+        });
+        
+        return {
+          success: false,
+          message: `Kunde inte skapa reply-domän: ${error.message}`
+        };
+      }
     }
   } catch (error) {
     logger.error('Oväntat fel vid skapande av reply-domän', {
@@ -215,6 +247,7 @@ export async function verifyReplyDomain(domainId: string, storeId: number): Prom
   message: string;
   verified: boolean;
   domain?: string;
+  dnsRecords?: any[];
 }> {
   try {
     // Kontrollera att domänen finns i databasen
@@ -247,16 +280,40 @@ export async function verifyReplyDomain(domainId: string, storeId: number): Prom
       // Uppdatera inställningen för svarsdomän
       await updateReplyDomainSettings(domainRecord.domain, storeId, true);
       
+      // Generera fallback DNS-poster för utvecklingsläge
+      const mockDnsRecords = generateFallbackDnsRecords(domainRecord.domain);
+      
       return {
         success: true,
         message: 'Reply-domän verifierad (utvecklingsläge)',
         verified: true,
-        domain: domainRecord.domain
+        domain: domainRecord.domain,
+        dnsRecords: mockDnsRecords
       };
     }
     
     // I produktion, verifiera mot SendGrid
     try {
+      // Försök hämta DNS-poster oavsett om verifieringen lyckas
+      let dnsRecords = [];
+      try {
+        const domainDetails = await getDomainAuthenticationById(domainId);
+        if (domainDetails && domainDetails.dns) {
+          dnsRecords = extractDnsRecords(domainDetails);
+        }
+      } catch (dnsError) {
+        logger.warn('Kunde inte hämta DNS-poster från SendGrid', {
+          error: dnsError.message,
+          domainId
+        });
+      }
+      
+      // Om inga DNS-poster hittades, generera fallback-poster
+      if (dnsRecords.length === 0) {
+        dnsRecords = generateFallbackDnsRecords(domainRecord.domain);
+      }
+      
+      // Försök verifiera domänen
       const verifyResult = await verifyDomainAuthentication(domainId);
       const isVerified = verifyResult?.valid || false;
       
@@ -277,14 +334,16 @@ export async function verifyReplyDomain(domainId: string, storeId: number): Prom
           success: true,
           message: 'Reply-domän verifierad',
           verified: true,
-          domain: domainRecord.domain
+          domain: domainRecord.domain,
+          dnsRecords // Inkludera DNS-posterna även om verifieringen lyckades
         };
       } else {
         return {
           success: true,
           message: 'Reply-domän kunde inte verifieras. Kontrollera att DNS-posterna är korrekt konfigurerade.',
           verified: false,
-          domain: domainRecord.domain
+          domain: domainRecord.domain,
+          dnsRecords // Inkludera DNS-posterna för att underlätta felsökning
         };
       }
     } catch (error) {
@@ -294,11 +353,15 @@ export async function verifyReplyDomain(domainId: string, storeId: number): Prom
         storeId
       });
       
+      // Generera och returnera fallback DNS-poster även vid fel
+      const fallbackDnsRecords = generateFallbackDnsRecords(domainRecord.domain);
+      
       return {
         success: false,
         message: `Kunde inte verifiera reply-domän: ${error.message}`,
         verified: false,
-        domain: domainRecord.domain
+        domain: domainRecord.domain,
+        dnsRecords: fallbackDnsRecords
       };
     }
   } catch (error) {
@@ -317,6 +380,37 @@ export async function verifyReplyDomain(domainId: string, storeId: number): Prom
 }
 
 /**
+ * Genererar DNS-poster för en reply-domän om vi inte kan hämta dem från SendGrid
+ * Detta är en fallback-lösning för att säkerställa att användaren alltid ser DNS-poster
+ * @param replyDomain Domännamnet för reply-domänen
+ * @returns Array med DNS-poster
+ */
+function generateFallbackDnsRecords(replyDomain: string): any[] {
+  // Standardvärden för MX, CNAME och SPF-poster för en reply-domän
+  return [
+    {
+      type: 'MX',
+      host: replyDomain,
+      data: 'mx.sendgrid.net',
+      priority: 10,
+      name: 'För hantering av inkommande mail'
+    },
+    {
+      type: 'CNAME',
+      host: `em.${replyDomain}`,
+      data: 'u17504275.wl.sendgrid.net', // Generiskt värde, kan behöva uppdateras
+      name: 'För verifiering av subdomän'
+    },
+    {
+      type: 'TXT',
+      host: replyDomain,
+      data: 'v=spf1 include:sendgrid.net ~all',
+      name: 'SPF-post för e-postautentisering'
+    }
+  ];
+}
+
+/**
  * Extraherar DNS-poster från ett domänautentiseringsresultat från SendGrid
  * @param domainData Resultat från SendGrid API
  * @returns Formaterade DNS-poster för presentation
@@ -327,6 +421,8 @@ function extractDnsRecords(domainData: any): any[] {
   if (!domainData || !domainData.dns) {
     return dnsRecords;
   }
+  
+  // Utökad logik för att försöka hitta alla relevanta DNS-poster från API-svaret
   
   // DNS-poster för CNAME-verifiering
   if (domainData.dns.cname) {
@@ -366,6 +462,15 @@ function extractDnsRecords(domainData: any): any[] {
       priority: 10,
       name: 'För mailmottagning'
     });
+  // Om det inte finns en specifik mail-post, kontrollera om det finns en generisk MX-post
+  } else if (domainData.dns.mx && domainData.dns.mx.host && domainData.dns.mx.data) {
+    dnsRecords.push({
+      type: 'MX',
+      host: domainData.dns.mx.host,
+      data: domainData.dns.mx.data,
+      priority: 10,
+      name: 'För mailmottagning'
+    });
   }
   
   // SPF-post för mailautentisering
@@ -375,6 +480,25 @@ function extractDnsRecords(domainData: any): any[] {
       host: domainData.dns.spf.host,
       data: domainData.dns.spf.data,
       name: 'SPF-post för mailautentisering'
+    });
+  }
+  
+  // Kolla efter domainkeys (äldre form av DKIM)
+  if (domainData.dns.domainkey) {
+    dnsRecords.push({
+      type: 'TXT',
+      host: domainData.dns.domainkey.host,
+      data: domainData.dns.domainkey.data,
+      name: 'DomainKey för mailautentisering (äldre)'
+    });
+  }
+  
+  // Kontrollera om vi har några poster och returnera default-poster om inga hittades
+  if (dnsRecords.length === 0) {
+    // Detta fall hanteras av anroparen, som kommer att generera fallback-poster
+    logger.warn('Inga DNS-poster hittades i domändata från SendGrid', {
+      domainId: domainData.id,
+      domain: domainData.domain
     });
   }
   

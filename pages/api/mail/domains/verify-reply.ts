@@ -73,8 +73,23 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     try {
-      // Försök verifiera reply-domänen
+      // Försök verifiera reply-domänen (förbättrad version)
+      // Den förbättrade verifyReplyDomain-funktionen returnerar alltid DNS-poster
       const verificationResult = await verifyReplyDomain(domainId, storeId);
+      
+      if (!verificationResult) {
+        throw new Error('Verifiering returnerade inget resultat');
+      }
+      
+      // Logga detaljerad information om verifieringsförsöket
+      logger.info('Verifieringsförsök för reply-domän', {
+        domainId,
+        domain: domainRecord.domain,
+        storeId,
+        success: verificationResult.success,
+        verified: verificationResult.verified,
+        dnsRecordsReturned: !!verificationResult.dnsRecords && verificationResult.dnsRecords.length > 0
+      });
       
       if (verificationResult.verified) {
         logger.info('Reply-domän verifierad via API', {
@@ -87,6 +102,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           success: true,
           verified: true,
           domain: domainRecord.domain,
+          dnsRecords: verificationResult.dnsRecords || [], // Inkludera alltid DNS-poster
           message: 'Reply-domänen har verifierats!'
         });
       } else {
@@ -97,85 +113,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           reason: verificationResult.message
         });
         
-        // Hämta DNS-records för att hjälpa användaren att konfigurera domänen korrekt
-        try {
-          const domainDetails = await getDomainAuthenticationById(domainId);
-          
-          // Formatera DNS-records för enklare presentation
-          const dnsRecords = [];
-          
-          if (domainDetails?.dns) {
-            // CNAME-record för verifiering
-            if (domainDetails.dns.cname) {
-              dnsRecords.push({
-                type: 'CNAME',
-                host: domainDetails.dns.cname.host,
-                data: domainDetails.dns.cname.data,
-                name: 'För domänverifiering'
-              });
-            }
-            
-            // DKIM-records
-            if (domainDetails.dns.dkim1) {
-              dnsRecords.push({
-                type: 'CNAME',
-                host: domainDetails.dns.dkim1.host,
-                data: domainDetails.dns.dkim1.data,
-                name: 'För DKIM-signering (del 1)'
-              });
-            }
-            
-            if (domainDetails.dns.dkim2) {
-              dnsRecords.push({
-                type: 'CNAME',
-                host: domainDetails.dns.dkim2.host,
-                data: domainDetails.dns.dkim2.data,
-                name: 'För DKIM-signering (del 2)'
-              });
-            }
-            
-            // SPF-record
-            if (domainDetails.dns.spf) {
-              dnsRecords.push({
-                type: 'TXT',
-                host: domainDetails.dns.spf.host,
-                data: domainDetails.dns.spf.data,
-                name: 'SPF-post för mailautentisering'
-              });
-            }
-            
-            // Mail-record
-            if (domainDetails.dns.mail) {
-              dnsRecords.push({
-                type: 'MX',
-                host: domainDetails.dns.mail.host,
-                data: domainDetails.dns.mail.data,
-                priority: 10,
-                name: 'För mailmottagning'
-              });
-            }
-          }
-          
-          return res.status(200).json({
-            success: true,
-            verified: false,
-            domain: domainRecord.domain,
-            message: verificationResult.message,
-            dnsRecords
-          });
-        } catch (dnsError) {
-          logger.warn('Kunde inte hämta DNS-poster för reply-domän', {
-            error: dnsError.message,
-            domainId
-          });
-          
-          return res.status(200).json({
-            success: true,
-            verified: false,
-            domain: domainRecord.domain,
-            message: verificationResult.message
-          });
-        }
+        return res.status(200).json({
+          success: true,
+          verified: false,
+          domain: domainRecord.domain,
+          dnsRecords: verificationResult.dnsRecords || [], // Inkludera alltid DNS-poster även vid misslyckad verifiering
+          message: verificationResult.message || 'DNS-posterna har inte verifierats än, kontrollera att de är korrekt konfigurerade.'
+        });
       }
     } catch (error) {
       logger.error('Fel vid verifiering av reply-domän', {
@@ -185,10 +129,103 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         storeId
       });
       
-      return res.status(500).json({ 
-        error: 'Verifieringsfel', 
-        message: `Kunde inte verifiera reply-domänen: ${error.message}`
-      });
+      // Försök hämta DNS-poster även vid fel, för att hjälpa användaren
+      try {
+        // Se först om vi kan få DNS-poster via getDomainAuthenticationById
+        const domainDetails = await getDomainAuthenticationById(domainId);
+        let dnsRecords = [];
+        
+        if (domainDetails && domainDetails.dns) {
+          // Extrahera tillgängliga DNS-poster
+          if (domainDetails.dns.mail) {
+            dnsRecords.push({
+              type: 'MX',
+              host: domainDetails.dns.mail.host,
+              data: domainDetails.dns.mail.data,
+              priority: 10,
+              name: 'För mailmottagning'
+            });
+          }
+          
+          if (domainDetails.dns.spf) {
+            dnsRecords.push({
+              type: 'TXT',
+              host: domainDetails.dns.spf.host,
+              data: domainDetails.dns.spf.data,
+              name: 'SPF-post för mailautentisering'
+            });
+          }
+          
+          if (domainDetails.dns.cname) {
+            dnsRecords.push({
+              type: 'CNAME',
+              host: domainDetails.dns.cname.host,
+              data: domainDetails.dns.cname.data,
+              name: 'För domänverifiering'
+            });
+          }
+        }
+        
+        // Om inga DNS-poster hittades, skapa generiska fallback-poster
+        if (dnsRecords.length === 0) {
+          dnsRecords = [
+            {
+              type: 'MX',
+              host: domainRecord.domain,
+              data: 'mx.sendgrid.net',
+              priority: 10,
+              name: 'För hantering av inkommande mail'
+            },
+            {
+              type: 'TXT',
+              host: domainRecord.domain,
+              data: 'v=spf1 include:sendgrid.net ~all',
+              name: 'SPF-post för mailautentisering'
+            },
+            {
+              type: 'CNAME',
+              host: `em.${domainRecord.domain}`,
+              data: 'u17504275.wl.sendgrid.net', // Kan behöva ändras beroende på SendGrid-konfiguration
+              name: 'För verifiering av subdomän'
+            }
+          ];
+        }
+        
+        return res.status(500).json({ 
+          error: 'Verifieringsfel', 
+          message: `Kunde inte verifiera reply-domänen: ${error.message}`,
+          dnsRecords: dnsRecords // Returnera DNS-poster även vid fel
+        });
+      } catch (dnsError) {
+        // Om vi inte kan hämta DNS-poster, returnera generiska fallback-poster
+        const fallbackDnsRecords = [
+          {
+            type: 'MX',
+            host: domainRecord.domain,
+            data: 'mx.sendgrid.net',
+            priority: 10,
+            name: 'För hantering av inkommande mail'
+          },
+          {
+            type: 'TXT',
+            host: domainRecord.domain,
+            data: 'v=spf1 include:sendgrid.net ~all',
+            name: 'SPF-post för mailautentisering'
+          },
+          {
+            type: 'CNAME',
+            host: `em.${domainRecord.domain}`,
+            data: 'u17504275.wl.sendgrid.net', // Kan behöva ändras beroende på SendGrid-konfiguration
+            name: 'För verifiering av subdomän'
+          }
+        ];
+        
+        return res.status(500).json({ 
+          error: 'Verifieringsfel', 
+          message: `Kunde inte verifiera reply-domänen: ${error.message}`,
+          dnsRecords: fallbackDnsRecords // Returnera fallback-poster även vid fel
+        });
+      }
     }
   } catch (error: any) {
     logger.error('Error in mail/domains/verify-reply.ts:', { error: error.message });
