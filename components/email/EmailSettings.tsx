@@ -71,12 +71,16 @@ const EmailSettings: React.FC = () => {
 
   // Funktion för att ta bort en domän
   const handleDeleteDomain = async (domainId: string) => {
+    console.log("Borttagning av domän med ID:", domainId);
     try {
       const res = await fetch(`/api/mail/domains/${domainId}`, {
         method: 'DELETE'
       });
       
+      console.log("Svar från borttagnings-API:", res.status);
+      
       if (res.ok) {
+        console.log("Domän borttagen");
         // Uppdatera domänlistan
         setRefreshTrigger(prev => prev + 1);
         
@@ -87,13 +91,15 @@ const EmailSettings: React.FC = () => {
           variant: 'flat'
         });
       } else {
-        throw new Error('Kunde inte ta bort domänen');
+        const errorData = await res.json().catch(() => ({ error: 'Kunde inte parsa felmeddelande' }));
+        console.error("API-fel vid borttagning:", errorData);
+        throw new Error(errorData.error || 'Kunde inte ta bort domänen');
       }
     } catch (error) {
       console.error('Fel vid borttagning av domän:', error);
       addToast({
         title: 'Fel',
-        description: 'Kunde inte ta bort domänen',
+        description: error.message || 'Kunde inte ta bort domänen',
         color: 'danger',
         variant: 'flat'
       });

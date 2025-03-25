@@ -48,41 +48,78 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // Hantera olika metoder
     switch (req.method) {
       case 'DELETE':
-        try {
-          // Ta bort domänen från SendGrid
-          const deleteResult = await deleteDomainAuthentication(id);
-          
-          // Ta bort domänen från databasen även om SendGrid-borttagningen misslyckas
-          await prisma.verifiedDomain.delete({
-            where: { id: domainRecord.id }
-          });
-          
-          return res.status(200).json({
-            message: 'Domänen har tagits bort',
-            domain: domainRecord.domain
-          });
-          
-        } catch (error) {
-          logger.error('Fel vid borttagning av domän', {
-            error: error.message,
-            domainId: id,
-            storeId: storeId
-          });
-          
-          // Även om SendGrid-borttagningen misslyckas, försök ta bort från databasen
-          try {
-            await prisma.verifiedDomain.delete({
-              where: { id: domainRecord.id }
-            });
-          } catch (dbError) {
-            logger.error('Kunde inte ta bort domän från databasen', {
-              error: dbError.message,
-              domainId: domainRecord.id
-            });
-          }
-          
-          return res.status(500).json({ error: 'Kunde inte ta bort domänen från SendGrid men den har tagits bort från databasen' });
-        }
+  let domainToDelete = null;
+  try {
+    // Hämta domänen för att säkerställa att den existerar
+    domainToDelete = await prisma.verifiedDomain.findFirst({
+      where: {
+        domainId: id,
+        storeId
+      }
+    });
+    
+    if (!domainToDelete) {
+      return res.status(404).json({ error: 'Domänen hittades inte för denna butik' });
+    }
+
+    // Försök ta bort från SendGrid
+    const deleteResult = await deleteDomainAuthentication(id);
+    
+    // Ta bort från databasen
+    await prisma.verifiedDomain.delete({
+      where: { id: domainToDelete.id }
+    });
+    
+    logger.info('Domän borttagen', { 
+      domainId: id, 
+      internalId: domainToDelete.id,
+      domain: domainToDelete.domain,
+      storeId
+    });
+    
+    return res.status(200).json({
+      message: 'Domänen har tagits bort',
+      domain: domainToDelete.domain
+    });
+  } catch (error) {
+    logger.error('Fel vid borttagning av domän', {
+      error: error.message,
+      domainId: id,
+      internalId: domainToDelete?.id,
+      storeId
+    });
+    
+    // Även om SendGrid-borttagningen misslyckas, försök ta bort från databasen
+    if (domainToDelete) {
+      try {
+        await prisma.verifiedDomain.delete({
+          where: { id: domainToDelete.id }
+        });
+        
+        logger.info('Domän borttagen från databas trots SendGrid-fel', {
+          domainId: id,
+          internalId: domainToDelete.id,
+          storeId
+        });
+        
+        return res.status(200).json({
+          message: 'Domänen har tagits bort (men med SendGrid-fel)',
+          domain: domainToDelete.domain
+        });
+      } catch (dbError) {
+        logger.error('Kunde inte ta bort domän från databasen', {
+          error: dbError.message,
+          domainId: id,
+          internalId: domainToDelete.id
+        });
+      }
+    }
+    
+    return res.status(500).json({ 
+      error: 'Kunde inte ta bort domänen', 
+      details: error.message 
+    });
+  }
 
       case 'GET':
         // Returnera domäninformation
