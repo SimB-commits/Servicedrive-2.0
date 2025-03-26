@@ -5,6 +5,15 @@ import crypto from 'crypto';
 import { logger } from '@/utils/logger';
 import rateLimiter from '@/lib/rateLimiterApi';
 import { sendNewMessageNotification } from '@/utils/mail-service';
+import formidable from 'formidable';
+import { IncomingForm } from 'formidable';
+
+// Konfigurera NextJS att inte använda bodyParser för denna route
+export const config = {
+  api: {
+    bodyParser: false,
+  },
+};
 
 const prisma = new PrismaClient();
 
@@ -108,6 +117,27 @@ function extractTicketIdFromEmail(to: string): number | null {
 }
 
 /**
+ * Parsea inkommande formdata från SendGrid
+ */
+const parseFormData = (req: NextApiRequest): Promise<{ fields: formidable.Fields, files: formidable.Files }> => {
+  return new Promise((resolve, reject) => {
+    const form = new IncomingForm({
+      maxFileSize: WEBHOOK_MAX_SIZE, // Maximal filstorlek
+      keepExtensions: true,         // Behåll filändelser
+      allowEmptyFiles: false,       // Tillåt inte tomma filer
+    });
+
+    form.parse(req, (err, fields, files) => {
+      if (err) {
+        reject(err);
+        return;
+      }
+      resolve({ fields, files });
+    });
+  });
+};
+
+/**
  * Hanterar inkommande mail från SendGrid Inbound Parse
  */
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -115,13 +145,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (req.method !== 'POST') {
     res.setHeader('Allow', ['POST']);
     return res.status(405).end(`Method ${req.method} Not Allowed`);
-  }
-
-  // Kontrollera body size-gränser
-  const contentLength = parseInt(req.headers['content-length'] || '0', 10);
-  if (contentLength < WEBHOOK_MIN_SIZE || contentLength > WEBHOOK_MAX_SIZE) {
-    logger.warn('Inkommande mail avvisat pga storlek', { contentLength });
-    return res.status(413).json({ error: 'Payload too large or too small' });
   }
 
   try {
@@ -134,27 +157,50 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(401).json({ error: 'Invalid signature' });
     }
 
-    // Parse SendGrid's inkommande data
-    // OBS: SendGrid Inbound Parse skickar multipart/form-data
-    // Du behöver hantera detta med en form-parser eller liknande
-    // För denna demo antar vi att req.body redan har parserats
+    // Parse form data från SendGrid
+    const { fields, files } = await parseFormData(req);
     
-    const {
-      to, // Mottagarens email (ticket-123@reply.example.com)
-      from, // Avsändarens email
-      subject, // Mailämne
-      text, // Textversionen av meddelandet
-      html, // HTML-versionen av meddelandet (om tillgänglig)
-      attachments, // Eventuella bifogade filer
-      headers, // Mail-headers
-      envelope, // SMTP envelope information
-    } = req.body;
+    // Extrahera relevanta fält från formdata
+    // SendGrid skickar alla värden som arrayer, ta första värdet
+    const to = fields.to?.[0] || '';
+    const from = fields.from?.[0] || '';
+    const subject = fields.subject?.[0] || '';
+    const text = fields.text?.[0] || '';
+    const html = fields.html?.[0] || '';
+    
+    // Headers kommer som en JSON-sträng, parsa den
+    let headers = {};
+    try {
+      const headersString = fields.headers?.[0] || '{}';
+      headers = JSON.parse(headersString);
+    } catch (e) {
+      logger.warn('Kunde inte parsa headers', { error: e });
+      headers = {};
+    }
+    
+    // Construct envelope (if available)
+    let envelope = {};
+    try {
+      const envelopeString = fields.envelope?.[0] || '{}';
+      envelope = JSON.parse(envelopeString);
+    } catch (e) {
+      logger.warn('Kunde inte parsa envelope', { error: e });
+      envelope = {};
+    }
+    
+    // Hantera bifogade filer (om sådana finns)
+    const attachments = Object.values(files).map(file => {
+      if (Array.isArray(file)) {
+        return file[0]; // Om det är en array, ta första filen
+      }
+      return file;
+    });
     
     // Logga inkommande mail (med anonymiserad avsändare för GDPR)
     logger.info('Inkommande mail mottaget', {
       from: from.substring(0, 3) + '***@' + from.split('@')[1],
       subject: subject?.substring(0, 30) + (subject?.length > 30 ? '...' : ''),
-      hasAttachments: !!attachments,
+      hasAttachments: attachments.length > 0,
     });
 
     // Extrahera ärende-ID från mottagaradressen
@@ -257,7 +303,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   } catch (error) {
     logger.error('Fel vid hantering av inkommande mail', { error });
     
-    if (error.constructor.name === 'RateLimiterRes') {
+    if (error.constructor?.name === 'RateLimiterRes') {
       return res.status(429).json({ message: 'För många förfrågningar. Försök igen senare.' });
     }
     
