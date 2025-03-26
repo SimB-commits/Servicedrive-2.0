@@ -1,10 +1,12 @@
-// Uppdatera layouts/default.tsx
+// layouts/default.tsx (uppdaterad)
 
 import { Link } from "@heroui/link";
 import { useRouter } from "next/router";
+import { useSession } from "next-auth/react";
 
 import { Head } from "./head";
 import { Navbar } from "@/components/navbar";
+import { HelpWidget } from "@/components/help"; // Importera HelpWidget
 
 export default function DefaultLayout({
   children,
@@ -13,6 +15,7 @@ export default function DefaultLayout({
 }) {
   // Använd useRouter för att få nuvarande sökväg
   const router = useRouter();
+  const { data: session, status } = useSession();
   
   // Lista över sökvägar som ska undantas från att visa navbar
   const excludedPaths = [
@@ -23,6 +26,7 @@ export default function DefaultLayout({
   
   // Kontrollera om nuvarande sökväg ska undantas
   const shouldExcludeNavbar = excludedPaths.includes(router.pathname);
+  const isAuthenticated = status === 'authenticated';
 
   return (
     <div className="relative flex flex-col h-screen">
@@ -35,6 +39,9 @@ export default function DefaultLayout({
       <footer className="w-full flex items-center justify-center py-3">
         
       </footer>
+      
+      {/* Visa HelpWidget endast för inloggade användare */}
+      {isAuthenticated && <HelpWidget />}
     </div>
   );
 }
