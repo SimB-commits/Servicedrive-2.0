@@ -81,9 +81,9 @@ function extractTicketIdFromEmail(to: string): number | null {
     // Normalisera adressen först (lowercase och trimma)
     const normalizedTo = to.trim().toLowerCase();
     
-    // Matcha endast ticket-123@reply.* (utan flaggan i för case-insensitive)
-    // för att säkerställa att endast lowercase matchas
-    const match = normalizedTo.match(/^ticket-(\d+)@reply\./);
+    // Använd ett exakt mönster som endast matchar standarddomänen
+    // STANDARDISERING: Matchar nu endast formatet ticket-{id}@reply.servicedrive.se
+    const match = normalizedTo.match(/^ticket-(\d+)@reply\.servicedrive\.se$/);
     
     if (match && match[1]) {
       const ticketId = parseInt(match[1], 10);
@@ -94,7 +94,12 @@ function extractTicketIdFromEmail(to: string): number | null {
       }
     }
     
-    logger.warn('Ogiltigt format på mottagaradress', { to: normalizedTo });
+    // Loggning av ogiltiga adresser ger nu mer specifik vägledning
+    logger.warn('Ogiltigt format på mottagaradress - ska vara ticket-{id}@reply.servicedrive.se', { 
+      to: normalizedTo,
+      valid: false,
+      reason: 'format_mismatch'
+    });
     return null;
   } catch (error) {
     logger.error('Fel vid extrahering av ticket-ID från email', { error, to });
@@ -154,10 +159,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     // Extrahera ärende-ID från mottagaradressen
     const ticketId = extractTicketIdFromEmail(to);
-    if (!ticketId) {
-      logger.warn('Kunde inte extrahera ärende-ID från email', { to });
-      return res.status(400).json({ error: 'Invalid ticket reference in email address' });
-    }
+      if (!ticketId) {
+        logger.warn('Kunde inte extrahera ärende-ID från email', { 
+          to: to.substring(0, 3) + '***@' + to.split('@')[1],
+          valid: false,
+          reason: 'Ogiltig adress eller domän',
+          expectedFormat: 'ticket-{id}@reply.servicedrive.se'
+        });
+        return res.status(400).json({ 
+          error: 'Invalid ticket reference in email address', 
+          message: 'Email måste skickas till en giltig svarsadress i formatet ticket-{id}@reply.servicedrive.se'
+        });
+      }
 
     // Hitta ärendet i databasen
     const ticket = await prisma.ticket.findUnique({
