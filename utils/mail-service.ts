@@ -198,6 +198,17 @@ export const sendTicketStatusEmail = async (
   oldCustomStatusId?: number | null
 ): Promise<any | null> => {
   try {
+    // Utökad loggning för felsökning
+    logger.debug(`START sendTicketStatusEmail för ärende #${ticket.id}`, {
+      ticketId: ticket.id,
+      currentStatus: ticket.status,
+      customStatusId: ticket.customStatusId,
+      oldStatus,
+      oldCustomStatusId,
+      hasCustomStatus: !!ticket.customStatus,
+      hasMailTemplate: !!ticket.customStatus?.mailTemplate
+    });
+
     // Om butiksinformation saknas, hämta den
     let store = ticket.store;
     if (!store && ticket.storeId) {
@@ -214,19 +225,122 @@ export const sendTicketStatusEmail = async (
       }
     }
 
-    // Om ärendet har en anpassad status med mailmall, använd den
-    let mailTemplate = ticket.customStatus?.mailTemplate;
+    // Deklarera en mailTemplate-variabel som vi kommer att använda
+    let mailTemplate = null;
+
+    // KORRIGERING: Förbättrad hantering av mailmallar för både systemstatusar och anpassade statusar
     
-    // Returnera null om ingen mailmall är kopplad till denna status
-    // Vi använder INTE längre någon standardmall som fallback
+    // 1. Kontrollera först om ärendet har en anpassad status med en direkt kopplad mailmall
+    if (ticket.customStatus?.mailTemplate) {
+      logger.debug(`Hittade mailmall direkt kopplad till anpassad status för ärende #${ticket.id}`, {
+        ticketId: ticket.id,
+        customStatusId: ticket.customStatusId,
+        customStatusName: ticket.customStatus.name,
+        mailTemplateId: ticket.customStatus.mailTemplate.id
+      });
+      
+      mailTemplate = ticket.customStatus.mailTemplate;
+    } 
+    // 2. Om det är en systemstatus eller en anpassad status utan kopplad mailmall, försök hitta en lämplig mall
+    else if (ticket.status || ticket.customStatusId) {
+      logger.debug(`Ingen direkt kopplad mailmall hittad, söker efter lämplig mall för ärende #${ticket.id}`, {
+        ticketId: ticket.id,
+        status: ticket.status,
+        customStatusId: ticket.customStatusId
+      });
+      
+      try {
+        // Sök antingen baserat på den anpassade statusen eller systemstatusen
+        let statusSearch: any = {};
+        
+        if (ticket.customStatusId) {
+          // Om det finns en anpassad status utan inkluderad mailmall, hämta den med mailmall
+          logger.debug(`Söker efter mailmall för anpassad status ID ${ticket.customStatusId}`);
+          
+          const customStatus = await prisma.userTicketStatus.findUnique({
+            where: { id: ticket.customStatusId },
+            include: { mailTemplate: true }
+          });
+          
+          if (customStatus?.mailTemplate) {
+            logger.info(`Hittade mailmall för anpassad status via separat sökning, ärende #${ticket.id}`, {
+              statusId: ticket.customStatusId,
+              mailTemplateId: customStatus.mailTemplate.id
+            });
+            
+            mailTemplate = customStatus.mailTemplate;
+          }
+        } 
+        else if (ticket.status) {
+          // För systemstatusar, sök efter en inställning som matchar statusen
+          logger.debug(`Söker efter mailtemplate-inställning för systemstatus ${ticket.status}`);
+          
+          // Söker efter en mailTemplateSettings för denna status (konvertera systemstatusen till usage)
+          const statusMapping: Record<string, MailTemplateUsage> = {
+            'OPEN': 'NEW_TICKET', // Öppen status kan använda NEW_TICKET-mallen
+            'IN_PROGRESS': 'STATUS_UPDATE', // In progress kan använda STATUS_UPDATE
+            'RESOLVED': 'STATUS_UPDATE', // Resolved kan använda STATUS_UPDATE
+            'CLOSED': 'STATUS_UPDATE', // Closed kan använda STATUS_UPDATE
+          };
+          
+          // Använd mappningen eller fallback till STATUS_UPDATE
+          const usage = statusMapping[ticket.status] || 'STATUS_UPDATE';
+          
+          // Hämta lämplig inställning med inkluderad mall
+          const templateSetting = await prisma.mailTemplateSettings.findUnique({
+            where: {
+              storeId_usage: {
+                storeId: ticket.storeId,
+                usage: usage
+              }
+            },
+            include: {
+              template: true
+            }
+          });
+          
+          if (templateSetting?.template) {
+            logger.info(`Hittade mailmall via inställningar för systemstatus ${ticket.status}, ärende #${ticket.id}`, {
+              status: ticket.status,
+              usage,
+              templateId: templateSetting.template.id
+            });
+            
+            mailTemplate = templateSetting.template;
+          }
+        }
+      } catch (searchError) {
+        logger.error(`Fel vid sökning efter mailmall för ärende #${ticket.id}`, {
+          error: searchError instanceof Error ? searchError.message : "Okänt fel",
+          ticketId: ticket.id
+        });
+        // Fortsätt processen även om sökningen misslyckades
+      }
+    }
+
+    // Om ingen mailmall hittades, returnera null
     if (!mailTemplate) {
-      logger.debug(`Ingen mailmall kopplad till status för ärende #${ticket.id}, skickar inget mail`);
+      logger.info(`Ingen lämplig mailmall hittad för statusuppdatering av ärende #${ticket.id}, skickar inget mail`, {
+        ticketId: ticket.id,
+        status: ticket.status,
+        customStatusId: ticket.customStatusId
+      });
       return null;
     }
     
+    // Loggning av den hittade mailmallen
+    logger.info(`Mailmall hittad för statusuppdatering av ärende #${ticket.id}`, {
+      ticketId: ticket.id,
+      mailTemplateId: mailTemplate.id,
+      mailTemplateName: mailTemplate.name
+    });
+    
     // Kontrollera om vi har kundens e-postadress
     if (!ticket.customer?.email) {
-      logger.warn(`Kund saknar e-postadress för ärende #${ticket.id}, kan inte skicka mail`);
+      logger.warn(`Kund saknar e-postadress för ärende #${ticket.id}, kan inte skicka mail`, {
+        ticketId: ticket.id, 
+        customerId: ticket.customer?.id
+      });
       return null;
     }
     
