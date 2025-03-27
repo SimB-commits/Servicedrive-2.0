@@ -14,7 +14,8 @@ import {
   Dropdown, 
   DropdownTrigger, 
   DropdownMenu, 
-  DropdownItem
+  DropdownItem,
+  addToast
 } from '@heroui/react';
 import { title } from '@/components/primitives';
 import { PrinterIcon } from '@/components/icons';
@@ -601,19 +602,30 @@ export default function TicketPage() {
         {/* StatusConfirmationDialog för att bekräfta statusändring */}
         {selectedStatus && (
           <StatusConfirmationDialog
-            isOpen={confirmDialogOpen}
-            onClose={() => setConfirmDialogOpen(false)}
-            onConfirm={(sendEmail) => {
-              if (selectedStatus) {
-                updateStatus(selectedStatus.uid, sendEmail);
-                setConfirmDialogOpen(false);
-              }
-            }}
-            statusName={selectedStatus.name}
-            statusColor={selectedStatus.color}
-            ticketId={ticket.id}
-            hasMailTemplate={hasMailTemplate(selectedStatus)}
-          />
+          isOpen={confirmDialogOpen}
+          onClose={() => setConfirmDialogOpen(false)}
+          onConfirm={(sendEmail) => {
+            if (selectedStatus) {
+              // Indikera till användaren vad som kommer att hända genom en tillfällig toast
+              addToast({
+                title: 'Status uppdateras',
+                description: sendEmail && hasMailTemplate(selectedStatus)
+                  ? `Uppdaterar till "${selectedStatus.name}" med mailnotifiering` 
+                  : `Uppdaterar till "${selectedStatus.name}" utan mailnotifiering`,
+                color: 'primary',
+                variant: 'flat'
+              });
+              
+              // Genomför statusuppdateringen
+              updateStatus(selectedStatus.uid, sendEmail);
+              setConfirmDialogOpen(false);
+            }
+          }}
+          statusName={selectedStatus.name}
+          statusColor={selectedStatus.color}
+          ticketId={ticket.id}
+          hasMailTemplate={hasMailTemplate(selectedStatus)}
+        />
         )}
       </div>
     </section>

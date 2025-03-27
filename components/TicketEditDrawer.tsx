@@ -262,7 +262,7 @@ const TicketEditDrawer: React.FC<TicketEditDrawerProps> = ({
       
       // Mail is sent only if there's a template AND user chose to send
       const sendNotification = statusHasMailTemplate && shouldSendEmail;
-
+  
       const preparedData = prepareFormData(formData, ticket, sendNotification);
       const res = await fetch(`/api/tickets/${ticket.id}`, {
         method: "PUT",
@@ -275,13 +275,29 @@ const TicketEditDrawer: React.FC<TicketEditDrawerProps> = ({
         onTicketUpdated(updatedTicket);
         onClose();
         
-        // Correct toast message based on what actually happens
+        // Förbättrad toasthantering med tydligare meddelanden baserat på den faktiska situationen
+        let toastTitle, toastDescription, toastColor;
+        
+        if (statusHasMailTemplate) {
+          if (shouldSendEmail) {
+            toastTitle = 'Ärende uppdaterat med mailnotifiering';
+            toastDescription = `Status ändrad till "${selectedStatus?.name}" och mail har skickats till kunden`;
+            toastColor = 'success';
+          } else {
+            toastTitle = 'Ärende uppdaterat utan mailnotifiering';
+            toastDescription = `Status ändrad till "${selectedStatus?.name}" (inget mail skickades)`;
+            toastColor = 'primary';
+          }
+        } else {
+          toastTitle = 'Ärende uppdaterat';
+          toastDescription = `Status ändrad till "${selectedStatus?.name}" (ingen mailmall finns konfigurerad)`;
+          toastColor = 'primary';
+        }
+        
         addToast({
-          title: 'Ärende uppdaterat',
-          description: statusHasMailTemplate && shouldSendEmail
-            ? 'Ärendet har uppdaterats och mail har skickats till kunden'
-            : 'Ärendet har uppdaterats utan mailnotifiering',
-          color: 'success',
+          title: toastTitle,
+          description: toastDescription,
+          color: toastColor,
           variant: 'flat'
         });
       } else {
