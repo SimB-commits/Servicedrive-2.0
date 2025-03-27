@@ -2,6 +2,7 @@
 import { PrismaClient, Ticket, MailTemplate, UserTicketStatus, MailTemplateUsage } from '@prisma/client';
 import { buildEmailFromTemplate, sendEmail as sendGridEmail, TemplateVariables } from './sendgrid';
 import { logger } from './logger';
+import { getStatusMailTemplate, findStatusByUid, SYSTEM_STATUSES  } from './ticketStatusService';
 
 const prisma = new PrismaClient();
 
@@ -228,93 +229,45 @@ export const sendTicketStatusEmail = async (
     // Deklarera en mailTemplate-variabel som vi kommer att använda
     let mailTemplate = null;
 
-    // KORRIGERING: Förbättrad hantering av mailmallar för både systemstatusar och anpassade statusar
+    // Identifiera statusen
+    let status: UserTicketStatus | null = null;
     
-    // 1. Kontrollera först om ärendet har en anpassad status med en direkt kopplad mailmall
-    if (ticket.customStatus?.mailTemplate) {
-      logger.debug(`Hittade mailmall direkt kopplad till anpassad status för ärende #${ticket.id}`, {
-        ticketId: ticket.id,
-        customStatusId: ticket.customStatusId,
-        customStatusName: ticket.customStatus.name,
-        mailTemplateId: ticket.customStatus.mailTemplate.id
+    if (ticket.customStatusId) {
+      // Hämta den anpassade statusen
+      const customStatus = await prisma.userTicketStatus.findUnique({
+        where: { id: ticket.customStatusId },
+        include: { mailTemplate: true }
       });
       
-      mailTemplate = ticket.customStatus.mailTemplate;
-    } 
-    // 2. Om det är en systemstatus eller en anpassad status utan kopplad mailmall, försök hitta en lämplig mall
-    else if (ticket.status || ticket.customStatusId) {
-      logger.debug(`Ingen direkt kopplad mailmall hittad, söker efter lämplig mall för ärende #${ticket.id}`, {
-        ticketId: ticket.id,
-        status: ticket.status,
-        customStatusId: ticket.customStatusId
-      });
+      if (customStatus) {
+        status = {
+          ...customStatus,
+          uid: `CUSTOM_${customStatus.id}`,
+          mailTemplateId: customStatus.mailTemplateId,
+          isSystemStatus: false
+        };
+      }
+    } else if (ticket.status) {
+      // Hitta motsvarande systemstatus
+      status = findStatusByUid(ticket.status, SYSTEM_STATUSES);
+    }
+    
+    // Om vi har en status, försök hämta mailmallen
+    if (status) {
+      mailTemplate = await getStatusMailTemplate(status, ticket.storeId);
       
-      try {
-        // Sök antingen baserat på den anpassade statusen eller systemstatusen
-        let statusSearch: any = {};
-        
-        if (ticket.customStatusId) {
-          // Om det finns en anpassad status utan inkluderad mailmall, hämta den med mailmall
-          logger.debug(`Söker efter mailmall för anpassad status ID ${ticket.customStatusId}`);
-          
-          const customStatus = await prisma.userTicketStatus.findUnique({
-            where: { id: ticket.customStatusId },
-            include: { mailTemplate: true }
-          });
-          
-          if (customStatus?.mailTemplate) {
-            logger.info(`Hittade mailmall för anpassad status via separat sökning, ärende #${ticket.id}`, {
-              statusId: ticket.customStatusId,
-              mailTemplateId: customStatus.mailTemplate.id
-            });
-            
-            mailTemplate = customStatus.mailTemplate;
-          }
-        } 
-        else if (ticket.status) {
-          // För systemstatusar, sök efter en inställning som matchar statusen
-          logger.debug(`Söker efter mailtemplate-inställning för systemstatus ${ticket.status}`);
-          
-          // Söker efter en mailTemplateSettings för denna status (konvertera systemstatusen till usage)
-          const statusMapping: Record<string, MailTemplateUsage> = {
-            'OPEN': 'NEW_TICKET', // Öppen status kan använda NEW_TICKET-mallen
-            'IN_PROGRESS': 'STATUS_UPDATE', // In progress kan använda STATUS_UPDATE
-            'RESOLVED': 'STATUS_UPDATE', // Resolved kan använda STATUS_UPDATE
-            'CLOSED': 'STATUS_UPDATE', // Closed kan använda STATUS_UPDATE
-          };
-          
-          // Använd mappningen eller fallback till STATUS_UPDATE
-          const usage = statusMapping[ticket.status] || 'STATUS_UPDATE';
-          
-          // Hämta lämplig inställning med inkluderad mall
-          const templateSetting = await prisma.mailTemplateSettings.findUnique({
-            where: {
-              storeId_usage: {
-                storeId: ticket.storeId,
-                usage: usage
-              }
-            },
-            include: {
-              template: true
-            }
-          });
-          
-          if (templateSetting?.template) {
-            logger.info(`Hittade mailmall via inställningar för systemstatus ${ticket.status}, ärende #${ticket.id}`, {
-              status: ticket.status,
-              usage,
-              templateId: templateSetting.template.id
-            });
-            
-            mailTemplate = templateSetting.template;
-          }
-        }
-      } catch (searchError) {
-        logger.error(`Fel vid sökning efter mailmall för ärende #${ticket.id}`, {
-          error: searchError instanceof Error ? searchError.message : "Okänt fel",
-          ticketId: ticket.id
+      if (mailTemplate) {
+        logger.info(`Hittade mailmall för ärende #${ticket.id}`, {
+          ticketId: ticket.id,
+          status: ticket.status || 'custom',
+          mailTemplateId: mailTemplate.id,
+          mailTemplateName: mailTemplate.name
         });
-        // Fortsätt processen även om sökningen misslyckades
+      } else {
+        logger.debug(`Ingen mailmall hittad för ärende #${ticket.id}`, {
+          ticketId: ticket.id,
+          status: ticket.status || 'custom'
+        });
       }
     }
 
@@ -327,13 +280,6 @@ export const sendTicketStatusEmail = async (
       });
       return null;
     }
-    
-    // Loggning av den hittade mailmallen
-    logger.info(`Mailmall hittad för statusuppdatering av ärende #${ticket.id}`, {
-      ticketId: ticket.id,
-      mailTemplateId: mailTemplate.id,
-      mailTemplateName: mailTemplate.name
-    });
     
     // Kontrollera om vi har kundens e-postadress
     if (!ticket.customer?.email) {

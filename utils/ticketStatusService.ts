@@ -3,8 +3,11 @@
  * Centraliserad tjänst för hantering av ärendestatusar genom hela applikationen.
  * Hanterar alla aspekter av ärendestatusar inklusive hämtning, visning och mailkoppling.
  */
+import { PrismaClient, MailTemplate, MailTemplateUsage } from '@prisma/client';
 import { logger } from './logger';
 import { addToast } from '@heroui/react';
+
+const prisma = new PrismaClient();
 
 /**
  * Interface för en grundläggande status
@@ -13,7 +16,7 @@ export interface BaseStatus {
   uid: string;          // Unik identifierare
   name: string;         // Visningsnamn
   color: string;        // HEX-färgkod 
-  mailTemplateId: number | null; // Koppling till mailmall (om det finns)
+  mailTemplateId?: number | null; // Koppling till mailmall (om det finns)
 }
 
 /**
@@ -121,11 +124,89 @@ export function getSystemStatus(uid: string): SystemStatus | undefined {
 }
 
 /**
- * Kontrollera om en status har en kopplad mailmall
+ * Förbättrad funktion för att avgöra om en status har en mailmall
+ * @param status Status som ska verifieras
+ * @returns Boolean som indikerar om status har en mailmall
  */
 export function hasMailTemplate(status: TicketStatus | null | undefined): boolean {
+  // Null/undefined check
   if (!status) return false;
-  return status.mailTemplateId !== null && status.mailTemplateId !== undefined;
+
+  // 1. Direkt kontroll för systemstatusar
+  if ('isSystemStatus' in status && status.isSystemStatus) {
+    // För systemstatusar, kontrollera mailTemplateId
+    return status.mailTemplateId !== null && 
+           status.mailTemplateId !== undefined;
+  }
+
+  // 2. För anpassade statusar
+  // Kontrollera både direkt mailTemplateId och indirekt via mailTemplate
+  return (status as CustomStatus).mailTemplateId !== null && 
+         (status as CustomStatus).mailTemplateId !== undefined;
+}
+
+/**
+ * Hämta den faktiska mailmallen för en status
+ * @param status Status vars mall ska hämtas
+ * @returns Mailmall eller null om ingen finns
+ */
+export async function getStatusMailTemplate(
+  status: TicketStatus, 
+  storeId: number
+): Promise<MailTemplate | null> {
+  try {
+    // Om status har ett direktkopplat mailTemplateId, returnera den
+    if (hasMailTemplate(status)) {
+      const templateId = 'mailTemplateId' in status ? status.mailTemplateId : null;
+      
+      if (templateId) {
+        const template = await prisma.mailTemplate.findUnique({
+          where: { 
+            id: templateId,
+            storeId: storeId 
+          }
+        });
+        
+        return template;
+      }
+    }
+
+    // Fallback: Sök efter en mall via inställningar för status
+    // Detta ger flexibilitet för systemstatusar
+    const statusMapping: Record<string, MailTemplateUsage> = {
+      'OPEN': 'NEW_TICKET',
+      'IN_PROGRESS': 'STATUS_UPDATE', 
+      'RESOLVED': 'STATUS_UPDATE',
+      'CLOSED': 'STATUS_UPDATE'
+    };
+
+    // Bestäm lämplig usage baserat på status
+    const usage = status.systemName ? 
+      statusMapping[status.systemName] || 'STATUS_UPDATE' : 
+      'STATUS_UPDATE';
+
+    const templateSetting = await prisma.mailTemplateSettings.findUnique({
+      where: {
+        storeId_usage: {
+          storeId: storeId,
+          usage: usage
+        }
+      },
+      include: {
+        template: true
+      }
+    });
+
+    return templateSetting?.template || null;
+  } catch (error) {
+    // Logga felet och returnera null
+    logger.error('Fel vid hämtning av mailmall för status', { 
+      error: error instanceof Error ? error.message : 'Okänt fel',
+      statusId: 'id' in status ? status.id : 'system-status',
+      systemName: status.systemName
+    });
+    return null;
+  }
 }
 
 /**
@@ -384,5 +465,6 @@ export default {
   deleteStatus,
   getStatusUid,
   getStatusDisplay,
-  updateTicketStatus
+  updateTicketStatus,
+  getStatusMailTemplate
 };
