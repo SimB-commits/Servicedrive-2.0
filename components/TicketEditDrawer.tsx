@@ -99,9 +99,9 @@ const TicketEditDrawer: React.FC<TicketEditDrawerProps> = ({
     fetchStatuses();
   }, []);
 
-  // Set initial values when ticket changes
+  // Set initial values when ticket changes or drawer opens
   useEffect(() => {
-    if (ticket) {
+    if (ticket && isOpen) {
       const initialDynamicFields = { ...ticket.dynamicFields };
       if (ticket.ticketType && ticket.ticketType.fields) {
         ticket.ticketType.fields.forEach((field) => {
@@ -127,7 +127,7 @@ const TicketEditDrawer: React.FC<TicketEditDrawerProps> = ({
       // Reset email choice when new ticket loads
       setShouldSendEmail(true);
     }
-  }, [ticket]);
+  }, [ticket, isOpen]);
 
   // Helper function to get customer name
   const getCustomerName = (customer?: Customer): string => {
@@ -172,14 +172,30 @@ const TicketEditDrawer: React.FC<TicketEditDrawerProps> = ({
     }
   };
 
-  // After confirmation, update status
-  const confirmStatusChange = (statusUid: string | null) => {
-    if (statusUid) {
+  // After confirmation, update status in local form state
+  const handleConfirmStatus = (sendEmail: boolean) => {
+    if (newStatus) {
       setFormData((prev: any) => ({
         ...prev,
-        status: statusUid,
+        status: newStatus,
       }));
+      
+      // Save user's choice about sending email
+      setShouldSendEmail(sendEmail);
+      
+      // Show a toast to indicate the status will change when saved
+      const selectedStatus = findStatusByUid(newStatus, statusOptions);
+      if (selectedStatus) {
+        addToast({
+          title: 'Status vald',
+          description: `Status "${selectedStatus.name}" kommer att tillämpas när du sparar`,
+          color: 'primary',
+          variant: 'flat'
+        });
+      }
     }
+    
+    setConfirmDialogOpen(false);
   };
 
   // Format date values
@@ -205,13 +221,13 @@ const TicketEditDrawer: React.FC<TicketEditDrawerProps> = ({
   }
 
   // Prepare data for update
-  function prepareFormData(formData: any, ticket: Ticket, sendNotification?: boolean): any {
-    const prepared = { ...formData, dynamicFields: { ...formData.dynamicFields } };
-    
-    // Add flag for whether to send notification
-    if (sendNotification !== undefined) {
-      prepared.sendNotification = sendNotification;
-    }
+  function prepareFormData(formData: any, ticket: Ticket): any {
+    const prepared = { 
+      status: formData.status,
+      dynamicFields: { ...formData.dynamicFields },
+      // Add the sendNotification flag to send email if chosen
+      sendNotification: shouldSendEmail
+    };
     
     if (ticket.ticketType && ticket.ticketType.fields) {
       ticket.ticketType.fields.forEach((field) => {
@@ -219,7 +235,7 @@ const TicketEditDrawer: React.FC<TicketEditDrawerProps> = ({
           const value = formData.dynamicFields?.[field.name];
           const formattedDate = formatValue(value);
           if (field.fieldType === "DUE_DATE") {
-            prepared.dueDate = formattedDate ? new Date(formattedDate) : null;
+            prepared.dueDate = formattedDate ? formattedDate : null;
             delete prepared.dynamicFields[field.name];
           } else {
             prepared.dynamicFields[field.name] = formattedDate;
@@ -230,130 +246,72 @@ const TicketEditDrawer: React.FC<TicketEditDrawerProps> = ({
     return prepared;
   }
 
-  // Handle confirmation from StatusConfirmationDialog
-  const handleConfirmStatus = (sendEmail: boolean) => {
-    confirmStatusChange(newStatus);
-    
-    // Save user's choice about sending email
-    setShouldSendEmail(sendEmail);
-    
-    setConfirmDialogOpen(false);
-    
-    // Inform user about the choice
-    addToast({
-      title: 'Status vald',
-      description: sendEmail 
-        ? 'Mail kommer att skickas när du sparar ändringarna' 
-        : 'Inga mail kommer att skickas när du sparar',
-      color: 'primary',
-      variant: 'flat'
-    });
-  };
-
   // Handle form submission
   const handleSubmit = async () => {
+    if (!ticket) return;
+    
     try {
       setLoading(true);
-      // Get information about selected status
-      const selectedStatus = findStatusByUid(formData.status, statusOptions);
       
-      // Check if it has a mail template
-      const statusHasMailTemplate = selectedStatus ? ticketStatusService.hasMailTemplate(selectedStatus) : false;
+      // Get the current status from the form
+      const currentStatus = formData.status;
       
-      // Mail is sent only if there's a template AND user chose to send
-      const sendNotification = statusHasMailTemplate && shouldSendEmail;
-
-      // Check if status has changed
-      const currentStatusUid = ticketStatusService.getStatusUid(ticket);
-      const hasStatusChanged = formData.status !== currentStatusUid;
-
-      // If status has changed, use the centralized service
-      if (hasStatusChanged) {
-        try {
-          // Update status using the centralized service that works elsewhere in the app
-          const updatedTicket = await ticketStatusService.updateTicketStatus(
-            ticket.id,
-            formData.status,
-            sendNotification
-          );
-
-          // Update the local ticket state
-          if (updatedTicket) {
-            onTicketUpdated(updatedTicket);
-            onClose();
-            
-            // Show toast
-            let toastTitle, toastDescription, toastColor;
-            
-            if (statusHasMailTemplate) {
-              if (shouldSendEmail) {
-                toastTitle = 'Ärende uppdaterat med mailnotifiering';
-                toastDescription = `Status ändrad till "${selectedStatus?.name}" och mail har skickats till kunden`;
-                toastColor = 'success';
-              } else {
-                toastTitle = 'Ärende uppdaterat utan mailnotifiering';
-                toastDescription = `Status ändrad till "${selectedStatus?.name}" (inget mail skickades)`;
-                toastColor = 'primary';
-              }
-            } else {
-              toastTitle = 'Ärende uppdaterat';
-              toastDescription = `Status ändrad till "${selectedStatus?.name}" (ingen mailmall finns konfigurerad)`;
-              toastColor = 'primary';
-            }
-            
-            addToast({
-              title: toastTitle,
-              description: toastDescription,
-              color: toastColor,
-              variant: 'flat'
-            });
-          } else {
-            throw new Error('Statusuppdatering misslyckades');
-          }
-        } catch (error) {
-          console.error("Error updating ticket status:", error);
-          addToast({
-            title: 'Fel',
-            description: 'Ett fel inträffade vid uppdatering av ärendets status',
-            color: 'danger',
-            variant: 'flat'
-          });
-        }
-      } else {
-        // If status hasn't changed, use the original method to update other fields
-        const preparedData = prepareFormData(formData, ticket, sendNotification);
-        const res = await fetch(`/api/tickets/${ticket.id}`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(preparedData),
-        });
+      // Find status info for display
+      const selectedStatus = findStatusByUid(currentStatus, statusOptions);
+      
+      // Prepare the data - include ALL fields in a single update
+      const preparedData = prepareFormData(formData, ticket);
+      
+      console.log("Updating ticket with data:", preparedData);
+      
+      // Make the API call
+      const response = await fetch(`/api/tickets/${ticket.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(preparedData),
+      });
+      
+      if (response.ok) {
+        // Get the updated ticket
+        const updatedTicket = await response.json();
         
-        if (res.ok) {
-          const updatedTicket = await res.json();
-          onTicketUpdated(updatedTicket);
-          onClose();
-          
-          addToast({
-            title: 'Ärende uppdaterat',
-            description: 'Ärendet har uppdaterats',
-            color: 'success',
-            variant: 'flat'
-          });
-        } else {
-          const errorData = await res.json().catch(() => ({}));
-          const errorMsg = errorData.message || 'Kunde inte uppdatera ärendet';
-          
-          console.error("Error updating ticket:", errorMsg);
-          addToast({
-            title: 'Fel',
-            description: errorMsg,
-            color: 'danger',
-            variant: 'flat'
-          });
+        // Update parent component state
+        onTicketUpdated(updatedTicket);
+        
+        // Close the drawer ONLY after successful update
+        onClose();
+        
+        // Show success toast
+        addToast({
+          title: 'Ärende uppdaterat',
+          description: selectedStatus 
+            ? `Status ändrad till "${selectedStatus.name}"` 
+            : 'Ärendet har uppdaterats',
+          color: 'success',
+          variant: 'flat'
+        });
+      } else {
+        // Handle error
+        let errorMessage = 'Kunde inte uppdatera ärendet';
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.message || errorMessage;
+        } catch (e) {
+          // If we can't parse the JSON, use the default message
         }
+        
+        console.error("Error updating ticket:", errorMessage);
+        
+        addToast({
+          title: 'Fel',
+          description: errorMessage,
+          color: 'danger',
+          variant: 'flat'
+        });
       }
-    } catch (err) {
-      console.error("Error updating ticket:", err);
+    } catch (error) {
+      console.error("Error updating ticket:", error);
+      
       addToast({
         title: 'Fel',
         description: 'Ett fel inträffade vid uppdatering av ärendet',
@@ -365,8 +323,32 @@ const TicketEditDrawer: React.FC<TicketEditDrawerProps> = ({
     }
   };
 
+  // Handle drawer close with confirmation if changes were made
+  const handleDrawerClose = () => {
+    // Check if form has unsaved changes by comparing with original ticket
+    const currentStatusUid = ticketStatusService.getStatusUid(ticket);
+    const hasStatusChanged = formData.status !== currentStatusUid;
+    
+    if (hasStatusChanged) {
+      if (confirm('Du har gjort ändringar som inte sparats. Vill du verkligen stänga utan att spara?')) {
+        onClose();
+      }
+    } else {
+      onClose();
+    }
+  };
+
   return (
-    <Drawer isOpen={isOpen} onOpenChange={onClose} placement="right" size="md">
+    <Drawer 
+      isOpen={isOpen} 
+      onOpenChange={(open) => {
+        if (!open) {
+          handleDrawerClose();
+        }
+      }}
+      placement="right" 
+      size="md"
+    >
       <DrawerContent>
         <DrawerHeader>
           <h2>Redigera Ärende</h2>
@@ -390,10 +372,10 @@ const TicketEditDrawer: React.FC<TicketEditDrawerProps> = ({
                 <DropdownMenu
                   disallowEmptySelection
                   aria-label="Välj status"
-                  selectedKeys={new Set([formData.status])}
+                  selectedKeys={formData.status ? new Set([formData.status]) : new Set()}
                   onSelectionChange={(keys) => {
                     if (keys instanceof Set && keys.size > 0) {
-                      const key = Array.from(keys)[0];
+                      const key = Array.from(keys)[0] as string;
                       handleStatusChange(key);
                     }
                   }}
@@ -445,7 +427,7 @@ const TicketEditDrawer: React.FC<TicketEditDrawerProps> = ({
         </DrawerBody>
         <DrawerFooter>
           <div className="flex justify-end gap-2">
-            <Button variant="flat" onPress={onClose}>
+            <Button variant="flat" onPress={handleDrawerClose}>
               Avbryt
             </Button>
             <Button
