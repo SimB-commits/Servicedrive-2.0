@@ -102,11 +102,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             hasStatus: 'status' in req.body,
             hasCustomStatusId: 'customStatusId' in req.body,
             sendNotification: req.body.sendNotification,
-            body: JSON.stringify(req.body).substring(0, 200) // Logga inte hela bodyn för att undvika stora loggposter
+            body: JSON.stringify(req.body).substring(0, 200) // Logga inte hela bodyn
           });
         
-          // Validera input (befintlig kod)
-          
           try {
             // Hämta aktuellt ärende för att spåra statusändringar
             const currentTicket = await prisma.ticket.findUnique({
@@ -136,8 +134,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             
             // Kontrollera om det faktiskt är en statusändring
             const isStatusChange = 
-              req.body.status && req.body.status !== oldStatus ||
-              req.body.customStatusId !== undefined && req.body.customStatusId !== oldCustomStatusId;
+              (req.body.status && req.body.status !== oldStatus) ||
+              (req.body.customStatusId !== undefined && req.body.customStatusId !== oldCustomStatusId);
             
             logger.debug(`Statusändring detekterad för ärende #${ticketId}: ${isStatusChange}`, {
               ticketId,
@@ -148,18 +146,20 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
               newCustomStatusId: req.body.customStatusId
             });
         
-            // Bygger updateData (befintlig kod)
-            const updateData = { ...req.body };
+            // KORRIGERING: Separera kontrollparametrar från databasfält
+            // Extrahera sendNotification från req.body men inkludera inte den i updateData
+            const { sendNotification, ...updateData } = req.body;
             
-            // Uppdatera ärendet i databasen
-            logger.debug(`Uppdaterar ärende #${ticketId} i databasen`, {
+            logger.debug(`Uppdaterar ärende #${ticketId} i databasen med filtrerade fält`, {
               ticketId,
-              updateFields: Object.keys(updateData)
+              updateFields: Object.keys(updateData),
+              excludedFields: ["sendNotification"]
             });
             
+            // Uppdatera ärendet i databasen med ENDAST giltiga databasfält
             const updatedTicket = await prisma.ticket.update({
               where: { id: ticketId },
-              data: updateData,
+              data: updateData, // Nu innehåller detta inte sendNotification
               include: {
                 customer: true,
                 ticketType: true,
@@ -183,14 +183,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             });
         
             // Skicka mail om det är en statusändring och sendNotification inte är false
-            // KRITISKT OMRÅDE: Här avgörs om mail ska skickas vid statusuppdatering
-            const shouldSendEmail = isStatusChange && req.body.sendNotification !== false;
+            const shouldSendEmail = isStatusChange && sendNotification !== false;
             
             logger.debug(`Kontrollerar om mail ska skickas för ärende #${ticketId}`, {
               ticketId,
               shouldSendEmail,
               isStatusChange,
-              sendNotificationParam: req.body.sendNotification,
+              sendNotificationParam: sendNotification,
               hasCustomStatus: !!updatedTicket.customStatus,
               hasMailTemplate: !!updatedTicket.customStatus?.mailTemplate
             });
@@ -206,7 +205,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
                 });
                 
                 // Anropa sendTicketStatusEmail för att skicka mail
-                // KRITISKT OMRÅDE: Här anropas funktionen för att skicka mail
                 const mailResult = await sendTicketStatusEmail(
                   updatedTicket, 
                   oldStatus, 
@@ -242,7 +240,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
               logger.info(`Inget mail skickas för ärende #${ticketId} (antingen inte statusändring eller sendNotification=false)`, {
                 ticketId,
                 isStatusChange,
-                sendNotification: req.body.sendNotification
+                sendNotification
               });
             }
         
