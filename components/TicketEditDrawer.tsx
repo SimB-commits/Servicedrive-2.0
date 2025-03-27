@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { parseAbsoluteToLocal } from "@internationalized/date";
 import {
   Drawer,
@@ -75,6 +75,17 @@ const TicketEditDrawer: React.FC<TicketEditDrawerProps> = ({
   
   // Store user's choice about sending email
   const [shouldSendEmail, setShouldSendEmail] = useState<boolean>(true);
+  
+  // Control drawer state locally to prevent unwanted closures
+  const [internalOpen, setInternalOpen] = useState(isOpen);
+  
+  // Ref to track if a status change is in progress
+  const statusSelectionInProgress = useRef(false);
+
+  // Sync internal open state with prop
+  useEffect(() => {
+    setInternalOpen(isOpen);
+  }, [isOpen]);
 
   // Fetch status options when component mounts using centralized service
   useEffect(() => {
@@ -156,6 +167,9 @@ const TicketEditDrawer: React.FC<TicketEditDrawerProps> = ({
 
   // Handle status change - show confirmation dialog first
   const handleStatusChange = (statusUid: string) => {
+    // Set flag indicating status selection is in progress
+    statusSelectionInProgress.current = true;
+    
     // Use service to find the selected status by UID
     const selectedOption = findStatusByUid(statusUid, statusOptions);
     
@@ -170,6 +184,11 @@ const TicketEditDrawer: React.FC<TicketEditDrawerProps> = ({
         status: statusUid,
       }));
     }
+    
+    // Clear the flag after a short delay
+    setTimeout(() => {
+      statusSelectionInProgress.current = false;
+    }, 300);
   };
 
   // After confirmation, update status in local form state
@@ -262,8 +281,6 @@ const TicketEditDrawer: React.FC<TicketEditDrawerProps> = ({
       // Prepare the data - include ALL fields in a single update
       const preparedData = prepareFormData(formData, ticket);
       
-      console.log("Updating ticket with data:", preparedData);
-      
       // Make the API call
       const response = await fetch(`/api/tickets/${ticket.id}`, {
         method: "PUT",
@@ -279,7 +296,7 @@ const TicketEditDrawer: React.FC<TicketEditDrawerProps> = ({
         onTicketUpdated(updatedTicket);
         
         // Close the drawer ONLY after successful update
-        onClose();
+        handleClose();
         
         // Show success toast
         addToast({
@@ -323,29 +340,38 @@ const TicketEditDrawer: React.FC<TicketEditDrawerProps> = ({
     }
   };
 
-  // Handle drawer close with confirmation if changes were made
-  const handleDrawerClose = () => {
+  // Properly handle drawer closing with confirmation
+  const handleClose = () => {
     // Check if form has unsaved changes by comparing with original ticket
     const currentStatusUid = ticketStatusService.getStatusUid(ticket);
     const hasStatusChanged = formData.status !== currentStatusUid;
     
     if (hasStatusChanged) {
       if (confirm('Du har gjort ändringar som inte sparats. Vill du verkligen stänga utan att spara?')) {
+        setInternalOpen(false);
         onClose();
       }
     } else {
+      setInternalOpen(false);
       onClose();
+    }
+  };
+
+  // Prevent drawer from closing when interacting with status selection
+  const handleOpenChange = (open: boolean) => {
+    if (!open) {
+      // If a status selection is in progress, prevent drawer from closing
+      if (statusSelectionInProgress.current || confirmDialogOpen) {
+        return;
+      }
+      handleClose();
     }
   };
 
   return (
     <Drawer 
-      isOpen={isOpen} 
-      onOpenChange={(open) => {
-        if (!open) {
-          handleDrawerClose();
-        }
-      }}
+      isOpen={internalOpen} 
+      onOpenChange={handleOpenChange}
       placement="right" 
       size="md"
     >
@@ -382,7 +408,7 @@ const TicketEditDrawer: React.FC<TicketEditDrawerProps> = ({
                   selectionMode="single"
                 >
                   {statusOptions.map((option) => (
-                    <DropdownItem key={option.uid}>
+                    <DropdownItem key={option.uid} textValue={option.name}>
                       <div className="flex items-center gap-2">
                         <div 
                           className="w-3 h-3 rounded-full" 
@@ -400,9 +426,12 @@ const TicketEditDrawer: React.FC<TicketEditDrawerProps> = ({
             {ticket.ticketType &&
               ticket.ticketType.fields.map((field) => (
                 <div key={field.name}>
-                  <label className="block font-bold mb-1">{field.name}</label>
+                  <label className="block font-bold mb-1" id={`label-${field.name}`}>
+                    {field.name}
+                  </label>
                   {field.fieldType === "DATE" || field.fieldType === "DUE_DATE" ? (
                     <DatePicker
+                      aria-labelledby={`label-${field.name}`}
                       value={
                         typeof formData.dynamicFields?.[field.name] === "string"
                           ? parseAbsoluteToLocal(formData.dynamicFields[field.name])
@@ -411,7 +440,7 @@ const TicketEditDrawer: React.FC<TicketEditDrawerProps> = ({
                       onChange={(date) =>
                         handleDynamicFieldChange(field.name, date)
                       }
-                      isRequired
+                      isRequired={false}
                     />
                   ) : (
                     <Input
@@ -427,7 +456,7 @@ const TicketEditDrawer: React.FC<TicketEditDrawerProps> = ({
         </DrawerBody>
         <DrawerFooter>
           <div className="flex justify-end gap-2">
-            <Button variant="flat" onPress={handleDrawerClose}>
+            <Button variant="flat" onPress={handleClose}>
               Avbryt
             </Button>
             <Button
@@ -447,7 +476,7 @@ const TicketEditDrawer: React.FC<TicketEditDrawerProps> = ({
         <StatusConfirmationDialog
           isOpen={confirmDialogOpen}
           onClose={() => setConfirmDialogOpen(false)}
-          onConfirm={handleConfirmStatus}
+          onConfirm={(sendEmail) => handleConfirmStatus(sendEmail)}
           statusName={selectedStatusInfo.name}
           statusColor={selectedStatusInfo.color}
           ticketId={ticket.id}
