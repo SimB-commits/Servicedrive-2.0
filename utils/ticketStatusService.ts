@@ -401,11 +401,32 @@ export async function updateTicketStatus(
   sendEmail: boolean = true
 ): Promise<any> {
   try {
-    // Bygg payload för API-anropet
-    const payload = {
-      status: statusUid,
+    // Förberedelse av payload för API-anropet
+    // Vi måste hantera custom vs system statusar korrekt
+    let payload: Record<string, any> = {
       sendNotification: sendEmail
     };
+    
+    // Hantera statusar baserat på UID-format
+    // Custom statusar börjar med CUSTOM_ följt av ID
+    const isCustomStatus = statusUid.startsWith('CUSTOM_');
+    
+    if (isCustomStatus) {
+      // För custom statusar, skicka bara status UID, API:et hanterar uppdelningen
+      payload.status = statusUid;
+    } else {
+      // För systemstatusar, skicka status direkt
+      payload.status = statusUid;
+    }
+    
+    // Förbättrad loggning för felsökning
+    logger.debug('Skickar statusuppdatering till API', { 
+      ticketId,
+      statusUid,
+      isCustomStatus,
+      sendEmail,
+      payload: JSON.stringify(payload)
+    });
     
     const res = await fetch(`/api/tickets/${ticketId}`, {
       method: 'PUT',
@@ -422,9 +443,18 @@ export async function updateTicketStatus(
 
     const updatedTicket = await res.json();
     
-    const statusMessage = sendEmail 
-      ? 'Ärendets status har uppdaterats och mail har skickats till kunden'
-      : 'Ärendets status har uppdaterats utan mailnotifiering';
+    // Detaljerade framgångstoasts beroende på situation
+    // Vi påverkar inte den faktiska logiken för att avgöra om mail skickas - det sköts av API:et
+    // Här beräknar vi bara vad som visas i toast-meddelandet
+    const isMailSent = sendEmail;
+    
+    const statusName = isCustomStatus
+      ? updatedTicket.customStatus?.name || 'Anpassad status'
+      : findStatusByUid(statusUid, SYSTEM_STATUSES)?.name || statusUid;
+    
+    const statusMessage = isMailSent 
+      ? `Ärendets status har ändrats till "${statusName}" och mail har skickats till kunden`
+      : `Ärendets status har ändrats till "${statusName}" utan mailnotifiering`;
     
     addToast({
       title: 'Status uppdaterad',
