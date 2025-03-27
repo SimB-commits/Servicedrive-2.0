@@ -11,7 +11,6 @@ import {
   addToast,
   Divider
 } from '@heroui/react';
-import ReplyDomainVerifier from '@/components/email/ReplyDomainVerifier';
 
 interface VerificationResultProps {
   verificationResult: any;
@@ -243,24 +242,7 @@ const DomainVerificationResult: React.FC<VerificationResultProps> = ({
         </CardFooter>
       </Card>
       
-      {/* Reply-domänverifierare */}
-      <Modal
-        isOpen={replyDomainVerifierOpen}
-        onOpenChange={(open) => setReplyDomainVerifierOpen(open)}
-        size="2xl"
-      >
-        <ModalContent>
-          {() => (
-            <ReplyDomainVerifier
-              replyDomainId={verificationResult?.replyDomainInfo?.domainId}
-              replyDomain={replyDomain}
-              dnsRecords={verificationResult?.replyDomainInfo?.dnsRecords || []}
-              onClose={() => setReplyDomainVerifierOpen(false)}
-              onVerificationSuccess={handleReplyVerificationSuccess}
-            />
-          )}
-        </ModalContent>
-      </Modal>
+      
     </>
   );
 };

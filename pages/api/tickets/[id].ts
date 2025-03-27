@@ -121,35 +121,63 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
               return res.status(404).json({ error: 'Ärende hittades inte' });
             }
             
+            // Separera kontrollparametrar från databasfält
+            const { sendNotification, ...requestData } = req.body;
+            
+            // Förberedelse av uppdateringsdata med hantering av både system- och anpassade statusar
+            let updateData: any = { ...requestData };
+            
+            // Specialhantering för statusuppdatering - kontrollera om en status med formatet "CUSTOM_X" skickas
+            if (updateData.status && typeof updateData.status === 'string') {
+              const customStatusMatch = updateData.status.match(/^CUSTOM_(\d+)$/);
+              
+              if (customStatusMatch) {
+                // Detta är en anpassad status i formatet "CUSTOM_ID"
+                const customStatusId = parseInt(customStatusMatch[1], 10);
+                
+                logger.debug(`Detekterade anpassad status format för ärende #${ticketId}`, {
+                  ticketId,
+                  statusFormat: updateData.status,
+                  extractedCustomId: customStatusId
+                });
+                
+                // Uppdatera customStatusId och sätt status till null
+                updateData.customStatusId = customStatusId;
+                delete updateData.status; // Ta bort status som inte kan sättas till "CUSTOM_X"
+                
+                logger.debug(`Konverterade anpassad statusuppdatering för ärende #${ticketId}`, {
+                  ticketId,
+                  originalStatus: req.body.status,
+                  convertedToCustomStatusId: customStatusId
+                });
+              }
+            }
+            
             logger.debug(`Hittade ärende #${ticketId} för statusuppdatering`, {
               currentStatus: currentTicket.status,
               currentCustomStatusId: currentTicket.customStatusId,
-              newStatus: req.body.status,
-              newCustomStatusId: req.body.customStatusId
+              newStatus: updateData.status,
+              newCustomStatusId: updateData.customStatusId
             });
             
             // Spara de gamla värdena för att kunna skicka med till mail-funktionen
             const oldStatus = currentTicket.status;
             const oldCustomStatusId = currentTicket.customStatusId;
             
-            // Kontrollera om det faktiskt är en statusändring
+            // Kontrollera om det faktiskt är en statusändring - både systemstatus och anpassad status
             const isStatusChange = 
-              (req.body.status && req.body.status !== oldStatus) ||
-              (req.body.customStatusId !== undefined && req.body.customStatusId !== oldCustomStatusId);
+              (updateData.status && updateData.status !== oldStatus) ||
+              (updateData.customStatusId !== undefined && updateData.customStatusId !== oldCustomStatusId);
             
             logger.debug(`Statusändring detekterad för ärende #${ticketId}: ${isStatusChange}`, {
               ticketId,
               isStatusChange,
               oldStatus,
-              newStatus: req.body.status,
+              newStatus: updateData.status,
               oldCustomStatusId,
-              newCustomStatusId: req.body.customStatusId
+              newCustomStatusId: updateData.customStatusId
             });
         
-            // KORRIGERING: Separera kontrollparametrar från databasfält
-            // Extrahera sendNotification från req.body men inkludera inte den i updateData
-            const { sendNotification, ...updateData } = req.body;
-            
             logger.debug(`Uppdaterar ärende #${ticketId} i databasen med filtrerade fält`, {
               ticketId,
               updateFields: Object.keys(updateData),
@@ -159,7 +187,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             // Uppdatera ärendet i databasen med ENDAST giltiga databasfält
             const updatedTicket = await prisma.ticket.update({
               where: { id: ticketId },
-              data: updateData, // Nu innehåller detta inte sendNotification
+              data: updateData, // Nu innehåller detta inte sendNotification, och status är hanterad korrekt
               include: {
                 customer: true,
                 ticketType: true,
