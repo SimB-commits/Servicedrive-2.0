@@ -262,55 +262,95 @@ const TicketEditDrawer: React.FC<TicketEditDrawerProps> = ({
       
       // Mail is sent only if there's a template AND user chose to send
       const sendNotification = statusHasMailTemplate && shouldSendEmail;
-  
-      const preparedData = prepareFormData(formData, ticket, sendNotification);
-      const res = await fetch(`/api/tickets/${ticket.id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(preparedData),
-      });
-      
-      if (res.ok) {
-        const updatedTicket = await res.json();
-        onTicketUpdated(updatedTicket);
-        onClose();
-        
-        // Förbättrad toasthantering med tydligare meddelanden baserat på den faktiska situationen
-        let toastTitle, toastDescription, toastColor;
-        
-        if (statusHasMailTemplate) {
-          if (shouldSendEmail) {
-            toastTitle = 'Ärende uppdaterat med mailnotifiering';
-            toastDescription = `Status ändrad till "${selectedStatus?.name}" och mail har skickats till kunden`;
-            toastColor = 'success';
+
+      // Check if status has changed
+      const currentStatusUid = ticketStatusService.getStatusUid(ticket);
+      const hasStatusChanged = formData.status !== currentStatusUid;
+
+      // If status has changed, use the centralized service
+      if (hasStatusChanged) {
+        try {
+          // Update status using the centralized service that works elsewhere in the app
+          const updatedTicket = await ticketStatusService.updateTicketStatus(
+            ticket.id,
+            formData.status,
+            sendNotification
+          );
+
+          // Update the local ticket state
+          if (updatedTicket) {
+            onTicketUpdated(updatedTicket);
+            onClose();
+            
+            // Show toast
+            let toastTitle, toastDescription, toastColor;
+            
+            if (statusHasMailTemplate) {
+              if (shouldSendEmail) {
+                toastTitle = 'Ärende uppdaterat med mailnotifiering';
+                toastDescription = `Status ändrad till "${selectedStatus?.name}" och mail har skickats till kunden`;
+                toastColor = 'success';
+              } else {
+                toastTitle = 'Ärende uppdaterat utan mailnotifiering';
+                toastDescription = `Status ändrad till "${selectedStatus?.name}" (inget mail skickades)`;
+                toastColor = 'primary';
+              }
+            } else {
+              toastTitle = 'Ärende uppdaterat';
+              toastDescription = `Status ändrad till "${selectedStatus?.name}" (ingen mailmall finns konfigurerad)`;
+              toastColor = 'primary';
+            }
+            
+            addToast({
+              title: toastTitle,
+              description: toastDescription,
+              color: toastColor,
+              variant: 'flat'
+            });
           } else {
-            toastTitle = 'Ärende uppdaterat utan mailnotifiering';
-            toastDescription = `Status ändrad till "${selectedStatus?.name}" (inget mail skickades)`;
-            toastColor = 'primary';
+            throw new Error('Statusuppdatering misslyckades');
           }
-        } else {
-          toastTitle = 'Ärende uppdaterat';
-          toastDescription = `Status ändrad till "${selectedStatus?.name}" (ingen mailmall finns konfigurerad)`;
-          toastColor = 'primary';
+        } catch (error) {
+          console.error("Error updating ticket status:", error);
+          addToast({
+            title: 'Fel',
+            description: 'Ett fel inträffade vid uppdatering av ärendets status',
+            color: 'danger',
+            variant: 'flat'
+          });
         }
-        
-        addToast({
-          title: toastTitle,
-          description: toastDescription,
-          color: toastColor,
-          variant: 'flat'
-        });
       } else {
-        const errorData = await res.json().catch(() => ({}));
-        const errorMsg = errorData.message || 'Kunde inte uppdatera ärendet';
-        
-        console.error("Error updating ticket:", errorMsg);
-        addToast({
-          title: 'Fel',
-          description: errorMsg,
-          color: 'danger',
-          variant: 'flat'
+        // If status hasn't changed, use the original method to update other fields
+        const preparedData = prepareFormData(formData, ticket, sendNotification);
+        const res = await fetch(`/api/tickets/${ticket.id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(preparedData),
         });
+        
+        if (res.ok) {
+          const updatedTicket = await res.json();
+          onTicketUpdated(updatedTicket);
+          onClose();
+          
+          addToast({
+            title: 'Ärende uppdaterat',
+            description: 'Ärendet har uppdaterats',
+            color: 'success',
+            variant: 'flat'
+          });
+        } else {
+          const errorData = await res.json().catch(() => ({}));
+          const errorMsg = errorData.message || 'Kunde inte uppdatera ärendet';
+          
+          console.error("Error updating ticket:", errorMsg);
+          addToast({
+            title: 'Fel',
+            description: errorMsg,
+            color: 'danger',
+            variant: 'flat'
+          });
+        }
       }
     } catch (err) {
       console.error("Error updating ticket:", err);
