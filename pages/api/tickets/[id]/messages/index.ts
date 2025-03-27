@@ -1,10 +1,11 @@
-// pages/api/tickets/[id]/messages/index.ts
+// pages/api/tickets/[id]/messages/index.ts - uppdaterad version med korrigerad svarsadresshantering
+
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { PrismaClient } from '@prisma/client';
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from '../../../auth/authOptions';
 import rateLimiter from '@/lib/rateLimiterApi';
-import { sendCustomEmail, sendEmail } from '@/utils/mail-service';
+import { sendCustomEmail, sendEmail, generateReplyToAddress } from '@/utils/mail-service'; // Importera generateReplyToAddress
 import { logger } from '@/utils/logger';
 import { getAuthenticatedSession } from '@/utils/authHelper';
 
@@ -171,15 +172,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
                 const fromEmail = defaultSender?.email || senderEmail;
                 const fromName = defaultSender?.name || senderName;
                 
-                // Extrahera domänen för reply-to adress
-                const domain = fromEmail.split('@')[1];
-                const domainParts = domain.split('.');
-                const replyDomain = domainParts.length >= 2 
-                  ? `reply.${domainParts.slice(-2).join('.')}` 
-                  : process.env.REPLY_DOMAIN || 'reply.servicedrive.se';
-                
-                // Skapa reply-to adress
-                const replyTo = `ticket-${ticketId}@${replyDomain}`;
+                // Använd standardiserad funktionen för att skapa svarsadress
+                const replyTo = generateReplyToAddress(ticketId);
                 
                 // Bygg mail-innehållet
                 const subject = `Re: Ärende #${ticketId}`;

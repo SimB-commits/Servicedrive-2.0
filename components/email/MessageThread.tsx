@@ -273,7 +273,7 @@ const MessageThread: React.FC<MessageThreadProps> = ({
         <CardHeader className="px-6 py-4 flex justify-between items-center">
           <h2 className="text-lg font-medium">Meddelanden</h2>
           <div className="flex gap-2">
-            {/* Visa endast TestMail-knappen i utvecklingsmiljö */}
+            {/* Visa endast TestMail-knappen i utvecklingsmiljö
             {process.env.NODE_ENV !== 'production' && session?.user?.role === 'ADMIN' && (
               <Button 
                 size="sm" 
@@ -283,7 +283,7 @@ const MessageThread: React.FC<MessageThreadProps> = ({
               >
                 Simulera Kundmail
               </Button>
-            )}
+            )}*/}
             <Button 
               size="sm" 
               color="primary" 
@@ -386,7 +386,7 @@ const MessageThread: React.FC<MessageThreadProps> = ({
         </CardFooter>
       </Card>
 
-      {/* Modal för att simulera kundmail (endast för utveckling) */}
+      {/* Modal för att simulera kundmail (endast för utveckling) 
       <Modal isOpen={isOpen} onOpenChange={onClose}>
         <ModalContent>
           <ModalHeader>Simulera kundmail</ModalHeader>
@@ -424,7 +424,7 @@ const MessageThread: React.FC<MessageThreadProps> = ({
             </Button>
           </ModalFooter>
         </ModalContent>
-      </Modal>
+      </Modal>*/}
     </>
   );
 };
