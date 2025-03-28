@@ -1,5 +1,5 @@
 // pages/arenden/[id].tsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/router';
 import { useSession } from 'next-auth/react';
 import { 
@@ -15,14 +15,18 @@ import {
   DropdownTrigger, 
   DropdownMenu, 
   DropdownItem,
+  Input,
+  Textarea,
+  DatePicker,
+  Checkbox,
   addToast
 } from '@heroui/react';
 import { title } from '@/components/primitives';
-import { PrinterIcon } from '@/components/icons';
+import { PrinterIcon, EditIcon } from '@/components/icons';
 import StatusConfirmationDialog from '@/components/StatusConfirmationDialog';
 import MessageThread from '@/components/email/MessageThread';
 
-// Importera vår nya centraliserade statushantering
+// Importera vår centraliserade statushantering
 import ticketStatusService, { 
   TicketStatus, 
   findStatusByUid, 
@@ -55,6 +59,11 @@ export default function TicketPage() {
   // State för statusbekräftelsedialogrutan
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
   const [selectedStatus, setSelectedStatus] = useState<TicketStatus | null>(null);
+
+  // Ny state för redigeringsläge
+  const [isEditing, setIsEditing] = useState(false);
+  const [formData, setFormData] = useState<any>({});
+  const [formErrors, setFormErrors] = useState<Record<string, string>>({});
 
   // Flytta fetchTicket-funktionen utanför useEffect
   const fetchTicket = async () => {
@@ -90,6 +99,37 @@ export default function TicketPage() {
     loadStatuses();
   }, []);
 
+  // Initiera formulärdata från ärendeobjektet
+  const initFormData = useCallback((ticketData: Ticket) => {
+    if (!ticketData) return;
+    
+    // Skapa en kopia av dynamiska fält
+    const dynamicFieldsCopy = { ...ticketData.dynamicFields };
+    
+    // Hantera datumobjekt korrekt
+    if (ticketData.dueDate) {
+      try {
+        // Om dueDate finns, försök formatera det på ett React-vänligt sätt
+        const dueDate = new Date(ticketData.dueDate);
+        if (!isNaN(dueDate.getTime())) {
+          // För DatePicker-komponenten
+          dynamicFieldsCopy.dueDate = dueDate;
+        }
+      } catch (e) {
+        console.error("Fel vid formatering av dueDate:", e);
+      }
+    }
+    
+    // Initiera formulärdata med all relevant information
+    // Vi undviker att inkludera status-relaterade fält
+    setFormData({
+      dynamicFields: dynamicFieldsCopy
+    });
+    
+    // Återställ eventuella formulärfel
+    setFormErrors({});
+  }, []);
+
   // Visa bekräftelsedialog istället för att uppdatera direkt
   const handleStatusChange = (statusOption: TicketStatus) => {
     setSelectedStatus(statusOption);
@@ -113,6 +153,89 @@ export default function TicketPage() {
     } catch (error) {
       // Felhantering hanteras redan i servicen genom addToast
       console.error('Fel vid statusuppdatering');
+    }
+  };
+
+  // Funktion för att spara redigerade ändringar
+  const handleSaveEdit = async () => {
+    if (!ticket) return;
+    
+    try {
+      setLoading(true);
+      
+      // Förbered data för uppdatering
+      // OBS! Vi undviker att skicka med status-relaterade fält
+      const updateData = {
+        dynamicFields: formData.dynamicFields
+      };
+      
+      // Om dueDate finns i dynamicFields, hantera det separat
+      if (formData.dynamicFields.dueDate) {
+        // Formatera datum för API:et
+        if (formData.dynamicFields.dueDate instanceof Date) {
+          updateData.dueDate = formData.dynamicFields.dueDate.toISOString();
+        } else {
+          updateData.dueDate = new Date(formData.dynamicFields.dueDate).toISOString();
+        }
+        // Ta bort dueDate från dynamicFields eftersom det hanteras separat av API:et
+        delete updateData.dynamicFields.dueDate;
+      }
+      
+      const response = await fetch(`/api/tickets/${ticket.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updateData)
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Kunde inte uppdatera ärendet');
+      }
+      
+      // Uppdatera ärendet i state med det senaste från API:et
+      const updatedTicket = await response.json();
+      setTicket(updatedTicket);
+      
+      // Stäng redigeringsläget
+      setIsEditing(false);
+      
+      addToast({
+        title: 'Ärende uppdaterat',
+        description: 'Ändringarna har sparats',
+        color: 'success',
+        variant: 'flat'
+      });
+    } catch (error) {
+      console.error('Fel vid uppdatering av ärende:', error);
+      
+      addToast({
+        title: 'Fel',
+        description: error instanceof Error ? error.message : 'Ett fel inträffade',
+        color: 'danger',
+        variant: 'flat'
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Funktion för att hantera ändringar i formulärfält
+  const handleFieldChange = (fieldName: string, value: any) => {
+    setFormData(prev => ({
+      ...prev,
+      dynamicFields: {
+        ...prev.dynamicFields,
+        [fieldName]: value
+      }
+    }));
+    
+    // Ta bort eventuella fel för detta fält
+    if (formErrors[fieldName]) {
+      setFormErrors(prev => {
+        const newErrors = { ...prev };
+        delete newErrors[fieldName];
+        return newErrors;
+      });
     }
   };
 
@@ -156,7 +279,7 @@ export default function TicketPage() {
             body {
               font-family: Arial, sans-serif;
               margin: 0;
-              padding: 0;
+              padding: 20px;
               color: #000;
               background-color: #fff;
             }
@@ -336,6 +459,80 @@ export default function TicketPage() {
       .join('');
   };
 
+  // Rendera formulärelement baserat på fälttyp
+  const renderFormField = (field: any) => {
+    const fieldName = field.name;
+    const fieldType = field.fieldType;
+    const value = formData.dynamicFields?.[fieldName];
+    
+    switch (fieldType) {
+      case 'DATE':
+        return (
+          <DatePicker
+            label={fieldName}
+            value={value ? new Date(value) : null}
+            onChange={(date) => handleFieldChange(fieldName, date)}
+            isInvalid={!!formErrors[fieldName]}
+            errorMessage={formErrors[fieldName]}
+          />
+        );
+      case 'DUE_DATE':
+        // "Senast klar" datum hanteras separat
+        return (
+          <DatePicker
+            label="Deadline"
+            value={formData.dynamicFields?.dueDate ? new Date(formData.dynamicFields.dueDate) : null}
+            onChange={(date) => handleFieldChange('dueDate', date)}
+            isInvalid={!!formErrors['dueDate']}
+            errorMessage={formErrors['dueDate']}
+          />
+        );
+      case 'NUMBER':
+        return (
+          <Input
+            type="number"
+            label={fieldName}
+            value={value?.toString() || ''}
+            onValueChange={(val) => handleFieldChange(fieldName, val)}
+            isInvalid={!!formErrors[fieldName]}
+            errorMessage={formErrors[fieldName]}
+          />
+        );
+      case 'CHECKBOX':
+        return (
+          <Checkbox
+            isSelected={!!value}
+            onValueChange={(checked) => handleFieldChange(fieldName, checked)}
+          >
+            {fieldName}
+          </Checkbox>
+        );
+      default:
+        // Text är standardalternativet
+        // För längre textfält, använd Textarea
+        if (typeof value === 'string' && value.length > 100) {
+          return (
+            <Textarea
+              label={fieldName}
+              value={value || ''}
+              onValueChange={(val) => handleFieldChange(fieldName, val)}
+              isInvalid={!!formErrors[fieldName]}
+              errorMessage={formErrors[fieldName]}
+            />
+          );
+        }
+        return (
+          <Input
+            label={fieldName}
+            value={value?.toString() || ''}
+            onValueChange={(val) => handleFieldChange(fieldName, val)}
+            isInvalid={!!formErrors[fieldName]}
+            errorMessage={formErrors[fieldName]}
+          />
+        );
+    }
+  };
+
   if (status === 'loading' || loading) {
     return (
       <div className="flex justify-center items-center h-64">
@@ -378,6 +575,7 @@ export default function TicketPage() {
           
           {/* Knappar för åtgärder */}
           <div className="flex gap-3">
+            {/* Statushantering - ORÖRD */}
             <Dropdown>
               <DropdownTrigger>
                 <Button variant="flat" style={{ backgroundColor: statusDisplay.color + '20', color: statusDisplay.color }}>
@@ -401,6 +599,37 @@ export default function TicketPage() {
                 ))}
               </DropdownMenu>
             </Dropdown>
+            
+            {/* NY: Redigeringsknapp */}
+            {!isEditing ? (
+              <Button
+                variant="flat"
+                color="primary"
+                onPress={() => {
+                  initFormData(ticket);
+                  setIsEditing(true);
+                }}
+                startContent={<EditIcon />}
+              >
+                Redigera ärende
+              </Button>
+            ) : (
+              <>
+                <Button
+                  variant="flat"
+                  onPress={() => setIsEditing(false)}
+                >
+                  Avbryt
+                </Button>
+                <Button
+                  color="primary"
+                  onPress={handleSaveEdit}
+                  isLoading={loading}
+                >
+                  Spara ändringar
+                </Button>
+              </>
+            )}
             
             {/* Utskriftsknapp - startar utskrift direkt */}
             <Button
@@ -443,7 +672,7 @@ export default function TicketPage() {
 
         {activeTab === 'details' && (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {/* Kundinformation */}
+            {/* Kundinformation - oförändrad */}
             <Card className="col-span-1">
               <CardHeader className="px-6 py-4">
                 <h2 className="text-lg font-medium">Kundinformation</h2>
@@ -476,89 +705,138 @@ export default function TicketPage() {
                 <Divider className="my-4" />
                 
                 <Button 
-  size="sm"
-  variant="flat"
-  color="primary"
-  className="w-full"
-  onPress={() => router.push(`/kunder/${ticket.customer?.id}`)}
->
-  Visa kundprofil
-</Button>
+                  size="sm"
+                  variant="flat"
+                  color="primary"
+                  className="w-full"
+                  onPress={() => router.push(`/kunder/${ticket.customer?.id}`)}
+                >
+                  Visa kundprofil
+                </Button>
               </CardBody>
             </Card>
             
-            {/* Ärendeinformation */}
+            {/* Ärendeinformation - med visnings- eller redigeringsläge */}
             <Card className="col-span-1 md:col-span-2">
               <CardHeader className="px-6 py-4 flex justify-between items-center">
                 <h2 className="text-lg font-medium">Ärendeinformation</h2>
               </CardHeader>
               
               <CardBody className="px-6 py-4">
-                <div className="space-y-4">
-                  <div className="flex justify-between">
-                    <div>
-                      <p className="text-default-500">Ärendetyp</p>
-                      <p className="font-medium">{ticket.ticketType?.name || 'Ej angiven'}</p>
+                {!isEditing ? (
+                  // Visningsläge
+                  <div className="space-y-4">
+                    <div className="flex justify-between">
+                      <div>
+                        <p className="text-default-500">Ärendetyp</p>
+                        <p className="font-medium">{ticket.ticketType?.name || 'Ej angiven'}</p>
+                      </div>
+                      
+                      <div>
+                        <p className="text-default-500">Status</p>
+                        <p 
+                          className="font-medium" 
+                          style={{ color: statusDisplay.color }}
+                        >
+                          {statusDisplay.name}
+                        </p>
+                      </div>
+                      
+                      <div>
+                        <p className="text-default-500">Deadline</p>
+                        <p className="font-medium">
+                          {ticket.dueDate 
+                            ? new Date(ticket.dueDate).toLocaleDateString('sv-SE') 
+                            : 'Ingen deadline'}
+                        </p>
+                      </div>
                     </div>
                     
-                    <div>
-                      <p className="text-default-500">Status</p>
-                      <p 
-                        className="font-medium" 
-                        style={{ color: statusDisplay.color }}
-                      >
-                        {statusDisplay.name}
-                      </p>
-                    </div>
+                    <Divider />
                     
-                    <div>
-                      <p className="text-default-500">Deadline</p>
-                      <p className="font-medium">
-                        {ticket.dueDate 
-                          ? new Date(ticket.dueDate).toLocaleDateString('sv-SE') 
-                          : 'Ingen deadline'}
-                      </p>
+                    {/* Dynamiska fält */}
+                    {ticket.ticketType?.fields && ticket.ticketType.fields.length > 0 ? (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {ticket.ticketType.fields
+                          .filter((field) => field.fieldType !== "DUE_DATE")
+                          .map((field) => (
+                            <div key={field.name} className={field.name === 'Kommentar' ? 'col-span-2' : ''}>
+                              <p className="text-default-500">{field.name}</p>
+                              <p className="font-medium">
+                                {ticket.dynamicFields && ticket.dynamicFields[field.name] !== undefined
+                                  ? field.fieldType === "DATE"
+                                    ? new Date(ticket.dynamicFields[field.name]).toLocaleDateString("sv-SE")
+                                    : String(ticket.dynamicFields[field.name])
+                                  : "-"}
+                              </p>
+                            </div>
+                          ))}
+                      </div>
+                    ) : (
+                      <p className="text-center text-default-500">Inga ärendefält</p>
+                    )}
+                  </div>
+                ) : (
+                  // Redigeringsläge
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {/* Visa ärendetyp som icke-redigerbar information */}
+                      <div className="col-span-2">
+                        <p className="text-default-500">Ärendetyp</p>
+                        <p className="font-medium">{ticket.ticketType?.name || 'Ej angiven'}</p>
+                      </div>
+                      
+                      {/* Deadline datumfält */}
+                      <div className="col-span-2">
+                        <DatePicker
+                          label="Deadline"
+                          value={formData.dynamicFields?.dueDate ? new Date(formData.dynamicFields.dueDate) : null}
+                          onChange={(date) => handleFieldChange('dueDate', date)}
+                          isInvalid={!!formErrors['dueDate']}
+                          errorMessage={formErrors['dueDate']}
+                        />
+                      </div>
+                      
+                      <Divider className="col-span-2 my-2" />
+                      
+                      {/* Dynamiska fält - redigerbara */}
+                      {ticket.ticketType?.fields && ticket.ticketType.fields.length > 0 ? (
+                        ticket.ticketType.fields
+                          .filter((field) => field.fieldType !== "DUE_DATE")
+                          .map((field) => (
+                            <div 
+                              key={field.name} 
+                              className={
+                                field.name === 'Kommentar' || 
+                                field.fieldType === 'TEXT' && 
+                                (ticket.dynamicFields[field.name]?.length > 100) 
+                                  ? 'col-span-2' 
+                                  : 'col-span-1'
+                              }
+                            >
+                              {renderFormField(field)}
+                            </div>
+                          ))
+                      ) : (
+                        <p className="text-center text-default-500 col-span-2">Inga ärendefält</p>
+                      )}
                     </div>
                   </div>
-                  
-                  <Divider />
-                  
-                  {/* Dynamiska fält */}
-                  {ticket.ticketType?.fields && ticket.ticketType.fields.length > 0 ? (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {ticket.ticketType.fields
-                        .filter((field) => field.fieldType !== "DUE_DATE")
-                        .map((field) => (
-                          <div key={field.name} className={field.name === 'Kommentar' ? 'col-span-2' : ''}>
-                            <p className="text-default-500">{field.name}</p>
-                            <p className="font-medium">
-                              {ticket.dynamicFields && ticket.dynamicFields[field.name] !== undefined
-                                ? field.fieldType === "DATE"
-                                  ? new Date(ticket.dynamicFields[field.name]).toLocaleDateString("sv-SE")
-                                  : String(ticket.dynamicFields[field.name])
-                                : "-"}
-                            </p>
-                          </div>
-                        ))}
-                    </div>
-                  ) : (
-                    <p className="text-center text-default-500">Inga ärendefält</p>
-                  )}
-                </div>
+                )}
               </CardBody>
             </Card>
           </div>
         )}
 
-{activeTab === 'messages' && (
-  <MessageThread 
-    ticket={ticket}
-    onMessageSent={() => {
-      // Optional: uppdatera ärendet vid nytt meddelande om det behövs
-      fetchTicket(); // Om du har en sådan funktion
-    }}
-  />
-)}
+        {activeTab === 'messages' && (
+          <MessageThread 
+            ticket={ticket}
+            onMessageSent={() => {
+              // Optional: uppdatera ärendet vid nytt meddelande om det behövs
+              fetchTicket(); // Om du har en sådan funktion
+            }}
+          />
+        )}
 
         {activeTab === 'history' && (
           <Card>
@@ -602,30 +880,30 @@ export default function TicketPage() {
         {/* StatusConfirmationDialog för att bekräfta statusändring */}
         {selectedStatus && (
           <StatusConfirmationDialog
-          isOpen={confirmDialogOpen}
-          onClose={() => setConfirmDialogOpen(false)}
-          onConfirm={(sendEmail) => {
-            if (selectedStatus) {
-              // Indikera till användaren vad som kommer att hända genom en tillfällig toast
-              addToast({
-                title: 'Status uppdateras',
-                description: sendEmail && hasMailTemplate(selectedStatus)
-                  ? `Uppdaterar till "${selectedStatus.name}" med mailnotifiering` 
-                  : `Uppdaterar till "${selectedStatus.name}" utan mailnotifiering`,
-                color: 'primary',
-                variant: 'flat'
-              });
-              
-              // Genomför statusuppdateringen
-              updateStatus(selectedStatus.uid, sendEmail);
-              setConfirmDialogOpen(false);
-            }
-          }}
-          statusName={selectedStatus.name}
-          statusColor={selectedStatus.color}
-          ticketId={ticket.id}
-          hasMailTemplate={hasMailTemplate(selectedStatus)}
-        />
+            isOpen={confirmDialogOpen}
+            onClose={() => setConfirmDialogOpen(false)}
+            onConfirm={(sendEmail) => {
+              if (selectedStatus) {
+                // Indikera till användaren vad som kommer att hända genom en tillfällig toast
+                addToast({
+                  title: 'Status uppdateras',
+                  description: sendEmail && hasMailTemplate(selectedStatus)
+                    ? `Uppdaterar till "${selectedStatus.name}" med mailnotifiering` 
+                    : `Uppdaterar till "${selectedStatus.name}" utan mailnotifiering`,
+                  color: 'primary',
+                  variant: 'flat'
+                });
+                
+                // Genomför statusuppdateringen
+                updateStatus(selectedStatus.uid, sendEmail);
+                setConfirmDialogOpen(false);
+              }
+            }}
+            statusName={selectedStatus.name}
+            statusColor={selectedStatus.color}
+            ticketId={ticket.id}
+            hasMailTemplate={hasMailTemplate(selectedStatus)}
+          />
         )}
       </div>
     </section>
