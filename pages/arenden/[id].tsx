@@ -160,24 +160,34 @@ export default function TicketPage() {
   const handleSaveEdit = async () => {
     if (!ticket) return;
     
+    // Validate form before saving
+    if (!validateForm()) {
+      addToast({
+        title: 'Valideringsfel',
+        description: 'Vänligen åtgärda alla fel innan du sparar',
+        color: 'danger',
+        variant: 'flat'
+      });
+      return;
+    }
+    
     try {
       setLoading(true);
       
-      // Förbered data för uppdatering
-      // OBS! Vi undviker att skicka med status-relaterade fält
-      const updateData = {
-        dynamicFields: formData.dynamicFields
+      // Prepare data for update
+      const updateData: any = {
+        dynamicFields: { ...formData.dynamicFields }
       };
       
-      // Om dueDate finns i dynamicFields, hantera det separat
-      if (formData.dynamicFields.dueDate) {
-        // Formatera datum för API:et
+      // Handle dueDate separately if it exists
+      if (formData.dynamicFields?.dueDate) {
+        // Format date for API
         if (formData.dynamicFields.dueDate instanceof Date) {
           updateData.dueDate = formData.dynamicFields.dueDate.toISOString();
         } else {
           updateData.dueDate = new Date(formData.dynamicFields.dueDate).toISOString();
         }
-        // Ta bort dueDate från dynamicFields eftersom det hanteras separat av API:et
+        // Remove dueDate from dynamicFields as it's handled separately
         delete updateData.dynamicFields.dueDate;
       }
       
@@ -192,11 +202,11 @@ export default function TicketPage() {
         throw new Error(errorData.message || 'Kunde inte uppdatera ärendet');
       }
       
-      // Uppdatera ärendet i state med det senaste från API:et
+      // Update ticket in state with latest from API
       const updatedTicket = await response.json();
       setTicket(updatedTicket);
       
-      // Stäng redigeringsläget
+      // Close editing mode
       setIsEditing(false);
       
       addToast({
@@ -219,6 +229,16 @@ export default function TicketPage() {
     }
   };
 
+  const handleCancelEdit = () => {
+    // Ask for confirmation before discarding changes
+    if (confirm('Vill du avbryta redigeringen? Eventuella ändringar kommer att förloras.')) {
+      // Clear validation errors
+      setFormErrors({});
+      // Return to view mode
+      setIsEditing(false);
+    }
+  };
+
   // Funktion för att hantera ändringar i formulärfält
   const handleFieldChange = (fieldName: string, value: any) => {
     setFormData(prev => ({
@@ -237,6 +257,68 @@ export default function TicketPage() {
         return newErrors;
       });
     }
+  };
+
+  const validateForm = (): boolean => {
+    const errors: Record<string, string> = {};
+    
+    if (!ticket || !ticket.ticketType?.fields) return true;
+    
+    // Validate each field from the ticket type
+    ticket.ticketType.fields.forEach(field => {
+      const fieldName = field.name;
+      // Skip DUE_DATE fields as they're handled separately
+      if (field.fieldType === 'DUE_DATE') return;
+      
+      const value = formData.dynamicFields?.[fieldName];
+      
+      // Check if field is required
+      if (field.isRequired && (value === undefined || value === null || value === '')) {
+        errors[fieldName] = `${fieldName} är obligatoriskt`;
+        return; // Skip further validation for this field
+      }
+      
+      // Skip validation if value is empty and not required
+      if (value === undefined || value === null || value === '') return;
+      
+      // Validate date format
+      if (field.fieldType === 'DATE') {
+        try {
+          const dateValue = new Date(value);
+          if (isNaN(dateValue.getTime())) {
+            errors[fieldName] = `${fieldName} måste vara ett giltigt datum`;
+          }
+        } catch (e) {
+          errors[fieldName] = `${fieldName} måste vara ett giltigt datum`;
+        }
+      }
+      
+      // Validate numeric fields
+      if (field.fieldType === 'NUMBER') {
+        if (isNaN(Number(value))) {
+          errors[fieldName] = `${fieldName} måste vara ett nummer`;
+        }
+      }
+    });
+    
+    // Special handling for dueDate
+    if (formData.dynamicFields?.dueDate) {
+      try {
+        const dueDateValue = formData.dynamicFields.dueDate;
+        // If it's already a Date object, it's valid
+        if (!(dueDateValue instanceof Date)) {
+          const date = new Date(dueDateValue);
+          if (isNaN(date.getTime())) {
+            errors['dueDate'] = 'Deadline måste vara ett giltigt datum';
+          }
+        }
+      } catch (e) {
+        errors['dueDate'] = 'Deadline måste vara ett giltigt datum';
+      }
+    }
+    
+    setFormErrors(errors);
+    return Object.keys(errors).length === 0;
   };
 
   // Funktion för att formatera kundinformation
@@ -615,11 +697,11 @@ const renderFormField = (field: any) => {
                 Redigera ärende
               </Button>
             ) : (
-              /* I redigeringsläge, visa Avbryt och Spara-knappar */
+              /* In editing mode, show Cancel and Save buttons */
               <>
                 <Button
                   variant="flat"
-                  onPress={() => setIsEditing(false)}
+                  onPress={handleCancelEdit}
                 >
                   Avbryt
                 </Button>
