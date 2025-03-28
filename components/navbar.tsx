@@ -185,7 +185,8 @@ export const Navbar = () => {
               <ThemeSwitch />
             </NavbarItem>
 
-            <NavbarItem>
+            {/* Notification bell, might implement fully later */}
+            {/* <NavbarItem>
               <Dropdown>
                 <DropdownTrigger>
                   <Button
@@ -214,7 +215,7 @@ export const Navbar = () => {
                   </DropdownItem>
                 </DropdownMenu>
               </Dropdown>
-            </NavbarItem>
+            </NavbarItem> */}
 
             <NavbarItem>
               <Dropdown>
