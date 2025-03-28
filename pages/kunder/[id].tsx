@@ -146,54 +146,70 @@ export default function CustomerPage() {
   };
 
   const handleEditSubmit = async () => {
-    if (!customer) return;
+    console.log("handleEditSubmit anropades!");
+    if (!customer) {
+      console.log("Kund saknas, avbryter");
+      return;
+    }
     
     setValidationErrors({});
+    console.log("Formulärvärden att validera:", editFormValues);
   
     try {
       // Validera med Zod schema
+      console.log("Försöker validera med Zod schema");
       const validationResult = updateCustomerSchema.safeParse(editFormValues);
       
       if (!validationResult.success) {
+        console.log("Valideringsfel:", validationResult.error.errors);
         // Omvandla Zod-fel till formatet som komponenten förväntar sig
-        const errors = {};
+        const formattedErrors = {};
         validationResult.error.errors.forEach((err) => {
-          errors[err.path[0]] = err.message;
+          formattedErrors[err.path[0]] = err.message;
         });
         
-        setValidationErrors(errors);
+        setValidationErrors(formattedErrors);
+        console.log("Satte valideringsfel:", formattedErrors);
         return;
       }
       
+      console.log("Validering lyckades, fortsätter med API-anrop");
       // Använd den validerade datan från Zod
       const customerInput = validationResult.data;
+      console.log("Data att skicka:", customerInput);
   
-      // Resten av funktionen fortsätter som tidigare
+      console.log("Skickar PUT-förfrågan till /api/customers/" + customer.id);
       const response = await fetch(`/api/customers/${customer.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(customerInput),
       });
-
-      const data = await response.json();
-
+  
+      console.log("Svar från API:", response.status, response.statusText);
+      
       if (!response.ok) {
-        console.error('Fel vid uppdatering:', data);
+        const data = await response.json();
+        console.log("API returnerade feldata:", data);
         
         if (data.message === 'Valideringsfel' && data.errors) {
-          const formattedErrors: Record<string, string> = {};
-          data.errors.forEach((err: {field: string, message: string}) => {
+          const formattedErrors = {};
+          data.errors.forEach((err) => {
             formattedErrors[err.field] = err.message;
           });
           setValidationErrors(formattedErrors);
+          console.log("Satte valideringsfel från API:", formattedErrors);
           throw new Error(`Valideringsfel: ${Object.values(formattedErrors).join(', ')}`);
         }
         
         throw new Error(data.message || 'Kunde inte uppdatera kund');
       }
-
+  
+      const data = await response.json();
+      console.log("Lyckad uppdatering, data:", data);
+  
       // Uppdatera kunddata i state
       setCustomer(data);
+      console.log("Uppdaterade customer state");
       
       addToast({
         title: 'Framgång',
@@ -201,14 +217,10 @@ export default function CustomerPage() {
         color: 'success',
         variant: 'flat'
       });
+      console.log("Visade toast meddelande");
       
       setEditModalOpen(false);
-      
-      // GDPR-loggning
-      logger.info(`Användare ${session?.user?.email} uppdaterade kund #${customer.id}`, {
-        userId: session?.user?.id,
-        action: "update_customer"
-      });
+      console.log("Stängde modal");
     } catch (error) {
       console.error('Fel vid uppdatering av kund:', error);
       addToast({
@@ -217,6 +229,7 @@ export default function CustomerPage() {
         color: 'danger',
         variant: 'flat'
       });
+      console.log("Visade felmeddelande");
     }
   };
 
@@ -539,30 +552,41 @@ export default function CustomerPage() {
                       name="address"
                       value={editFormValues.address || ''}
                       onValueChange={(value) => handleEditInputChange(value, 'address')}
+                      isInvalid={!!validationErrors.address}
+                      errorMessage={validationErrors.address}
                     />
                   </div>
+
                   <div className="col-span-1">
                     <Input
                       label="Postnummer"
                       name="postalCode"
                       value={editFormValues.postalCode || ''}
                       onValueChange={(value) => handleEditInputChange(value, 'postalCode')}
+                      isInvalid={!!validationErrors.postalCode}
+                      errorMessage={validationErrors.postalCode}
                     />
                   </div>
+
                   <div className="col-span-1">
                     <Input
                       label="Ort"
                       name="city"
                       value={editFormValues.city || ''}
                       onValueChange={(value) => handleEditInputChange(value, 'city')}
+                      isInvalid={!!validationErrors.city}
+                      errorMessage={validationErrors.city}
                     />
                   </div>
+
                   <div className="col-span-1">
                     <Input
                       label="Land"
                       name="country"
                       value={editFormValues.country || ''}
                       onValueChange={(value) => handleEditInputChange(value, 'country')}
+                      isInvalid={!!validationErrors.country}
+                      errorMessage={validationErrors.country}
                     />
                   </div>
                   <div className="col-span-1">
@@ -616,7 +640,10 @@ export default function CustomerPage() {
               >
                 Avbryt
               </Button>
-              <Button color="primary" onPress={handleEditSubmit}>
+              <Button 
+                color="primary" 
+                onPress={() => handleEditSubmit()}
+              >
                 Spara ändringar
               </Button>
             </ModalFooter>

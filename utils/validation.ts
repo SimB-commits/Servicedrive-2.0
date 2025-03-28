@@ -98,10 +98,10 @@ export const createCustomerSchema = z.object({
 export const updateCustomerSchema = z.object({
   firstName: z.string().min(2, 'Förnamn måste vara minst 2 tecken').optional(),
   lastName: z.string().min(2, 'Efternamn måste vara minst 2 tecken').optional(),
-  address: z.string().min(2, 'Adress måste vara minst 2 tecken').optional(),
-  postalCode: z.string().min(2, 'Postnummer måste vara minst 2 tecken').optional(),
-  city: z.string().min(2, 'Ort måste vara minst 2 tecken').optional(),
-  country: z.string().min(2, 'Land måste vara minst 2 tecken').optional(),
+  address: z.union([z.string().min(2, 'Adress måste vara minst 2 tecken'), z.literal('')]).optional(),
+  postalCode: z.union([z.string().min(2, 'Postnummer måste vara minst 2 tecken'), z.literal('')]).optional(),
+  city: z.union([z.string().min(2, 'Ort måste vara minst 2 tecken'), z.literal('')]).optional(),
+  country: z.union([z.string().min(2, 'Land måste vara minst 2 tecken'), z.literal('')]).optional(),
   dateOfBirth: z.string().refine(date => !date || !isNaN(new Date(date).getTime()), {
     message: 'Ogiltigt datum',
   }).optional().nullable(),

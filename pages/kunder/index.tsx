@@ -2,6 +2,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/router';
+import { z } from 'zod';
+import { updateCustomerSchema } from '@/utils/validation';
 import {
   addToast,
   Form,
@@ -296,48 +298,39 @@ export default function KundPage() {
     }
   };
 
-  const handleEditSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleEditSubmit = async () => {
     if (!editingCustomer) return;
     
     setValidationErrors({});
-
+  
     try {
-      const {
-        firstName, 
-        lastName,
-        email,
-        phoneNumber,
-        address,
-        postalCode,
-        city,
-        country,
-        dateOfBirth,
-        newsletter,
-        loyal,
-        ...dynamicFields
-      } = editFormValues;
-
-      if (!email) {
-        setValidationErrors({ email: 'E-postadress krävs' });
+      // Förbehandla data - konvertera tomma strängar till undefined
+      const processedFormValues = { ...editFormValues };
+      
+      // Dessa fält kan vara tomma
+      ['address', 'postalCode', 'city', 'country'].forEach(field => {
+        if (processedFormValues[field] === '') {
+          processedFormValues[field] = undefined;
+        }
+      });
+      
+      // Validera med Zod schema
+      const validationResult = updateCustomerSchema.safeParse(processedFormValues);
+      
+      if (!validationResult.success) {
+        // Omvandla Zod-fel till formatet som komponenten förväntar sig
+        const formattedErrors = {};
+        validationResult.error.errors.forEach((err) => {
+          formattedErrors[err.path[0]] = err.message;
+        });
+        
+        setValidationErrors(formattedErrors);
         return;
       }
-
-      const customerInput = {
-        firstName,
-        lastName,
-        email,
-        phoneNumber,
-        address,
-        postalCode,
-        city,
-        country,
-        dateOfBirth: dateOfBirth || undefined,
-        newsletter: newsletter || false,
-        loyal: loyal || false,
-        dynamicFields: Object.keys(dynamicFields).length > 0 ? dynamicFields : {}
-      };
-
+      
+      // Använd den validerade datan från Zod
+      const customerInput = validationResult.data;
+  
       const response = await fetch(`/api/customers/${editingCustomer.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -899,7 +892,6 @@ export default function KundPage() {
           </ModalHeader>
           <ModalBody>
             <Form 
-              onSubmit={handleEditSubmit} 
               className="space-y-6"
               validationErrors={validationErrors}
             >
@@ -946,6 +938,8 @@ export default function KundPage() {
                     name="address"
                     value={editFormValues.address || ''}
                     onValueChange={(value) => handleEditInputChange(value, 'address')}
+                    isInvalid={!!validationErrors.address}
+                    errorMessage={validationErrors.address}
                   />
                 </div>
                 <div className="col-span-1">
@@ -954,6 +948,8 @@ export default function KundPage() {
                     name="postalCode"
                     value={editFormValues.postalCode || ''}
                     onValueChange={(value) => handleEditInputChange(value, 'postalCode')}
+                    isInvalid={!!validationErrors.postalCode}
+                    errorMessage={validationErrors.postalCode}
                   />
                 </div>
                 <div className="col-span-1">
@@ -962,6 +958,8 @@ export default function KundPage() {
                     name="city"
                     value={editFormValues.city || ''}
                     onValueChange={(value) => handleEditInputChange(value, 'city')}
+                    isInvalid={!!validationErrors.city}
+                    errorMessage={validationErrors.city}
                   />
                 </div>
                 <div className="col-span-1">
@@ -970,6 +968,8 @@ export default function KundPage() {
                     name="country"
                     value={editFormValues.country || ''}
                     onValueChange={(value) => handleEditInputChange(value, 'country')}
+                    isInvalid={!!validationErrors.country}
+                    errorMessage={validationErrors.country}
                   />
                 </div>
                 <div className="col-span-1">
@@ -1025,7 +1025,11 @@ export default function KundPage() {
                 >
                   Avbryt
                 </Button>
-                <Button type="submit" color="primary">
+                <Button 
+                  type="button" 
+                  color="primary" 
+                  onPress={handleEditSubmit}
+                >
                   Spara ändringar
                 </Button>
               </div>
