@@ -301,12 +301,21 @@ export default function TicketPage() {
       
       const updatedTicket = await res.json();
       
-      // Uppdatera data och UI-tillstånd
-      setTicket(updatedTicket);
-      setIsEditing(false);
-      initializeFormData(updatedTicket); // Återställ formulärdata med uppdaterad info
+      // Kontrollera om uppdaterad ärendedata innehåller nödvändiga fält
+      if (!updatedTicket.ticketType || !updatedTicket.ticketType.fields) {
+        console.warn('Uppdaterad ärendedata saknar nödvändiga fält, hämtar ärendet på nytt');
+        // Hämta hela ärendet på nytt för att säkerställa komplett data
+        await fetchTicket();
+      } else {
+        // Uppdatera state med den kompletta ärendedatan
+        setTicket(updatedTicket);
+        initializeFormData(updatedTicket);
+      }
       
-      // Visa bekräftelse
+      // Stäng redigeringsläget
+      setIsEditing(false);
+      
+      // Visa bekräftelse till användaren
       addToast({
         title: 'Ärende uppdaterat',
         description: 'Ändringarna har sparats',
