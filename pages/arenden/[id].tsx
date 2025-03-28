@@ -567,9 +567,11 @@ export default function TicketPage() {
           <DatePicker
             label={fieldName}
             value={
-              typeof formData.dynamicFields?.[fieldName] === "string"
-                ? parseAbsoluteToLocal(formData.dynamicFields[fieldName])
-                : formData.dynamicFields?.[fieldName] || null
+              formData.dynamicFields?.[fieldName] instanceof Date 
+                ? formData.dynamicFields[fieldName] 
+                : (typeof formData.dynamicFields?.[fieldName] === "string"
+                    ? parseAbsoluteToLocal(formData.dynamicFields[fieldName])
+                    : null)
             }
             onChange={(date) => handleFieldChange(fieldName, date)}
             isInvalid={!!formErrors[fieldName]}
@@ -582,9 +584,11 @@ export default function TicketPage() {
           <DatePicker
             label="Deadline"
             value={
-              typeof formData.dynamicFields?.dueDate === "string"
-                ? parseAbsoluteToLocal(formData.dynamicFields.dueDate)
-                : formData.dynamicFields?.dueDate || null
+              formData.dynamicFields?.dueDate instanceof Date
+                ? formData.dynamicFields.dueDate
+                : (typeof formData.dynamicFields?.dueDate === "string"
+                    ? parseAbsoluteToLocal(formData.dynamicFields.dueDate)
+                    : null)
             }
             onChange={(date) => handleFieldChange('dueDate', date)}
             isInvalid={!!formErrors['dueDate']}
