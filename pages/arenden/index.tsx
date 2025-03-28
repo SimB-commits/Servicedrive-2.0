@@ -17,7 +17,7 @@ import {
 } from "@heroui/react";
 import { title } from "@/components/primitives";
 import TicketDrawer from "@/components/TicketDrawer";
-import TicketEditDrawer, { Ticket } from "@/components/TicketEditDrawer";
+/* import TicketEditDrawer, { Ticket } from "@/components/TicketEditDrawer"; */
 import { DeleteIcon, EditIcon, EyeIcon } from "@/components/icons";
 
 // Statisk kolumnordning – ordna här hur kolumnerna ska visas.
@@ -57,7 +57,7 @@ export default function TicketTablePage() {
 
   // Drawer-states
   const [viewDrawerOpen, setViewDrawerOpen] = useState(false);
-  const [editDrawerOpen, setEditDrawerOpen] = useState(false);
+  /* const [editDrawerOpen, setEditDrawerOpen] = useState(false); */
   const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null);
 
   // State för statusalternativ som används i filtret (default + dynamiska)
@@ -178,10 +178,10 @@ export default function TicketTablePage() {
     setViewDrawerOpen(true);
   }, []);
 
-  const handleOpenEditDrawer = useCallback((ticket: Ticket) => {
+  /* const handleOpenEditDrawer = useCallback((ticket: Ticket) => {
     setSelectedTicket(ticket);
     setEditDrawerOpen(true);
-  }, []);
+  }, []); */
 
   const handleDelete = useCallback((ticketId: number) => {
     if (confirm("Är du säker på att du vill ta bort detta ärende?")) {
@@ -270,12 +270,12 @@ export default function TicketTablePage() {
                       onPress={() => handleOpenViewDrawer(ticket)}>
                 <EyeIcon />
               </Button>
-              <Button type="button" 
+              {/* <Button type="button" 
                       variant="flat" 
                       isIconOnly 
                       onPress={() => handleOpenEditDrawer(ticket)}>
                 <EditIcon />
-              </Button>
+              </Button> */}
               <Button
                 type="button" 
                 variant="flat" 
@@ -306,7 +306,7 @@ export default function TicketTablePage() {
         }
       }
     },
-    [handleOpenViewDrawer, handleOpenEditDrawer, handleDelete, getCustomerName]
+    [handleOpenViewDrawer, /* handleOpenEditDrawer, */ handleDelete, getCustomerName]
   );
 
   const onNextPage = () => {
@@ -487,14 +487,14 @@ export default function TicketTablePage() {
                   >
                     <EyeIcon />
                   </Button>
-                  <Button 
+                  {/* <Button 
                     type="button" 
                     variant="flat" 
                     isIconOnly 
                     onPress={() => handleOpenEditDrawer(ticket)}
                   >
                     <EditIcon />
-                  </Button>
+                  </Button> */}
                   <Button
                     type="button" 
                     variant="flat" 
@@ -523,7 +523,7 @@ export default function TicketTablePage() {
         ticket={selectedTicket}
       />
       {/* Drawer för att redigera ärende */}
-      <TicketEditDrawer
+      {/* <TicketEditDrawer
         isOpen={editDrawerOpen}
         onClose={() => setEditDrawerOpen(false)}
         ticket={selectedTicket}
@@ -532,7 +532,7 @@ export default function TicketTablePage() {
             prev.map((ticket) => (ticket.id === updatedTicket.id ? updatedTicket : ticket))
           );
         }}
-      />
+      /> */}
     </>
   );
 }
