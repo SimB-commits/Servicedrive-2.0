@@ -25,6 +25,7 @@ import { title } from '@/components/primitives';
 import { PrinterIcon, EditIcon } from '@/components/icons';
 import StatusConfirmationDialog from '@/components/StatusConfirmationDialog';
 import MessageThread from '@/components/email/MessageThread';
+import { parseAbsoluteToLocal } from "@internationalized/date";
 
 // Importera vår centraliserade statushantering
 import ticketStatusService, { 
@@ -55,6 +56,22 @@ export default function TicketPage() {
   const [ticket, setTicket] = useState<Ticket | null>(null);
   const [statusOptions, setStatusOptions] = useState<TicketStatus[]>([]);
   const [activeTab, setActiveTab] = useState('details');
+  const convertToDateValue = (value) => {
+    if (!value) return null;
+    
+    try {
+      // Om det redan är ett objekt från @internationalized/date, använd det direkt
+      if (value && typeof value.toDate === 'function') {
+        return value;
+      }
+      
+      // Annars, konvertera från ISO-sträng eller Date-objekt till @internationalized/date format
+      return parseAbsoluteToLocal(typeof value === 'object' ? value.toISOString() : value);
+    } catch (error) {
+      console.error("Error converting date value:", error);
+      return null;
+    }
+  };
   
   // State för statusbekräftelsedialogrutan
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
@@ -106,19 +123,31 @@ export default function TicketPage() {
     // Skapa en kopia av dynamiska fält
     const dynamicFieldsCopy = { ...ticketData.dynamicFields };
     
-    // Hantera datumobjekt korrekt
+    // Hantera dueDate korrekt för DatePicker-komponenten
     if (ticketData.dueDate) {
       try {
-        // Om dueDate finns, försök formatera det på ett React-vänligt sätt
-        const dueDate = new Date(ticketData.dueDate);
-        if (!isNaN(dueDate.getTime())) {
-          // För DatePicker-komponenten
-          dynamicFieldsCopy.dueDate = dueDate;
-        }
+        // Använd parseAbsoluteToLocal istället för new Date()
+        dynamicFieldsCopy.dueDate = parseAbsoluteToLocal(ticketData.dueDate);
       } catch (e) {
         console.error("Fel vid formatering av dueDate:", e);
+        // Om konvertering misslyckas, sätt till null
+        dynamicFieldsCopy.dueDate = null;
       }
     }
+
+    // Konvertera alla DATE-fält korrekt
+  if (ticketData.ticketType?.fields) {
+    ticketData.ticketType.fields.forEach(field => {
+      if (field.fieldType === 'DATE' && dynamicFieldsCopy[field.name]) {
+        try {
+          dynamicFieldsCopy[field.name] = parseAbsoluteToLocal(dynamicFieldsCopy[field.name]);
+        } catch (e) {
+          console.error(`Fel vid formatering av datumfält ${field.name}:`, e);
+          dynamicFieldsCopy[field.name] = null;
+        }
+      }
+    });
+  }
     
     // Initiera formulärdata med all relevant information
     // Vi undviker att inkludera status-relaterade fält
@@ -543,78 +572,78 @@ export default function TicketPage() {
 
   // Rendera formulärelement baserat på fälttyp
   // Rendera formulärelement baserat på fälttyp
-const renderFormField = (field: any) => {
-  const fieldName = field.name;
-  const fieldType = field.fieldType;
-  const value = formData.dynamicFields?.[fieldName];
-  
-  switch (fieldType) {
-    case 'DATE':
-      return (
-        <DatePicker
-          label={fieldName}
-          value={value ? new Date(value) : null}
-          onChange={(date) => handleFieldChange(fieldName, date)}
-          isInvalid={!!formErrors[fieldName]}
-          errorMessage={formErrors[fieldName]}
-        />
-      );
-    case 'DUE_DATE':
-      // "Senast klar" datum hanteras separat
-      return (
-        <DatePicker
-          label="Deadline"
-          value={formData.dynamicFields?.dueDate ? new Date(formData.dynamicFields.dueDate) : null}
-          onChange={(date) => handleFieldChange('dueDate', date)}
-          isInvalid={!!formErrors['dueDate']}
-          errorMessage={formErrors['dueDate']}
-        />
-      );
-    case 'NUMBER':
-      return (
-        <Input
-          type="number"
-          label={fieldName}
-          value={value?.toString() || ''}
-          onValueChange={(val) => handleFieldChange(fieldName, val)}
-          isInvalid={!!formErrors[fieldName]}
-          errorMessage={formErrors[fieldName]}
-        />
-      );
-    case 'CHECKBOX':
-      return (
-        <Checkbox
-          isSelected={!!value}
-          onValueChange={(checked) => handleFieldChange(fieldName, checked)}
-        >
-          {fieldName}
-        </Checkbox>
-      );
-    default:
-      // Text är standardalternativet
-      // För längre textfält, använd Textarea
-      if (typeof value === 'string' && value.length > 100) {
+  const renderFormField = (field) => {
+    const fieldName = field.name;
+    const fieldType = field.fieldType;
+    const value = formData.dynamicFields?.[fieldName];
+    
+    switch (fieldType) {
+      case 'DATE':
         return (
-          <Textarea
+          <DatePicker
             label={fieldName}
-            value={value || ''}
+            value={convertToDateValue(value)}
+            onChange={(date) => handleFieldChange(fieldName, date)}
+            isInvalid={!!formErrors[fieldName]}
+            errorMessage={formErrors[fieldName]}
+          />
+        );
+      case 'DUE_DATE':
+        // "Senast klar" datum hanteras separat
+        return (
+          <DatePicker
+            label="Deadline"
+            value={convertToDateValue(formData.dynamicFields?.dueDate)}
+            onChange={(date) => handleFieldChange('dueDate', date)}
+            isInvalid={!!formErrors['dueDate']}
+            errorMessage={formErrors['dueDate']}
+          />
+        );
+      case 'NUMBER':
+        return (
+          <Input
+            type="number"
+            label={fieldName}
+            value={value?.toString() || ''}
             onValueChange={(val) => handleFieldChange(fieldName, val)}
             isInvalid={!!formErrors[fieldName]}
             errorMessage={formErrors[fieldName]}
           />
         );
-      }
-      return (
-        <Input
-          label={fieldName}
-          value={value?.toString() || ''}
-          onValueChange={(val) => handleFieldChange(fieldName, val)}
-          isInvalid={!!formErrors[fieldName]}
-          errorMessage={formErrors[fieldName]}
-        />
-      );
-  }
-};
+      case 'CHECKBOX':
+        return (
+          <Checkbox
+            isSelected={!!value}
+            onValueChange={(checked) => handleFieldChange(fieldName, checked)}
+          >
+            {fieldName}
+          </Checkbox>
+        );
+      default:
+        // Text är standardalternativet
+        // För längre textfält, använd Textarea
+        if (typeof value === 'string' && value.length > 100) {
+          return (
+            <Textarea
+              label={fieldName}
+              value={value || ''}
+              onValueChange={(val) => handleFieldChange(fieldName, val)}
+              isInvalid={!!formErrors[fieldName]}
+              errorMessage={formErrors[fieldName]}
+            />
+          );
+        }
+        return (
+          <Input
+            label={fieldName}
+            value={value?.toString() || ''}
+            onValueChange={(val) => handleFieldChange(fieldName, val)}
+            isInvalid={!!formErrors[fieldName]}
+            errorMessage={formErrors[fieldName]}
+          />
+        );
+    }
+  };
 
   if (status === 'loading' || loading) {
     return (
