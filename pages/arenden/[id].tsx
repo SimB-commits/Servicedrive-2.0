@@ -56,22 +56,6 @@ export default function TicketPage() {
   const [ticket, setTicket] = useState<Ticket | null>(null);
   const [statusOptions, setStatusOptions] = useState<TicketStatus[]>([]);
   const [activeTab, setActiveTab] = useState('details');
-  const convertToDateValue = (value) => {
-    if (!value) return null;
-    
-    try {
-      // Om det redan är ett objekt från @internationalized/date, använd det direkt
-      if (value && typeof value.toDate === 'function') {
-        return value;
-      }
-      
-      // Annars, konvertera från ISO-sträng eller Date-objekt till @internationalized/date format
-      return parseAbsoluteToLocal(typeof value === 'object' ? value.toISOString() : value);
-    } catch (error) {
-      console.error("Error converting date value:", error);
-      return null;
-    }
-  };
   
   // State för statusbekräftelsedialogrutan
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
@@ -582,18 +566,26 @@ export default function TicketPage() {
         return (
           <DatePicker
             label={fieldName}
-            value={convertToDateValue(value)}
+            value={
+              typeof formData.dynamicFields?.[fieldName] === "string"
+                ? parseAbsoluteToLocal(formData.dynamicFields[fieldName])
+                : formData.dynamicFields?.[fieldName] || null
+            }
             onChange={(date) => handleFieldChange(fieldName, date)}
             isInvalid={!!formErrors[fieldName]}
             errorMessage={formErrors[fieldName]}
           />
         );
+
       case 'DUE_DATE':
-        // "Senast klar" datum hanteras separat
         return (
           <DatePicker
             label="Deadline"
-            value={convertToDateValue(formData.dynamicFields?.dueDate)}
+            value={
+              typeof formData.dynamicFields?.dueDate === "string"
+                ? parseAbsoluteToLocal(formData.dynamicFields.dueDate)
+                : formData.dynamicFields?.dueDate || null
+            }
             onChange={(date) => handleFieldChange('dueDate', date)}
             isInvalid={!!formErrors['dueDate']}
             errorMessage={formErrors['dueDate']}
