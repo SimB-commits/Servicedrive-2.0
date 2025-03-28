@@ -460,78 +460,79 @@ export default function TicketPage() {
   };
 
   // Rendera formulärelement baserat på fälttyp
-  const renderFormField = (field: any) => {
-    const fieldName = field.name;
-    const fieldType = field.fieldType;
-    const value = formData.dynamicFields?.[fieldName];
-    
-    switch (fieldType) {
-      case 'DATE':
+  // Rendera formulärelement baserat på fälttyp
+const renderFormField = (field: any) => {
+  const fieldName = field.name;
+  const fieldType = field.fieldType;
+  const value = formData.dynamicFields?.[fieldName];
+  
+  switch (fieldType) {
+    case 'DATE':
+      return (
+        <DatePicker
+          label={fieldName}
+          value={value ? new Date(value) : null}
+          onChange={(date) => handleFieldChange(fieldName, date)}
+          isInvalid={!!formErrors[fieldName]}
+          errorMessage={formErrors[fieldName]}
+        />
+      );
+    case 'DUE_DATE':
+      // "Senast klar" datum hanteras separat
+      return (
+        <DatePicker
+          label="Deadline"
+          value={formData.dynamicFields?.dueDate ? new Date(formData.dynamicFields.dueDate) : null}
+          onChange={(date) => handleFieldChange('dueDate', date)}
+          isInvalid={!!formErrors['dueDate']}
+          errorMessage={formErrors['dueDate']}
+        />
+      );
+    case 'NUMBER':
+      return (
+        <Input
+          type="number"
+          label={fieldName}
+          value={value?.toString() || ''}
+          onValueChange={(val) => handleFieldChange(fieldName, val)}
+          isInvalid={!!formErrors[fieldName]}
+          errorMessage={formErrors[fieldName]}
+        />
+      );
+    case 'CHECKBOX':
+      return (
+        <Checkbox
+          isSelected={!!value}
+          onValueChange={(checked) => handleFieldChange(fieldName, checked)}
+        >
+          {fieldName}
+        </Checkbox>
+      );
+    default:
+      // Text är standardalternativet
+      // För längre textfält, använd Textarea
+      if (typeof value === 'string' && value.length > 100) {
         return (
-          <DatePicker
+          <Textarea
             label={fieldName}
-            value={value ? new Date(value) : null}
-            onChange={(date) => handleFieldChange(fieldName, date)}
-            isInvalid={!!formErrors[fieldName]}
-            errorMessage={formErrors[fieldName]}
-          />
-        );
-      case 'DUE_DATE':
-        // "Senast klar" datum hanteras separat
-        return (
-          <DatePicker
-            label="Deadline"
-            value={formData.dynamicFields?.dueDate ? new Date(formData.dynamicFields.dueDate) : null}
-            onChange={(date) => handleFieldChange('dueDate', date)}
-            isInvalid={!!formErrors['dueDate']}
-            errorMessage={formErrors['dueDate']}
-          />
-        );
-      case 'NUMBER':
-        return (
-          <Input
-            type="number"
-            label={fieldName}
-            value={value?.toString() || ''}
+            value={value || ''}
             onValueChange={(val) => handleFieldChange(fieldName, val)}
             isInvalid={!!formErrors[fieldName]}
             errorMessage={formErrors[fieldName]}
           />
         );
-      case 'CHECKBOX':
-        return (
-          <Checkbox
-            isSelected={!!value}
-            onValueChange={(checked) => handleFieldChange(fieldName, checked)}
-          >
-            {fieldName}
-          </Checkbox>
-        );
-      default:
-        // Text är standardalternativet
-        // För längre textfält, använd Textarea
-        if (typeof value === 'string' && value.length > 100) {
-          return (
-            <Textarea
-              label={fieldName}
-              value={value || ''}
-              onValueChange={(val) => handleFieldChange(fieldName, val)}
-              isInvalid={!!formErrors[fieldName]}
-              errorMessage={formErrors[fieldName]}
-            />
-          );
-        }
-        return (
-          <Input
-            label={fieldName}
-            value={value?.toString() || ''}
-            onValueChange={(val) => handleFieldChange(fieldName, val)}
-            isInvalid={!!formErrors[fieldName]}
-            errorMessage={formErrors[fieldName]}
-          />
-        );
-    }
-  };
+      }
+      return (
+        <Input
+          label={fieldName}
+          value={value?.toString() || ''}
+          onValueChange={(val) => handleFieldChange(fieldName, val)}
+          isInvalid={!!formErrors[fieldName]}
+          errorMessage={formErrors[fieldName]}
+        />
+      );
+  }
+};
 
   if (status === 'loading' || loading) {
     return (
@@ -600,7 +601,7 @@ export default function TicketPage() {
               </DropdownMenu>
             </Dropdown>
             
-            {/* NY: Redigeringsknapp */}
+            {/* När det inte är redigeringsläge, visa Redigera-knapp */}
             {!isEditing ? (
               <Button
                 variant="flat"
@@ -614,6 +615,7 @@ export default function TicketPage() {
                 Redigera ärende
               </Button>
             ) : (
+              /* I redigeringsläge, visa Avbryt och Spara-knappar */
               <>
                 <Button
                   variant="flat"
