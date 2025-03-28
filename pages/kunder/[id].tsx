@@ -2,6 +2,9 @@
 import React, { useState, useEffect } from "react";
 import { useRouter } from "next/router";
 import { useSession } from "next-auth/react";
+import { z } from 'zod';
+import { updateCustomerSchema } from '@/utils/validation';
+
 import {
   Card,
   CardBody,
@@ -142,48 +145,30 @@ export default function CustomerPage() {
     }));
   };
 
-  const handleEditSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleEditSubmit = async () => {
     if (!customer) return;
     
     setValidationErrors({});
-
+  
     try {
-      const {
-        firstName, 
-        lastName,
-        email,
-        phoneNumber,
-        address,
-        postalCode,
-        city,
-        country,
-        dateOfBirth,
-        newsletter,
-        loyal,
-        ...dynamicFields
-      } = editFormValues;
-
-      if (!email) {
-        setValidationErrors({ email: 'E-postadress krävs' });
+      // Validera med Zod schema
+      const validationResult = updateCustomerSchema.safeParse(editFormValues);
+      
+      if (!validationResult.success) {
+        // Omvandla Zod-fel till formatet som komponenten förväntar sig
+        const errors = {};
+        validationResult.error.errors.forEach((err) => {
+          errors[err.path[0]] = err.message;
+        });
+        
+        setValidationErrors(errors);
         return;
       }
-
-      const customerInput = {
-        firstName,
-        lastName,
-        email,
-        phoneNumber,
-        address,
-        postalCode,
-        city,
-        country,
-        dateOfBirth: dateOfBirth || undefined,
-        newsletter: newsletter || false,
-        loyal: loyal || false,
-        dynamicFields: Object.keys(dynamicFields).length > 0 ? dynamicFields : {}
-      };
-
+      
+      // Använd den validerade datan från Zod
+      const customerInput = validationResult.data;
+  
+      // Resten av funktionen fortsätter som tidigare
       const response = await fetch(`/api/customers/${customer.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -631,7 +616,7 @@ export default function CustomerPage() {
               >
                 Avbryt
               </Button>
-              <Button type="submit" color="primary" onPress={handleEditSubmit}>
+              <Button color="primary" onPress={handleEditSubmit}>
                 Spara ändringar
               </Button>
             </ModalFooter>
