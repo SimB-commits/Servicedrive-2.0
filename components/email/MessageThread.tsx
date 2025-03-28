@@ -20,6 +20,7 @@ import {
 } from '@heroui/react';
 import { useSession } from 'next-auth/react';
 import DOMPurify from 'dompurify';
+/* import MessageTestTools from './MessageTestTools'; */
 
 interface Message {
   id: number;
@@ -270,30 +271,26 @@ const MessageThread: React.FC<MessageThreadProps> = ({
   return (
     <>
       <Card className="w-full">
-        <CardHeader className="px-6 py-4 flex justify-between items-center">
-          <h2 className="text-lg font-medium">Meddelanden</h2>
-          <div className="flex gap-2">
-            {/* Visa endast TestMail-knappen i utvecklingsmiljö
-            {process.env.NODE_ENV !== 'production' && session?.user?.role === 'ADMIN' && (
-              <Button 
-                size="sm" 
-                color="warning" 
-                variant="flat"
-                onPress={onOpen}
-              >
-                Simulera Kundmail
-              </Button>
-            )}*/}
-            <Button 
-              size="sm" 
-              color="primary" 
-              variant="flat"
-              onPress={fetchMessages}
-            >
-              Uppdatera
-            </Button>
-          </div>
-        </CardHeader>
+      <CardHeader className="px-6 py-4 flex justify-between items-center">
+        <h2 className="text-lg font-medium">Meddelanden</h2>
+        <div className="flex gap-2">
+          {/* Visa endast TestMail-knappen i utvecklingsmiljö eller för admin-användare */}
+          {/* {(process.env.NODE_ENV !== 'production' || session?.user?.role === 'ADMIN') && (
+            <MessageTestTools 
+              ticketId={ticket.id}
+              onTestComplete={fetchMessages}
+            />
+          )} */}
+          <Button 
+            size="sm" 
+            color="primary" 
+            variant="flat"
+            onPress={fetchMessages}
+          >
+            Uppdatera
+          </Button>
+        </div>
+      </CardHeader>
         
         <CardBody className="px-6 py-4">
           {loading ? (
@@ -424,7 +421,7 @@ const MessageThread: React.FC<MessageThreadProps> = ({
             </Button>
           </ModalFooter>
         </ModalContent>
-      </Modal>*/}
+      </Modal> */}
     </>
   );
 };

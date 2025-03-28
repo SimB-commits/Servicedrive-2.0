@@ -331,19 +331,54 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // Skicka en notifikation till handläggaren om det nya meddelandet
     if (ticket.assignedUser?.email || ticket.user?.email) {
       try {
-        await sendNewMessageNotification(
-          ticket, 
-          message, 
-          ticket.assignedUser?.email || ticket.user?.email
-        );
-        logger.info('Notifikation skickad till handläggare', { 
-          ticketId, 
-          messageId: message.id,
-          requestId
+        // Hämta butikens standardavsändaradress om den finns
+        const defaultSender = await prisma.senderAddress.findFirst({
+          where: {
+            storeId: ticket.storeId,
+            isDefault: true
+          }
         });
+        
+        // Prioritera mottagare i denna nya ordning:
+        // 1. Tilldelad handläggare
+        // 2. Butikens standardavsändaradress
+        // 3. Användaren som skapade ärendet
+        const possibleRecipients = [
+          ticket.assignedUser?.email,
+          defaultSender?.email,
+          ticket.user?.email
+        ].filter(Boolean).filter((value, index, self) => self.indexOf(value) === index);
+        
+        if (possibleRecipients.length > 0) {
+          // Använd den första tillgängliga adressen som huvudmottagare
+          const primaryRecipient = possibleRecipients[0];
+          
+          // Skicka notifikationen
+          await sendNewMessageNotification(
+            ticket, 
+            message, 
+            primaryRecipient
+          );
+          
+          logger.info('Notifikation skickad till handläggare/mottagare', { 
+            ticketId, 
+            messageId: message.id,
+            recipient: primaryRecipient.substring(0, 2) + '***@' + primaryRecipient.split('@')[1],
+            recipientType: primaryRecipient === ticket.assignedUser?.email ? 'assigned_user' : 
+                           primaryRecipient === defaultSender?.email ? 'store_default_sender' : 'ticket_creator',
+            requestId
+          });
+        } else {
+          logger.warn('Ingen mottagare hittades för kundmeddelande-notifikation', { 
+            ticketId, 
+            messageId: message.id,
+            requestId
+          });
+        }
       } catch (notificationError) {
         logger.error('Fel vid skickande av notifikation', { 
-          error: notificationError,
+          error: notificationError instanceof Error ? notificationError.message : 'Okänt fel',
+          stack: notificationError instanceof Error ? notificationError.stack?.substring(0, 500) : undefined,
           ticketId, 
           messageId: message.id,
           requestId

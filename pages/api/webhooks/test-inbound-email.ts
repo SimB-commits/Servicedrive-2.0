@@ -5,12 +5,13 @@ import { logger } from '@/utils/logger';
 import rateLimiter from '@/lib/rateLimiterApi';
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from '../auth/authOptions';
+import { sendNewMessageNotification } from '@/utils/mail-service';
 
 const prisma = new PrismaClient();
 
 /**
- * Testendpoint för att simulera inkommande mail från SendGrid
- * Endast tillgänglig i utvecklingsmiljö och för administratörer
+ * Förbättrad testendpoint för att simulera inkommande mail från SendGrid
+ * Inkluderar nu testning av notifikationsmail till handläggare/användare
  */
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   try {
@@ -29,16 +30,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(405).end(`Method ${req.method} Not Allowed`);
     }
 
-    // Verifiera att vi är i utvecklingsmiljö
-    if (process.env.NODE_ENV === 'production') {
-      return res.status(403).json({ 
-        error: 'Test endpoint disabled in production',
-        message: 'Denna endpoint är endast tillgänglig i utvecklingsmiljö'
-      });
-    }
-
     // Validera indata
-    const { ticketId, content, subject } = req.body;
+    const { ticketId, content, subject, testNotification = true } = req.body;
     
     if (!ticketId || isNaN(parseInt(ticketId))) {
       return res.status(400).json({ error: 'ticketId krävs och måste vara ett nummer' });
@@ -48,11 +41,29 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(400).json({ error: 'content krävs' });
     }
 
-    // Hämta ärendet
+    // Hämta ärendet med all information vi behöver för notifikationstestning
     const ticket = await prisma.ticket.findUnique({
       where: { id: parseInt(ticketId) },
       include: {
         customer: true,
+        ticketType: true,
+        customStatus: true,
+        user: {
+          select: {
+            id: true,
+            email: true,
+            firstName: true,
+            lastName: true,
+          },
+        },
+        assignedUser: {
+          select: {
+            id: true,
+            email: true, 
+            firstName: true,
+            lastName: true,
+          },
+        },
       }
     });
 
@@ -81,12 +92,97 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       testMode: true
     });
 
+    let notificationResult = null;
+
+    // Om testNotification är sant, testa också notifikationsmail
+    if (testNotification) {
+      try {
+        // Hämta butikens standardavsändaradress om den finns
+        const defaultSender = await prisma.senderAddress.findFirst({
+          where: {
+            storeId: ticket.storeId,
+            isDefault: true
+          }
+        });
+        
+        // Prioriterade mottagare (samma ordning som i den uppdaterade riktiga implementationen)
+        const possibleRecipients = [
+          ticket.assignedUser?.email,
+          defaultSender?.email,
+          ticket.user?.email,
+          session.user.email // Lägg till den inloggade användaren för testning som sista alternativ
+        ].filter(Boolean).filter((value, index, self) => self.indexOf(value) === index);
+        
+        // Lägg till information om viken typ av mottagare som valdes
+        let recipientType = 'unknown';
+        
+        // Om vi har minst en mottagare, skicka notifikationen
+        if (possibleRecipients.length > 0) {
+          // Använd den första tillgängliga adressen som huvudmottagare
+          const primaryRecipient = possibleRecipients[0];
+          
+          // Bestäm vilken typ av mottagare det är (för loggning/testning)
+          if (primaryRecipient === ticket.assignedUser?.email) {
+            recipientType = 'assigned_user';
+          } else if (primaryRecipient === defaultSender?.email) {
+            recipientType = 'store_default_sender';
+          } else if (primaryRecipient === ticket.user?.email) {
+            recipientType = 'ticket_creator';
+          } else if (primaryRecipient === session.user.email) {
+            recipientType = 'current_user';
+          }
+          
+          // Skicka notifikationen med vår förbättrade funktion
+          const notification = await sendNewMessageNotification(
+            ticket, 
+            message, 
+            primaryRecipient
+          );
+          
+          notificationResult = {
+            success: true,
+            recipient: primaryRecipient,
+            recipientType: recipientType,
+            truncatedRecipient: primaryRecipient.split('@')[0].substring(0, 2) + '***@' + primaryRecipient.split('@')[1],
+            messageId: notification?.headers?.['x-message-id'] || 'unknown'
+          };
+          
+          logger.info('Testnotifikation skickad', { 
+            ticketId, 
+            messageId: message.id,
+            notificationId: notificationResult.messageId,
+            recipient: notificationResult.truncatedRecipient,
+            recipientType: recipientType,
+            testMode: true
+          });
+        } else {
+          notificationResult = {
+            success: false,
+            reason: 'Ingen mottagare hittades (varken handläggare, standardavsändare eller skapare)'
+          };
+        }
+      } catch (error) {
+        logger.error('Fel vid testning av notifikation', {
+          error: error instanceof Error ? error.message : 'Okänt fel',
+          ticketId,
+          messageId: message.id,
+          testMode: true
+        });
+        
+        notificationResult = {
+          success: false,
+          error: error instanceof Error ? error.message : 'Okänt fel'
+        };
+      }
+    }
+
     return res.status(200).json({ 
       success: true, 
       message: 'Simulerat mail sparat',
       ticketId,
       messageId: message.id,
-      customerEmail: ticket.customer.email
+      customerEmail: ticket.customer.email,
+      notificationResult: notificationResult
     });
   } catch (error) {
     logger.error('Fel vid simulering av inkommande mail', { 

@@ -76,10 +76,40 @@ export async function sendNewMessageNotification(
       ? message.content.substring(0, 300) + '...' 
       : message.content;
 
+    // Säker kundnamnsformatering
+    const customerName = ticket.customer 
+      ? `${ticket.customer.firstName || ''} ${ticket.customer.lastName || ''}`.trim() || ticket.customer.email
+      : 'Kund';
+
+    // Hämta butikens standardavsändaradress för avsändaren
+    let senderEmail = process.env.EMAIL_FROM || 'no-reply@servicedrive.se';
+    let senderName = 'Servicedrive';
+    
+    try {
+      const defaultSender = await prisma.senderAddress.findFirst({
+        where: {
+          storeId: ticket.storeId,
+          isDefault: true
+        }
+      });
+      
+      if (defaultSender) {
+        senderEmail = defaultSender.email;
+        senderName = defaultSender.name || 'Servicedrive';
+      }
+    } catch (error) {
+      // Ignorera fel vid hämtning av standardavsändare, använd default
+      logger.warn('Kunde inte hämta standardavsändare för notifikation', {
+        error: error instanceof Error ? error.message : 'Okänt fel',
+        ticketId: ticket.id,
+        fallback: 'Använder systemets standard-email'
+      });
+    }
+
     // Bygg HTML för notifikationen
     const htmlContent = `
       <h2>Nytt kundmeddelande på ärende #${ticket.id}</h2>
-      <p>Kunden ${ticket.customer.firstName || ''} ${ticket.customer.lastName || ''} har svarat på ärende #${ticket.id}.</p>
+      <p>Kunden ${customerName} har svarat på ärende #${ticket.id}.</p>
       
       <div style="margin: 20px 0; padding: 10px; border-left: 4px solid #4a90e2; background-color: #f9f9f9;">
         <p><strong>Meddelande:</strong></p>
@@ -102,8 +132,8 @@ export async function sendNewMessageNotification(
     // Skapa variabler för mailmallen
     const variables = {
       ärendeID: ticket.id,
-      kundNamn: `${ticket.customer.firstName || ''} ${ticket.customer.lastName || ''}`.trim() || ticket.customer.email,
-      kundEmail: ticket.customer.email,
+      kundNamn: customerName,
+      kundEmail: ticket.customer?.email || '',
       ärendeTyp: ticket.ticketType?.name || '',
       ärendeStatus: ticket.customStatus?.name || ticket.status || '',
       meddelande: truncatedContent,
@@ -115,7 +145,11 @@ export async function sendNewMessageNotification(
     const notificationTemplate = await prisma.mailTemplate.findFirst({
       where: {
         storeId: ticket.storeId,
-        name: { contains: 'notif' } // Försök hitta en mall som innehåller "notif"
+        OR: [
+          { name: { contains: 'notif' } },   // Söker efter "notifikation" 
+          { name: { contains: 'kundmeddelande' } },  // eller "kundmeddelande"
+          { name: { contains: 'svar' } }     // eller "svar"
+        ]
       }
     });
 
@@ -125,20 +159,38 @@ export async function sendNewMessageNotification(
         recipientEmail,
         notificationTemplate,
         variables,
-        ['message-notification', `ticket-${ticket.id}`]
+        ['message-notification', `ticket-${ticket.id}`],
+        senderEmail,
+        senderName
       );
     } else {
       // Annars, skicka ett enkelt email utan mall
       const emailData = {
         to: recipientEmail,
-        from: process.env.EMAIL_FROM || 'no-reply@servicedrive.se',
+        from: senderName ? `${senderName} <${senderEmail}>` : senderEmail,
         subject: `Nytt kundmeddelande på ärende #${ticket.id}`,
         html: htmlContent,
         text: `Nytt kundmeddelande på ärende #${ticket.id}\n\nKunden har svarat på ärendet. Logga in för att se och svara på meddelandet: ${process.env.NEXT_PUBLIC_APP_URL}/arenden/${ticket.id}`,
-        categories: ['message-notification', `ticket-${ticket.id}`]
+        categories: ['message-notification', `ticket-${ticket.id}`],
+        headers: {
+          'X-Notification-Type': 'new-customer-message',
+          'X-Auto-Response-Suppress': 'OOF, AutoReply',
+        }
       };
       
       try {
+        // Anonymisera e-postadress för loggning (GDPR)
+        const anonymizedRecipient = recipientEmail ? 
+          recipientEmail.split('@')[0].substring(0, 2) + '***@' + recipientEmail.split('@')[1] : 
+          'unknown';
+
+        logger.info('Skickar notifikation om nytt kundmeddelande', {
+          ticketId: ticket.id,
+          messageId: message.id,
+          recipient: anonymizedRecipient,
+          hasTemplate: false
+        });
+        
         return await sendEmail(emailData);
       } catch (error) {
         return handleMailError(error, { 
