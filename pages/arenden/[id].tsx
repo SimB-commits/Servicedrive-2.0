@@ -61,12 +61,12 @@ export default function TicketPage() {
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
   const [selectedStatus, setSelectedStatus] = useState<TicketStatus | null>(null);
 
-  // Ny state för redigeringsläge
+  // State för redigeringsläge
   const [isEditing, setIsEditing] = useState(false);
   const [formData, setFormData] = useState<any>({});
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
 
-  // Flytta fetchTicket-funktionen utanför useEffect
+  // Hämta ärende
   const fetchTicket = async () => {
     if (!id || !session) return;
     
@@ -85,7 +85,6 @@ export default function TicketPage() {
     }
   };
 
-  // Hämta ärende
   useEffect(() => {
     fetchTicket();    
   }, [id, session]);
@@ -120,18 +119,18 @@ export default function TicketPage() {
     }
 
     // Konvertera alla DATE-fält korrekt
-  if (ticketData.ticketType?.fields) {
-    ticketData.ticketType.fields.forEach(field => {
-      if (field.fieldType === 'DATE' && dynamicFieldsCopy[field.name]) {
-        try {
-          dynamicFieldsCopy[field.name] = parseAbsoluteToLocal(dynamicFieldsCopy[field.name]);
-        } catch (e) {
-          console.error(`Fel vid formatering av datumfält ${field.name}:`, e);
-          dynamicFieldsCopy[field.name] = null;
+    if (ticketData.ticketType?.fields) {
+      ticketData.ticketType.fields.forEach(field => {
+        if (field.fieldType === 'DATE' && dynamicFieldsCopy[field.name]) {
+          try {
+            dynamicFieldsCopy[field.name] = parseAbsoluteToLocal(dynamicFieldsCopy[field.name]);
+          } catch (e) {
+            console.error(`Fel vid formatering av datumfält ${field.name}:`, e);
+            dynamicFieldsCopy[field.name] = null;
+          }
         }
-      }
-    });
-  }
+      });
+    }
     
     // Initiera formulärdata med all relevant information
     // Vi undviker att inkludera status-relaterade fält
@@ -167,6 +166,89 @@ export default function TicketPage() {
       // Felhantering hanteras redan i servicen genom addToast
       console.error('Fel vid statusuppdatering');
     }
+  };
+
+  // Funktion för att hantera ändringar i formulärfält
+  const handleFieldChange = (fieldName: string, value: any) => {
+    setFormData(prev => ({
+      ...prev,
+      dynamicFields: {
+        ...prev.dynamicFields,
+        [fieldName]: value
+      }
+    }));
+    
+    // Ta bort eventuella fel för detta fält
+    if (formErrors[fieldName]) {
+      setFormErrors(prev => {
+        const newErrors = { ...prev };
+        delete newErrors[fieldName];
+        return newErrors;
+      });
+    }
+  };
+
+  // Validera formuläret innan det sparas
+  const validateForm = (): boolean => {
+    const errors: Record<string, string> = {};
+    
+    if (!ticket || !ticket.ticketType?.fields) return true;
+    
+    // Validate each field from the ticket type
+    ticket.ticketType.fields.forEach(field => {
+      const fieldName = field.name;
+      // Skip DUE_DATE fields as they're handled separately
+      if (field.fieldType === 'DUE_DATE') return;
+      
+      const value = formData.dynamicFields?.[fieldName];
+      
+      // Check if field is required
+      if (field.isRequired && (value === undefined || value === null || value === '')) {
+        errors[fieldName] = `${fieldName} är obligatoriskt`;
+        return; // Skip further validation for this field
+      }
+      
+      // Skip validation if value is empty and not required
+      if (value === undefined || value === null || value === '') return;
+      
+      // Validate date format
+      if (field.fieldType === 'DATE') {
+        try {
+          const dateValue = new Date(value);
+          if (isNaN(dateValue.getTime())) {
+            errors[fieldName] = `${fieldName} måste vara ett giltigt datum`;
+          }
+        } catch (e) {
+          errors[fieldName] = `${fieldName} måste vara ett giltigt datum`;
+        }
+      }
+      
+      // Validate numeric fields
+      if (field.fieldType === 'NUMBER') {
+        if (isNaN(Number(value))) {
+          errors[fieldName] = `${fieldName} måste vara ett nummer`;
+        }
+      }
+    });
+    
+    // Special handling for dueDate
+    if (formData.dynamicFields?.dueDate) {
+      try {
+        const dueDateValue = formData.dynamicFields.dueDate;
+        // If it's already a Date object, it's valid
+        if (!(dueDateValue instanceof Date)) {
+          const date = new Date(dueDateValue);
+          if (isNaN(date.getTime())) {
+            errors['dueDate'] = 'Deadline måste vara ett giltigt datum';
+          }
+        }
+      } catch (e) {
+        errors['dueDate'] = 'Deadline måste vara ett giltigt datum';
+      }
+    }
+    
+    setFormErrors(errors);
+    return Object.keys(errors).length === 0;
   };
 
   // Funktion för att spara redigerade ändringar
@@ -242,6 +324,7 @@ export default function TicketPage() {
     }
   };
 
+  // Funktion för att avbryta redigering
   const handleCancelEdit = () => {
     // Ask for confirmation before discarding changes
     if (confirm('Vill du avbryta redigeringen? Eventuella ändringar kommer att förloras.')) {
@@ -252,86 +335,90 @@ export default function TicketPage() {
     }
   };
 
-  // Funktion för att hantera ändringar i formulärfält
-  const handleFieldChange = (fieldName: string, value: any) => {
-    setFormData(prev => ({
-      ...prev,
-      dynamicFields: {
-        ...prev.dynamicFields,
-        [fieldName]: value
-      }
-    }));
+  // Rendera formulärelement baserat på fälttyp
+  const renderFormField = (field) => {
+    const fieldName = field.name;
+    const fieldType = field.fieldType;
+    const value = formData.dynamicFields?.[fieldName];
     
-    // Ta bort eventuella fel för detta fält
-    if (formErrors[fieldName]) {
-      setFormErrors(prev => {
-        const newErrors = { ...prev };
-        delete newErrors[fieldName];
-        return newErrors;
-      });
-    }
-  };
+    switch (fieldType) {
+      case 'DATE':
+        return (
+          <DatePicker
+            label={fieldName}
+            value={
+              formData.dynamicFields?.[fieldName] instanceof Date 
+                ? formData.dynamicFields[fieldName] 
+                : (typeof formData.dynamicFields?.[fieldName] === "string"
+                    ? parseAbsoluteToLocal(formData.dynamicFields[fieldName])
+                    : null)
+            }
+            onChange={(date) => handleFieldChange(fieldName, date)}
+            isInvalid={!!formErrors[fieldName]}
+            errorMessage={formErrors[fieldName]}
+          />
+        );
 
-  const validateForm = (): boolean => {
-    const errors: Record<string, string> = {};
-    
-    if (!ticket || !ticket.ticketType?.fields) return true;
-    
-    // Validate each field from the ticket type
-    ticket.ticketType.fields.forEach(field => {
-      const fieldName = field.name;
-      // Skip DUE_DATE fields as they're handled separately
-      if (field.fieldType === 'DUE_DATE') return;
-      
-      const value = formData.dynamicFields?.[fieldName];
-      
-      // Check if field is required
-      if (field.isRequired && (value === undefined || value === null || value === '')) {
-        errors[fieldName] = `${fieldName} är obligatoriskt`;
-        return; // Skip further validation for this field
-      }
-      
-      // Skip validation if value is empty and not required
-      if (value === undefined || value === null || value === '') return;
-      
-      // Validate date format
-      if (field.fieldType === 'DATE') {
-        try {
-          const dateValue = new Date(value);
-          if (isNaN(dateValue.getTime())) {
-            errors[fieldName] = `${fieldName} måste vara ett giltigt datum`;
-          }
-        } catch (e) {
-          errors[fieldName] = `${fieldName} måste vara ett giltigt datum`;
+      case 'DUE_DATE':
+        return (
+          <DatePicker
+            label="Deadline"
+            value={
+              formData.dynamicFields?.dueDate instanceof Date
+                ? formData.dynamicFields.dueDate
+                : (typeof formData.dynamicFields?.dueDate === "string"
+                    ? parseAbsoluteToLocal(formData.dynamicFields.dueDate)
+                    : null)
+            }
+            onChange={(date) => handleFieldChange('dueDate', date)}
+            isInvalid={!!formErrors['dueDate']}
+            errorMessage={formErrors['dueDate']}
+          />
+        );
+      case 'NUMBER':
+        return (
+          <Input
+            type="number"
+            label={fieldName}
+            value={value?.toString() || ''}
+            onValueChange={(val) => handleFieldChange(fieldName, val)}
+            isInvalid={!!formErrors[fieldName]}
+            errorMessage={formErrors[fieldName]}
+          />
+        );
+      case 'CHECKBOX':
+        return (
+          <Checkbox
+            isSelected={!!value}
+            onValueChange={(checked) => handleFieldChange(fieldName, checked)}
+          >
+            {fieldName}
+          </Checkbox>
+        );
+      default:
+        // Text är standardalternativet
+        // För längre textfält, använd Textarea
+        if (typeof value === 'string' && value.length > 100) {
+          return (
+            <Textarea
+              label={fieldName}
+              value={value || ''}
+              onValueChange={(val) => handleFieldChange(fieldName, val)}
+              isInvalid={!!formErrors[fieldName]}
+              errorMessage={formErrors[fieldName]}
+            />
+          );
         }
-      }
-      
-      // Validate numeric fields
-      if (field.fieldType === 'NUMBER') {
-        if (isNaN(Number(value))) {
-          errors[fieldName] = `${fieldName} måste vara ett nummer`;
-        }
-      }
-    });
-    
-    // Special handling for dueDate
-    if (formData.dynamicFields?.dueDate) {
-      try {
-        const dueDateValue = formData.dynamicFields.dueDate;
-        // If it's already a Date object, it's valid
-        if (!(dueDateValue instanceof Date)) {
-          const date = new Date(dueDateValue);
-          if (isNaN(date.getTime())) {
-            errors['dueDate'] = 'Deadline måste vara ett giltigt datum';
-          }
-        }
-      } catch (e) {
-        errors['dueDate'] = 'Deadline måste vara ett giltigt datum';
-      }
+        return (
+          <Input
+            label={fieldName}
+            value={value?.toString() || ''}
+            onValueChange={(val) => handleFieldChange(fieldName, val)}
+            isInvalid={!!formErrors[fieldName]}
+            errorMessage={formErrors[fieldName]}
+          />
+        );
     }
-    
-    setFormErrors(errors);
-    return Object.keys(errors).length === 0;
   };
 
   // Funktion för att formatera kundinformation
@@ -554,93 +641,6 @@ export default function TicketPage() {
       .join('');
   };
 
-  // Rendera formulärelement baserat på fälttyp
-  // Rendera formulärelement baserat på fälttyp
-  const renderFormField = (field) => {
-    const fieldName = field.name;
-    const fieldType = field.fieldType;
-    const value = formData.dynamicFields?.[fieldName];
-    
-    switch (fieldType) {
-      case 'DATE':
-        return (
-          <DatePicker
-            label={fieldName}
-            value={
-              formData.dynamicFields?.[fieldName] instanceof Date 
-                ? formData.dynamicFields[fieldName] 
-                : (typeof formData.dynamicFields?.[fieldName] === "string"
-                    ? parseAbsoluteToLocal(formData.dynamicFields[fieldName])
-                    : null)
-            }
-            onChange={(date) => handleFieldChange(fieldName, date)}
-            isInvalid={!!formErrors[fieldName]}
-            errorMessage={formErrors[fieldName]}
-          />
-        );
-
-      case 'DUE_DATE':
-        return (
-          <DatePicker
-            label="Deadline"
-            value={
-              formData.dynamicFields?.dueDate instanceof Date
-                ? formData.dynamicFields.dueDate
-                : (typeof formData.dynamicFields?.dueDate === "string"
-                    ? parseAbsoluteToLocal(formData.dynamicFields.dueDate)
-                    : null)
-            }
-            onChange={(date) => handleFieldChange('dueDate', date)}
-            isInvalid={!!formErrors['dueDate']}
-            errorMessage={formErrors['dueDate']}
-          />
-        );
-      case 'NUMBER':
-        return (
-          <Input
-            type="number"
-            label={fieldName}
-            value={value?.toString() || ''}
-            onValueChange={(val) => handleFieldChange(fieldName, val)}
-            isInvalid={!!formErrors[fieldName]}
-            errorMessage={formErrors[fieldName]}
-          />
-        );
-      case 'CHECKBOX':
-        return (
-          <Checkbox
-            isSelected={!!value}
-            onValueChange={(checked) => handleFieldChange(fieldName, checked)}
-          >
-            {fieldName}
-          </Checkbox>
-        );
-      default:
-        // Text är standardalternativet
-        // För längre textfält, använd Textarea
-        if (typeof value === 'string' && value.length > 100) {
-          return (
-            <Textarea
-              label={fieldName}
-              value={value || ''}
-              onValueChange={(val) => handleFieldChange(fieldName, val)}
-              isInvalid={!!formErrors[fieldName]}
-              errorMessage={formErrors[fieldName]}
-            />
-          );
-        }
-        return (
-          <Input
-            label={fieldName}
-            value={value?.toString() || ''}
-            onValueChange={(val) => handleFieldChange(fieldName, val)}
-            isInvalid={!!formErrors[fieldName]}
-            errorMessage={formErrors[fieldName]}
-          />
-        );
-    }
-  };
-
   if (status === 'loading' || loading) {
     return (
       <div className="flex justify-center items-center h-64">
@@ -722,7 +722,7 @@ export default function TicketPage() {
                 Redigera ärende
               </Button>
             ) : (
-              /* In editing mode, show Cancel and Save buttons */
+              /* I redigeringsläge, visa Avbryt och Spara-knappar */
               <>
                 <Button
                   variant="flat"
@@ -832,7 +832,53 @@ export default function TicketPage() {
               </CardHeader>
               
               <CardBody className="px-6 py-4">
-                {!isEditing ? (
+                {isEditing ? (
+                  // Redigeringsläge
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {/* Visa ärendetyp som icke-redigerbar information */}
+                      <div className="col-span-2">
+                        <p className="text-default-500">Ärendetyp</p>
+                        <p className="font-medium">{ticket.ticketType?.name || 'Ej angiven'}</p>
+                      </div>
+                      
+                      {/* Deadline datumfält */}
+                      <div className="col-span-2">
+                        <DatePicker
+                          label="Deadline"
+                          value={formData.dynamicFields?.dueDate ? new Date(formData.dynamicFields.dueDate) : null}
+                          onChange={(date) => handleFieldChange('dueDate', date)}
+                          isInvalid={!!formErrors['dueDate']}
+                          errorMessage={formErrors['dueDate']}
+                        />
+                      </div>
+                      
+                      <Divider className="col-span-2 my-2" />
+                      
+                      {/* Dynamiska fält - redigerbara */}
+                      {ticket.ticketType?.fields && ticket.ticketType.fields.length > 0 ? (
+                        ticket.ticketType.fields
+                          .filter((field) => field.fieldType !== "DUE_DATE")
+                          .map((field) => (
+                            <div 
+                              key={field.name} 
+                              className={
+                                field.name === 'Kommentar' || 
+                                field.fieldType === 'TEXT' && 
+                                (ticket.dynamicFields[field.name]?.length > 100) 
+                                  ? 'col-span-2' 
+                                  : 'col-span-1'
+                              }
+                            >
+                              {renderFormField(field)}
+                            </div>
+                          ))
+                      ) : (
+                        <p className="text-center text-default-500 col-span-2">Inga ärendefält</p>
+                      )}
+                    </div>
+                  </div>
+                ) : (
                   // Visningsläge
                   <div className="space-y-4">
                     <div className="flex justify-between">
@@ -884,52 +930,6 @@ export default function TicketPage() {
                     ) : (
                       <p className="text-center text-default-500">Inga ärendefält</p>
                     )}
-                  </div>
-                ) : (
-                  // Redigeringsläge
-                  <div className="space-y-4">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {/* Visa ärendetyp som icke-redigerbar information */}
-                      <div className="col-span-2">
-                        <p className="text-default-500">Ärendetyp</p>
-                        <p className="font-medium">{ticket.ticketType?.name || 'Ej angiven'}</p>
-                      </div>
-                      
-                      {/* Deadline datumfält */}
-                      <div className="col-span-2">
-                        <DatePicker
-                          label="Deadline"
-                          value={formData.dynamicFields?.dueDate ? new Date(formData.dynamicFields.dueDate) : null}
-                          onChange={(date) => handleFieldChange('dueDate', date)}
-                          isInvalid={!!formErrors['dueDate']}
-                          errorMessage={formErrors['dueDate']}
-                        />
-                      </div>
-                      
-                      <Divider className="col-span-2 my-2" />
-                      
-                      {/* Dynamiska fält - redigerbara */}
-                      {ticket.ticketType?.fields && ticket.ticketType.fields.length > 0 ? (
-                        ticket.ticketType.fields
-                          .filter((field) => field.fieldType !== "DUE_DATE")
-                          .map((field) => (
-                            <div 
-                              key={field.name} 
-                              className={
-                                field.name === 'Kommentar' || 
-                                field.fieldType === 'TEXT' && 
-                                (ticket.dynamicFields[field.name]?.length > 100) 
-                                  ? 'col-span-2' 
-                                  : 'col-span-1'
-                              }
-                            >
-                              {renderFormField(field)}
-                            </div>
-                          ))
-                      ) : (
-                        <p className="text-center text-default-500 col-span-2">Inga ärendefält</p>
-                      )}
-                    </div>
                   </div>
                 )}
               </CardBody>
