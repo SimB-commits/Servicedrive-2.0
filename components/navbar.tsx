@@ -65,8 +65,10 @@ export const Navbar = () => {
   const router = useRouter();
   const { data: session } = useSession();
   const [showSearchBar, setShowSearchBar] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
   const [notificationCount, setNotificationCount] = useState(0);
   const [scrolled, setScrolled] = useState(false);
+  const [recentSearches, setRecentSearches] = useState<string[]>([]);
 
   // Detect scroll for visual effects
   useEffect(() => {
@@ -75,6 +77,20 @@ export const Navbar = () => {
     };
     window.addEventListener("scroll", handleScroll);
     return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
+
+  // Load recent searches from localStorage
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const storedSearches = localStorage.getItem('recentSearches');
+      if (storedSearches) {
+        try {
+          setRecentSearches(JSON.parse(storedSearches));
+        } catch (e) {
+          console.error("Failed to parse recent searches:", e);
+        }
+      }
+    }
   }, []);
 
   // Mock function to fetch notification count
@@ -88,12 +104,57 @@ export const Navbar = () => {
     return router.pathname === href;
   };
 
-  // Navigate to search page or handle search
+  // Handle search query change
+  const handleSearchChange = (value: string) => {
+    setSearchQuery(value);
+  };
+
+  // Navigate to search page with query
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
-    // Handle search logic here
-    setShowSearchBar(false);
+    
+    if (searchQuery.trim()) {
+      // Save to recent searches (max 5)
+      const updatedSearches = [
+        searchQuery, 
+        ...recentSearches.filter(s => s !== searchQuery)
+      ].slice(0, 5);
+      
+      setRecentSearches(updatedSearches);
+      
+      // Save to localStorage
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('recentSearches', JSON.stringify(updatedSearches));
+      }
+      
+      // Navigate to search page
+      router.push(`/sok?q=${encodeURIComponent(searchQuery)}`);
+      
+      // Close search bar after search
+      setShowSearchBar(false);
+      setSearchQuery("");
+    }
   };
+
+  // Handle selecting a recent search
+  const handleSelectRecentSearch = (search: string) => {
+    router.push(`/sok?q=${encodeURIComponent(search)}`);
+    setShowSearchBar(false);
+    setSearchQuery("");
+  };
+
+  // Close search bar when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      const searchBar = document.getElementById('global-search-bar');
+      if (showSearchBar && searchBar && !searchBar.contains(e.target as Node)) {
+        setShowSearchBar(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showSearchBar]);
 
   return (
     <HeroUINavbar 
@@ -132,31 +193,53 @@ export const Navbar = () => {
         </div>
       </NavbarContent>
 
-      {/* Center section: Store selector (on desktop) */}
+      {/* Center section: Store selector or search bar */}
       <NavbarContent className="flex-1 justify-center">
         {showSearchBar ? (
-          <div className="w-full max-w-xl">
+          <div className="w-full max-w-xl" id="global-search-bar">
             <form onSubmit={handleSearch}>
-              <Input
-                classNames={{
-                  inputWrapper: "bg-default-100 shadow-sm",
-                  input: "text-sm"
-                }}
-                placeholder="Sök efter ärenden, kunder eller inställningar..."
-                startContent={<SearchIcon className="text-default-400" />}
-                endContent={
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="light"
-                    onPress={() => setShowSearchBar(false)}
-                  >
-                    Avbryt
-                  </Button>
-                }
-                autoFocus
-                className="w-full"
-              />
+              <Dropdown isOpen={recentSearches.length > 0 && searchQuery === ""}>
+                <DropdownTrigger>
+                  <Input
+                    classNames={{
+                      inputWrapper: "bg-default-100 shadow-sm",
+                      input: "text-sm"
+                    }}
+                    placeholder="Sök efter ärenden, kunder eller inställningar..."
+                    startContent={<SearchIcon className="text-default-400" />}
+                    endContent={
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="light"
+                        onPress={() => setShowSearchBar(false)}
+                      >
+                        Avbryt
+                      </Button>
+                    }
+                    autoFocus
+                    className="w-full"
+                    value={searchQuery}
+                    onValueChange={handleSearchChange}
+                  />
+                </DropdownTrigger>
+                <DropdownMenu aria-label="Senaste sökningar">
+                  <DropdownItem key="recent-header" isReadOnly className="opacity-70">
+                    Senaste sökningar
+                  </DropdownItem>
+                  {recentSearches.map((search, index) => (
+                    <DropdownItem 
+                      key={`recent-search-${index}`}
+                      onPress={() => handleSelectRecentSearch(search)}
+                    >
+                      <div className="flex items-center gap-2">
+                        <SearchIcon className="w-4 h-4 text-default-400" />
+                        {search}
+                      </div>
+                    </DropdownItem>
+                  ))}
+                </DropdownMenu>
+              </Dropdown>
             </form>
           </div>
         ) : (
@@ -184,38 +267,6 @@ export const Navbar = () => {
             <NavbarItem>
               <ThemeSwitch />
             </NavbarItem>
-
-            {/* Notification bell, might implement fully later */}
-            {/* <NavbarItem>
-              <Dropdown>
-                <DropdownTrigger>
-                  <Button
-                    isIconOnly
-                    variant="light"
-                    aria-label="Notifieringar"
-                  >
-                    <Badge content={notificationCount} color="danger" isInvisible={notificationCount === 0}>
-                      <BellIcon />
-                    </Badge>
-                  </Button>
-                </DropdownTrigger>
-                <DropdownMenu aria-label="Notifieringar">
-                  <DropdownItem key="notification-1">Nytt ärende tilldelat</DropdownItem>
-                  <DropdownItem key="notification-2">Status uppdaterad</DropdownItem>
-                  <DropdownItem key="notification-3">Ny kund registrerad</DropdownItem>
-                  <DropdownItem key="all-notifications">
-                    <Button 
-                      as={NextLink} 
-                      href="/notifieringar" 
-                      className="w-full" 
-                      size="sm"
-                    >
-                      Visa alla notifieringar
-                    </Button>
-                  </DropdownItem>
-                </DropdownMenu>
-              </Dropdown>
-            </NavbarItem> */}
 
             <NavbarItem>
               <Dropdown>
