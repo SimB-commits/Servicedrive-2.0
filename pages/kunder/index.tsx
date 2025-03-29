@@ -29,7 +29,7 @@ import {
 } from '@heroui/react';
 import { title, subtitle } from '@/components/primitives';
 import { DeleteIcon, EditIcon, EyeIcon } from '@/components/icons';
-import CustomerDrawer from '@/components/CustomerDrawer';
+import CustomerDrawer from '@/components/customer/CustomerDrawer';
 
 
 
