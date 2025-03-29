@@ -161,7 +161,8 @@ const AccountSettings = () => {
         </CardBody>
       </Card>
       
-      <Card className="my-6">
+      {/* Inte implementerat maillogik för detta ännu */}
+      {/* <Card className="my-6">
         <CardBody>
           <h3 className="text-lg font-medium mb-2">Notifieringsinställningar</h3>
           <p className="text-default-500 mb-4">Hantera dina notifieringsinställningar för systemet.</p>
@@ -192,7 +193,7 @@ const AccountSettings = () => {
             </div>
           </div>
         </CardBody>
-      </Card>
+      </Card> */}
     </div>
   );
 };
