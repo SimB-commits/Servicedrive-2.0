@@ -148,19 +148,27 @@ export const Navbar = () => {
           }
         } catch (storageError) {
           console.error("Failed to save recent searches:", storageError);
-          // Fortsätt trots fel med localStorage - det är inte kritiskt
         }
         
-        // Navigera till söksidan
-        router.push(`/sok?q=${encodeURIComponent(trimmedQuery)}`);
-        
-        // Stäng sökfältet och återställ söktermen
-        setShowSearchBar(false);
-        setSearchQuery("");
+        // Viktigt: Sätt en timeout för att stänga sökfältet efter navigeringen
+        const navUrl = `/sok?q=${encodeURIComponent(trimmedQuery)}`;
+        router.push(navUrl)
+          .then(() => {
+            // Stäng sökfältet och återställ söktermen efter navigeringen är klar
+            setTimeout(() => {
+              setShowSearchBar(false);
+              setSearchQuery("");
+              setIsSearching(false);
+            }, 100);
+          })
+          .catch((error) => {
+            console.error("Navigation error:", error);
+            setSearchError("Ett fel inträffade vid navigering.");
+            setIsSearching(false);
+          });
       } catch (error) {
         console.error("Search error:", error);
         setSearchError("Ett fel inträffade. Försök igen.");
-      } finally {
         setIsSearching(false);
       }
     }
@@ -226,70 +234,73 @@ export const Navbar = () => {
 
       {/* Center section: Store selector or search bar */}
       <NavbarContent className="flex-1 justify-center">
-      {showSearchBar ? (
-  <div className="w-full max-w-xl" id="global-search-bar">
-    <form onSubmit={handleSearch}>
-      <Dropdown isOpen={recentSearches.length > 0 && searchQuery === ""}>
-        <DropdownTrigger>
-          <Input
-            classNames={{
-              inputWrapper: "bg-default-100 shadow-sm",
-              input: "text-sm"
-            }}
-            placeholder="Sök efter ärenden, kunder eller inställningar..."
-            startContent={<SearchIcon className="text-default-400" />}
-            endContent={
-              <>
-                {isSearching && <Spinner size="sm" className="mr-2" />}
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="light"
-                  onPress={() => {
-                    setShowSearchBar(false);
-                    setSearchError(null);
-                  }}
-                  isDisabled={isSearching}
-                >
-                  Avbryt
-                </Button>
-              </>
-            }
-            autoFocus
-            className="w-full"
-            value={searchQuery}
-            onValueChange={handleSearchChange}
-            isDisabled={isSearching}
-            isInvalid={!!searchError}
-          />
-        </DropdownTrigger>
-        <DropdownMenu aria-label="Senaste sökningar">
-          <DropdownItem key="recent-header" isReadOnly className="opacity-70">
-            Senaste sökningar
-          </DropdownItem>
-          {recentSearches.map((search, index) => (
-            <DropdownItem 
-              key={`recent-search-${index}`}
-              onPress={() => handleSelectRecentSearch(search)}
-            >
-              <div className="flex items-center gap-2">
-                <SearchIcon className="w-4 h-4 text-default-400" />
-                {search}
-              </div>
-            </DropdownItem>
-          ))}
-        </DropdownMenu>
-      </Dropdown>
-      {searchError && (
-        <p className="text-danger text-xs mt-1 px-2">{searchError}</p>
-      )}
-    </form>
-  </div>
-) : (
-  <div className="hidden md:flex justify-center">
-    <StoreSelector />
-  </div>
-)}
+        {showSearchBar ? (
+          <div className="w-full max-w-xl" id="global-search-bar">
+            <form onSubmit={handleSearch}>
+              <Input
+                classNames={{
+                  inputWrapper: "bg-default-100 shadow-sm",
+                  input: "text-sm"
+                }}
+                placeholder="Sök efter ärenden, kunder eller inställningar..."
+                startContent={<SearchIcon className="text-default-400" />}
+                endContent={
+                  <>
+                    {isSearching && <Spinner size="sm" className="mr-2" />}
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="light"
+                      onPress={() => {
+                        setShowSearchBar(false);
+                        setSearchError(null);
+                      }}
+                      isDisabled={isSearching}
+                    >
+                      Avbryt
+                    </Button>
+                  </>
+                }
+                autoFocus
+                className="w-full"
+                value={searchQuery}
+                onValueChange={handleSearchChange}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleSearch(e);
+                  }
+                }}
+                isDisabled={isSearching}
+                isInvalid={!!searchError}
+              />
+              {searchError && (
+                <p className="text-danger text-xs mt-1 px-2">{searchError}</p>
+              )}
+
+              {/* Separate dropdown for recent searches */}
+              {recentSearches.length > 0 && searchQuery === "" && (
+                <div className="absolute mt-2 bg-content1 rounded-lg shadow-lg z-50 w-full">
+                  <div className="p-2 text-xs text-default-500">Senaste sökningar</div>
+                  {recentSearches.map((search, index) => (
+                    <div 
+                      key={`recent-search-${index}`}
+                      className="p-2 hover:bg-default-100 cursor-pointer flex items-center"
+                      onClick={() => handleSelectRecentSearch(search)}
+                    >
+                      <SearchIcon className="w-4 h-4 text-default-400 mr-2" />
+                      {search}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </form>
+          </div>
+        ) : (
+          <div className="hidden md:flex justify-center">
+            <StoreSelector />
+          </div>
+        )}
       </NavbarContent>
 
       {/* Right section: Actions and user menu */}
