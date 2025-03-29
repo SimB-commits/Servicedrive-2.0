@@ -1,5 +1,5 @@
 // components/navbar.tsx
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/router";
 import {
   Navbar as HeroUINavbar,
@@ -13,65 +13,35 @@ import {
   DropdownItem,
   Avatar,
   Input,
-  Badge,
-  Spinner
+  Spinner,
+  Card,
+  Chip,
+  Divider
 } from "@heroui/react";
 import NextLink from "next/link";
-import { useSession } from "next-auth/react";
+import { useSession, signOut } from "next-auth/react";
 import clsx from "clsx";
 
 import { siteConfig } from "@/config/site";
 import { ThemeSwitch } from "@/components/theme-switch";
-import { SearchIcon, Logo } from "@/components/icons";
+import { SearchIcon, Logo, EyeIcon, BellIcon, LogoutIcon } from "@/components/icons";
 import MobileMenu from "./MobileMenu";
 import StoreSelector from "./StoreSelector";
-
-// Importera ikoner manuellt då vi inte har uppdaterat icons.tsx ännu
-const BellIcon = ({ size = 24, ...props }) => (
-  <svg 
-    height={size} 
-    viewBox="0 0 24 24" 
-    width={size} 
-    fill="none" 
-    stroke="currentColor" 
-    strokeWidth="2" 
-    strokeLinecap="round" 
-    strokeLinejoin="round" 
-    {...props}
-  >
-    <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
-    <path d="M13.73 21a2 2 0 0 1-3.46 0" />
-  </svg>
-);
-
-const LogoutIcon = ({ size = 24, ...props }) => (
-  <svg 
-    height={size}
-    viewBox="0 0 24 24" 
-    width={size} 
-    fill="none" 
-    stroke="currentColor" 
-    strokeWidth="2" 
-    strokeLinecap="round" 
-    strokeLinejoin="round" 
-    {...props}
-  >
-    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-    <polyline points="16 17 21 12 16 7" />
-    <line x1="21" y1="12" x2="9" y2="12" />
-  </svg>
-);
+import { SearchResults } from "@/types/search";
+import { debounce } from "lodash";
 
 export const Navbar = () => {
   const router = useRouter();
-  const { data: session } = useSession();
+  const { data: session, status } = useSession();
   const [showSearchBar, setShowSearchBar] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [isSearching, setIsSearching] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
-  const [notificationCount, setNotificationCount] = useState(0);
+  const [searchResults, setSearchResults] = useState<SearchResults | null>(null);
   const [scrolled, setScrolled] = useState(false);
   const [recentSearches, setRecentSearches] = useState<string[]>([]);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const searchContainerRef = useRef<HTMLDivElement>(null);
 
   // Detect scroll for visual effects
   useEffect(() => {
@@ -96,12 +66,6 @@ export const Navbar = () => {
     }
   }, []);
 
-  // Mock function to fetch notification count
-  useEffect(() => {
-    // I en verklig app skulle detta vara ett API-anrop
-    setNotificationCount(3);
-  }, []);
-
   // Check if the current route is active
   const isActive = (href: string) => {
     return router.pathname === href;
@@ -110,90 +74,361 @@ export const Navbar = () => {
   // Handle search query change
   const handleSearchChange = (value: string) => {
     setSearchQuery(value);
-    // Återställ eventuella felmeddelanden när användaren ändrar söktermen
     if (searchError) {
       setSearchError(null);
     }
+    
+    if (value.trim().length >= 2) {
+      debouncedSearch(value);
+    } else {
+      setSearchResults(null);
+    }
   };
 
+  // Debounced search function to prevent too many API calls
+  const debouncedSearch = useRef(
+    debounce(async (query: string) => {
+      if (query.trim().length < 2) return;
+      
+      setIsSearching(true);
+      try {
+        const response = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
+        
+        if (!response.ok) {
+          throw new Error('Sökningen misslyckades');
+        }
+        
+        const data = await response.json();
+        setSearchResults(data.results);
+      } catch (error) {
+        console.error('Search error:', error);
+        setSearchError('Ett fel uppstod vid sökningen');
+      } finally {
+        setIsSearching(false);
+      }
+    }, 300)
+  ).current;
+
   // Navigate to search page with query
-  const handleSearch = (e: React.FormEvent) => {
+  const handleSubmitSearch = (e: React.FormEvent) => {
     e.preventDefault();
     
     const trimmedQuery = searchQuery.trim();
     
-    if (trimmedQuery) {
-      // Enkel validering
-      if (trimmedQuery.length < 2) {
-        setSearchError("Söktermen måste vara minst 2 tecken");
-        return;
+    if (trimmedQuery.length < 2) {
+      setSearchError("Söktermen måste vara minst 2 tecken");
+      return;
+    }
+    
+    // Save to recent searches
+    saveRecentSearch(trimmedQuery);
+    
+    // Navigate to full search page
+    router.push(`/sok?q=${encodeURIComponent(trimmedQuery)}`);
+    setShowSearchBar(false);
+    setSearchQuery("");
+    setSearchResults(null);
+  };
+  
+  // Save search to recent searches
+  const saveRecentSearch = (query: string) => {
+    const updatedSearches = [
+      query, 
+      ...recentSearches.filter(s => s !== query)
+    ].slice(0, 5);
+    
+    setRecentSearches(updatedSearches);
+    
+    try {
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('recentSearches', JSON.stringify(updatedSearches));
       }
-      
-      setSearchError(null);
-      setIsSearching(true);
-      
-      try {
-        // Spara till senaste sökningar (max 5)
-        const updatedSearches = [
-          trimmedQuery, 
-          ...recentSearches.filter(s => s !== trimmedQuery)
-        ].slice(0, 5);
-        
-        setRecentSearches(updatedSearches);
-        
-        // Spara till localStorage med felhantering
-        try {
-          if (typeof window !== 'undefined') {
-            localStorage.setItem('recentSearches', JSON.stringify(updatedSearches));
-          }
-        } catch (storageError) {
-          console.error("Failed to save recent searches:", storageError);
-        }
-        
-        // Viktigt: Sätt en timeout för att stänga sökfältet efter navigeringen
-        const navUrl = `/sok?q=${encodeURIComponent(trimmedQuery)}`;
-        router.push(navUrl)
-          .then(() => {
-            // Stäng sökfältet och återställ söktermen efter navigeringen är klar
-            setTimeout(() => {
-              setShowSearchBar(false);
-              setSearchQuery("");
-              setIsSearching(false);
-            }, 100);
-          })
-          .catch((error) => {
-            console.error("Navigation error:", error);
-            setSearchError("Ett fel inträffade vid navigering.");
-            setIsSearching(false);
-          });
-      } catch (error) {
-        console.error("Search error:", error);
-        setSearchError("Ett fel inträffade. Försök igen.");
-        setIsSearching(false);
-      }
+    } catch (storageError) {
+      console.error("Failed to save recent searches:", storageError);
     }
   };
   
-  // Hantera val av tidigare sökning
-  const handleSelectRecentSearch = (search: string) => {
-    router.push(`/sok?q=${encodeURIComponent(search)}`);
+  // Handle click on search result
+  const handleSelectResult = (url: string, query?: string) => {
+    if (query) {
+      saveRecentSearch(query);
+    }
+    
+    router.push(url);
     setShowSearchBar(false);
     setSearchQuery("");
+    setSearchResults(null);
+  };
+  
+  // Handle selection of recent search
+  const handleSelectRecentSearch = (search: string) => {
+    setSearchQuery(search);
+    debouncedSearch(search);
   };
 
   // Close search bar when clicking outside
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
-      const searchBar = document.getElementById('global-search-bar');
-      if (showSearchBar && searchBar && !searchBar.contains(e.target as Node)) {
+      if (showSearchBar && 
+          searchContainerRef.current && 
+          !searchContainerRef.current.contains(e.target as Node)) {
         setShowSearchBar(false);
         setSearchError(null);
+        setSearchResults(null);
+        setSearchQuery("");
       }
     };
 
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [showSearchBar]);
+
+  // Focus search input when search bar is opened
+  useEffect(() => {
+    if (showSearchBar && searchInputRef.current) {
+      searchInputRef.current.focus();
+    }
+  }, [showSearchBar]);
+
+  // Get customer name or email
+  const getCustomerName = (customer: any) => {
+    if (!customer) return "-";
+    
+    if (customer.firstName || customer.lastName) {
+      return `${customer.firstName || ""} ${customer.lastName || ""}`.trim();
+    }
+    
+    return customer.email || `Kund #${customer.id}`;
+  };
+
+  // Render dropdown results
+  const renderSearchResults = () => {
+    if (!searchResults) return null;
+    
+    const { customers, tickets, settings } = searchResults;
+    const hasCustomers = customers && customers.length > 0;
+    const hasTickets = tickets && tickets.length > 0;
+    const hasSettings = settings && settings.length > 0;
+    const hasResults = hasCustomers || hasTickets || hasSettings;
+    
+    if (!hasResults) {
+      return (
+        <div className="p-4 text-center text-default-500">
+          Inga resultat hittades
+        </div>
+      );
+    }
+    
+    return (
+      <div className="search-results-container">
+        {/* Customers */}
+        {hasCustomers && (
+          <div className="result-section">
+            <div className="px-3 py-2 bg-default-50 flex justify-between items-center">
+              <h3 className="text-sm font-medium">Kunder</h3>
+              <Chip 
+                size="sm" 
+                variant="flat"
+                color="primary"
+              >
+                {customers.length}
+              </Chip>
+            </div>
+            
+            <div className="max-h-60 overflow-y-auto">
+              {customers.slice(0, 5).map((customer) => (
+                <div 
+                  key={`customer-${customer.id}`} 
+                  className="p-3 hover:bg-default-100 cursor-pointer border-b border-default-100"
+                  onClick={() => handleSelectResult(`/kunder/${customer.id}`, searchQuery)}
+                >
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <h4 className="font-medium text-sm">{getCustomerName(customer)}</h4>
+                      <p className="text-default-500 text-xs">{customer.email}</p>
+                      {customer.phoneNumber && (
+                        <p className="text-default-500 text-xs">{customer.phoneNumber}</p>
+                      )}
+                    </div>
+                    <Button
+                      isIconOnly
+                      size="sm"
+                      variant="flat"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleSelectResult(`/kunder/${customer.id}`, searchQuery);
+                      }}
+                    >
+                      <EyeIcon size={16} />
+                    </Button>
+                  </div>
+                </div>
+              ))}
+              
+              {customers.length > 5 && (
+                <div 
+                  className="p-2 text-center text-primary text-sm hover:bg-default-100 cursor-pointer"
+                  onClick={() => handleSelectResult(`/sok?q=${encodeURIComponent(searchQuery)}&type=customers`, searchQuery)}
+                >
+                  Visa alla {customers.length} kunder
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+        
+        {/* Tickets */}
+        {hasTickets && (
+          <div className="result-section">
+            <div className="px-3 py-2 bg-default-50 flex justify-between items-center">
+              <h3 className="text-sm font-medium">Ärenden</h3>
+              <Chip 
+                size="sm" 
+                variant="flat"
+                color="primary"
+              >
+                {tickets.length}
+              </Chip>
+            </div>
+            
+            <div className="max-h-60 overflow-y-auto">
+              {tickets.slice(0, 5).map((ticket) => {
+                // Get status display
+                const statusName = ticket.customStatus 
+                  ? ticket.customStatus.name 
+                  : ticket.status || '-';
+                
+                const statusColor = ticket.customStatus 
+                  ? ticket.customStatus.color 
+                  : '#cccccc';
+                
+                return (
+                  <div 
+                    key={`ticket-${ticket.id}`} 
+                    className="p-3 hover:bg-default-100 cursor-pointer border-b border-default-100"
+                    onClick={() => handleSelectResult(`/arenden/${ticket.id}`, searchQuery)}
+                  >
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h4 className="font-medium text-sm">#{ticket.id}</h4>
+                          <div className="flex items-center">
+                            <div 
+                              className="w-2 h-2 rounded-full mr-1" 
+                              style={{ backgroundColor: statusColor }}
+                            />
+                            <span className="text-xs">{statusName}</span>
+                          </div>
+                        </div>
+                        {ticket.ticketType && (
+                          <p className="text-default-700 text-xs font-medium">
+                            {ticket.ticketType.name}
+                          </p>
+                        )}
+                        {ticket.customer && (
+                          <p className="text-default-500 text-xs">
+                            {getCustomerName(ticket.customer)}
+                          </p>
+                        )}
+                      </div>
+                      <Button
+                        isIconOnly
+                        size="sm"
+                        variant="flat"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleSelectResult(`/arenden/${ticket.id}`, searchQuery);
+                        }}
+                      >
+                        <EyeIcon size={16} />
+                      </Button>
+                    </div>
+                  </div>
+                );
+              })}
+              
+              {tickets.length > 5 && (
+                <div 
+                  className="p-2 text-center text-primary text-sm hover:bg-default-100 cursor-pointer"
+                  onClick={() => handleSelectResult(`/sok?q=${encodeURIComponent(searchQuery)}&type=tickets`, searchQuery)}
+                >
+                  Visa alla {tickets.length} ärenden
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+        
+        {/* Settings */}
+        {hasSettings && (
+          <div className="result-section">
+            <div className="px-3 py-2 bg-default-50 flex justify-between items-center">
+              <h3 className="text-sm font-medium">Inställningar</h3>
+              <Chip 
+                size="sm" 
+                variant="flat"
+                color="primary"
+              >
+                {settings.length}
+              </Chip>
+            </div>
+            
+            <div className="max-h-60 overflow-y-auto">
+              {settings.map((setting, index) => (
+                <div 
+                  key={`setting-${index}`} 
+                  className="p-3 hover:bg-default-100 cursor-pointer border-b border-default-100"
+                  onClick={() => handleSelectResult(setting.url, searchQuery)}
+                >
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <h4 className="font-medium text-sm">{setting.name}</h4>
+                      <p className="text-default-500 text-xs">{setting.description}</p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        
+        <div className="p-2 text-center border-t">
+          <Button 
+            variant="flat" 
+            color="primary"
+            size="sm"
+            onClick={() => handleSelectResult(`/sok?q=${encodeURIComponent(searchQuery)}`, searchQuery)}
+          >
+            Visa alla resultat
+          </Button>
+        </div>
+      </div>
+    );
+  };
+
+  // Render recent searches dropdown
+  const renderRecentSearches = () => {
+    if (recentSearches.length === 0 || searchQuery.trim() !== '') return null;
+    
+    return (
+      <div className="recent-searches-container">
+        <div className="px-3 py-2 bg-default-50">
+          <h3 className="text-sm font-medium">Senaste sökningar</h3>
+        </div>
+        
+        {recentSearches.map((search, index) => (
+          <div 
+            key={`recent-search-${index}`}
+            className="p-3 hover:bg-default-100 cursor-pointer flex items-center"
+            onClick={() => handleSelectRecentSearch(search)}
+          >
+            <SearchIcon className="w-4 h-4 text-default-400 mr-2" />
+            <span className="text-sm">{search}</span>
+          </div>
+        ))}
+      </div>
+    );
+  };
 
   return (
     <HeroUINavbar 
@@ -233,11 +468,12 @@ export const Navbar = () => {
       </NavbarContent>
 
       {/* Center section: Store selector or search bar */}
-      <NavbarContent className="flex-1 justify-center">
+      <NavbarContent className="flex-1 justify-center relative">
         {showSearchBar ? (
-          <div className="w-full max-w-xl" id="global-search-bar">
-            <form onSubmit={handleSearch}>
+          <div className="w-full max-w-xl relative" ref={searchContainerRef}>
+            <form onSubmit={handleSubmitSearch}>
               <Input
+                ref={searchInputRef}
                 classNames={{
                   inputWrapper: "bg-default-100 shadow-sm",
                   input: "text-sm"
@@ -254,6 +490,8 @@ export const Navbar = () => {
                       onPress={() => {
                         setShowSearchBar(false);
                         setSearchError(null);
+                        setSearchResults(null);
+                        setSearchQuery("");
                       }}
                       isDisabled={isSearching}
                     >
@@ -265,12 +503,6 @@ export const Navbar = () => {
                 className="w-full"
                 value={searchQuery}
                 onValueChange={handleSearchChange}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault();
-                    handleSearch(e);
-                  }
-                }}
                 isDisabled={isSearching}
                 isInvalid={!!searchError}
               />
@@ -278,21 +510,11 @@ export const Navbar = () => {
                 <p className="text-danger text-xs mt-1 px-2">{searchError}</p>
               )}
 
-              {/* Separate dropdown for recent searches */}
-              {recentSearches.length > 0 && searchQuery === "" && (
-                <div className="absolute mt-2 bg-content1 rounded-lg shadow-lg z-50 w-full">
-                  <div className="p-2 text-xs text-default-500">Senaste sökningar</div>
-                  {recentSearches.map((search, index) => (
-                    <div 
-                      key={`recent-search-${index}`}
-                      className="p-2 hover:bg-default-100 cursor-pointer flex items-center"
-                      onClick={() => handleSelectRecentSearch(search)}
-                    >
-                      <SearchIcon className="w-4 h-4 text-default-400 mr-2" />
-                      {search}
-                    </div>
-                  ))}
-                </div>
+              {/* Dropdown for search results */}
+              {(searchResults || (recentSearches.length > 0 && searchQuery.trim() === '')) && (
+                <Card className="absolute mt-2 z-50 w-full shadow-xl max-h-[70vh] overflow-hidden">
+                  {searchResults ? renderSearchResults() : renderRecentSearches()}
+                </Card>
               )}
             </form>
           </div>
@@ -356,13 +578,18 @@ export const Navbar = () => {
                       Hjälp & support
                     </NextLink>
                   </DropdownItem>
-                  <DropdownItem key="logout" className="text-danger" color="danger">
-                    <NextLink href="/auth/logout" className="block w-full">
-                      <div className="flex items-center gap-2">
-                        <LogoutIcon className="w-4 h-4" />
-                        Logga ut
-                      </div>
-                    </NextLink>
+                  <DropdownItem 
+                    key="logout" 
+                    className="text-danger" 
+                    color="danger"
+                    onPress={async () => {
+                      await signOut({ redirect: true, callbackUrl: '/auth/login' });
+                    }}
+                  >
+                    <div className="flex items-center gap-2">
+                      <LogoutIcon className="w-4 h-4" />
+                      Logga ut
+                    </div>
                   </DropdownItem>
                 </DropdownMenu>
               </Dropdown>

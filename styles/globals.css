@@ -1,3 +1,67 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Lägg till detta i styles/globals.css eller motsvarande */
+
+/* Sökresultat container */
+.search-results-container {
+    display: flex;
+    flex-direction: column;
+    max-height: 70vh;
+    overflow-y: auto;
+  }
+  
+  /* Resultatgrupper inom dropdown */
+  .result-section {
+    border-bottom: 1px solid var(--default-100);
+  }
+  
+  .result-section:last-child {
+    border-bottom: none;
+  }
+  
+  /* För att förbättra skrollning i resultatsektioner */
+  .result-section .max-h-60 {
+    overflow-y: auto;
+    scrollbar-width: thin;
+  }
+  
+  /* Snyggare scrollbar */
+  .search-results-container::-webkit-scrollbar,
+  .result-section .max-h-60::-webkit-scrollbar {
+    width: 6px;
+  }
+  
+  .search-results-container::-webkit-scrollbar-track,
+  .result-section .max-h-60::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  
+  .search-results-container::-webkit-scrollbar-thumb,
+  .result-section .max-h-60::-webkit-scrollbar-thumb {
+    background-color: rgba(0, 0, 0, 0.2);
+    border-radius: 3px;
+  }
+  
+  /* Hover-effekter */
+  .search-results-container .hover\:bg-default-100:hover {
+    background-color: var(--default-100);
+    transition: background-color 0.15s ease;
+  }
+  
+  /* Resultatbeskrivningar */
+  .search-results-container .text-default-500 {
+    margin-top: 2px;
+  }
+  
+  /* Responsiv anpassning för mobil */
+  @media (max-width: 640px) {
+    .search-results-container {
+      max-height: 60vh;
+    }
+    
+    .search-results-container .p-3 {
+      padding: 0.5rem;
+    }
+  }

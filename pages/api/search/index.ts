@@ -63,11 +63,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     };
 
     // Utför parallella sökningar för bättre prestanda
-    const searchPromises = [];
+    const promises = [];
 
     if (searchType === 'all' || searchType === 'customers') {
       // Sök efter kunder
-      searchPromises.push(
+      promises.push(
         prisma.customer.findMany({
           where: {
             storeId,
@@ -96,168 +96,210 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       // Check if search is a numeric ID
       const isNumeric = /^\d+$/.test(searchTerm);
       
-      // Sök efter ärenden
-      searchPromises.push(
-        prisma.ticket.findMany({
-          where: {
-            storeId,
-            OR: [
-              // Sökning efter ID som strängar 
-              ...(isNumeric ? [{ id: parseInt(searchTerm) }] : []),
-              // Sökning i ärendetyp
-              { 
-                ticketType: { 
-                  name: { contains: searchTerm, mode: 'insensitive' } 
-                } 
-              },
-              // Sökning i kunduppgifter
-              { 
-                customer: { 
-                  OR: [
-                    { firstName: { contains: searchTerm, mode: 'insensitive' } },
-                    { lastName: { contains: searchTerm, mode: 'insensitive' } },
-                    { email: { contains: searchTerm, mode: 'insensitive' } },
-                  ]
+      const ticketSearchOptions = {
+        where: {
+          storeId,
+          OR: [
+            // Sökning med ID om söktermen är numerisk
+            ...(isNumeric ? [{ id: parseInt(searchTerm) }] : []),
+            // Sökning i ärendetyp
+            { 
+              ticketType: { 
+                name: { contains: searchTerm, mode: 'insensitive' } 
+              } 
+            },
+            // Sökning i kunduppgifter
+            { 
+              customer: { 
+                OR: [
+                  { firstName: { contains: searchTerm, mode: 'insensitive' } },
+                  { lastName: { contains: searchTerm, mode: 'insensitive' } },
+                  { email: { contains: searchTerm, mode: 'insensitive' } },
+                ]
+              }
+            },
+            // Sökning i meddelanden
+            {
+              messages: {
+                some: {
+                  content: { contains: searchTerm, mode: 'insensitive' }
                 }
-              },
-              // Sökning i dynamiska fält - med förbättrad JSON-sökning
-              {
-                dynamicFields: {
-                  path: "$",
-                  string_contains: searchTerm,
-                },
-              },
-            ],
+              }
+            }
+          ],
+        },
+        include: {
+          customer: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              email: true,
+            }
           },
-          include: {
-            customer: {
-              select: {
-                id: true,
-                firstName: true,
-                lastName: true,
-                email: true,
-              }
-            },
-            ticketType: {
-              select: {
-                name: true,
-              }
-            },
-            customStatus: {
-              select: {
-                name: true,
-                color: true,
-              }
-            },
+          ticketType: {
+            select: {
+              name: true,
+            }
           },
-          take: 20, // Ökat antal resultat
-          orderBy: {
-            createdAt: 'desc' // Nyaste först
-          }
-        }).then(data => {
+          customStatus: {
+            select: {
+              name: true,
+              color: true,
+            }
+          },
+        },
+        take: 20,
+        orderBy: {
+          createdAt: 'desc'
+        }
+      };
+      
+      promises.push(
+        prisma.ticket.findMany(ticketSearchOptions).then(data => {
           results.tickets = data;
         })
       );
+      
+      // JSON-sökning kan implementeras som en andra sökning om den behövs
+      // Denna gör vi separat för att använda en annan syntax som är kompatibel
+      // OBS: Denna del kanske inte fungerar på alla Prisma/DB-kombinationer
+      try {
+        const jsonSearchQuery = prisma.sql`
+          SELECT t.id FROM "Ticket" t
+          WHERE t."storeId" = ${storeId}
+          AND t."dynamicFields"::text ILIKE ${`%${searchTerm}%`}
+          ORDER BY t."createdAt" DESC
+          LIMIT 20
+        `;
+        
+        promises.push(
+          prisma.$queryRaw(jsonSearchQuery)
+            .then(async (jsonMatches: any[]) => {
+              if (jsonMatches && jsonMatches.length > 0) {
+                const ids = jsonMatches.map(match => match.id);
+                
+                // Hämta fullständiga ärenden baserat på ID:n från JSON-sökningen
+                const jsonMatchedTickets = await prisma.ticket.findMany({
+                  where: {
+                    id: { in: ids },
+                    storeId
+                  },
+                  include: ticketSearchOptions.include,
+                });
+                
+                // Slå ihop resultaten men filtrera bort dubletter
+                const existingIds = new Set(results.tickets.map(t => t.id));
+                const newTickets = jsonMatchedTickets.filter(t => !existingIds.has(t.id));
+                results.tickets = [...results.tickets, ...newTickets];
+              }
+            })
+            .catch(error => {
+              // Om JSON-sökningen misslyckas, loggar vi bara ett fel men fortsätter
+              logger.error('JSON search error', { error: error.message });
+            })
+        );
+      } catch (jsonError) {
+        // Om JSON-sökningen misslyckas helt, fortsätter vi med övriga resultat
+        logger.error('JSON search setup error', { error: jsonError.message });
+      }
     }
 
     if (searchType === 'all' || searchType === 'settings') {
-      // Sökning i inställningar - mer sofistikerad
+      // Sökning i inställningar
       const searchTermLower = searchTerm.toLowerCase();
       const settingsResults = [];
       
-      // Ärendetyper
-      if (searchTermLower.includes('ärende') || 
-          searchTermLower.includes('arende') || 
-          searchTermLower.includes('typ') ||
-          searchTermLower.includes('formulär') ||
-          searchTermLower.includes('ticket') ||
-          searchTermLower.includes('type')) {
-        settingsResults.push({
-          type: 'settings',
+      // Utöka sökresultat baserat på sökterm
+      const settings = [
+        {
+          id: 'arendetyper',
+          keywords: ['ärende', 'arende', 'typ', 'formulär', 'ticket', 'type', 'fält', 'field'],
           name: 'Ärendetyper',
           description: 'Hantera dina ärendetyper och definiera fält',
           url: '/installningar?tab=arendetyper'
-        });
-      }
-      
-      // Mailmallar
-      if (searchTermLower.includes('mail') || 
-          searchTermLower.includes('e-post') || 
-          searchTermLower.includes('epost') || 
-          searchTermLower.includes('mall') ||
-          searchTermLower.includes('email') ||
-          searchTermLower.includes('template')) {
-        settingsResults.push({
-          type: 'settings',
+        },
+        {
+          id: 'mailmallar',
+          keywords: ['mail', 'e-post', 'epost', 'mall', 'email', 'template', 'meddelande', 'message', 'kommunikation'],
           name: 'Mailmallar',
           description: 'Hantera dina e-postmallar för kommunikation',
           url: '/installningar?tab=mailmallar'
-        });
-      }
-      
-      // Kundkort
-      if (searchTermLower.includes('kund') || 
-          searchTermLower.includes('kort') || 
-          searchTermLower.includes('mall') ||
-          searchTermLower.includes('customer') ||
-          searchTermLower.includes('card') ||
-          searchTermLower.includes('person')) {
-        settingsResults.push({
-          type: 'settings',
+        },
+        {
+          id: 'kundkortsmallar',
+          keywords: ['kund', 'kort', 'mall', 'customer', 'card', 'person', 'kontakt', 'contact'],
           name: 'Kundkortsmallar',
           description: 'Hantera dina kundkortsmallar',
           url: '/installningar?tab=kundkortsmallar'
-        });
-      }
-      
-      // Statusar
-      if (searchTermLower.includes('status') || 
-          searchTermLower.includes('ärende') ||
-          searchTermLower.includes('tillstånd') ||
-          searchTermLower.includes('state') ||
-          searchTermLower.includes('läge')) {
-        settingsResults.push({
-          type: 'settings',
+        },
+        {
+          id: 'arendestatusar',
+          keywords: ['status', 'ärende', 'tillstånd', 'state', 'läge', 'flow', 'flöde'],
           name: 'Ärendestatusar',
           description: 'Hantera dina ärendestatusar och flöden',
           url: '/installningar?tab=arendestatusar'
-        });
-      }
-      
-      // E-post
-      if (searchTermLower.includes('email') || 
-          searchTermLower.includes('e-post') ||
-          searchTermLower.includes('epost') ||
-          searchTermLower.includes('smtp') ||
-          searchTermLower.includes('mail') ||
-          searchTermLower.includes('notif')) {
-        settingsResults.push({
-          type: 'settings',
+        },
+        {
+          id: 'email',
+          keywords: ['email', 'e-post', 'epost', 'smtp', 'mail', 'notif', 'notify', 'subscription'],
           name: 'E-postinställningar',
           description: 'Konfigurera e-postkopplingar och notifieringar',
           url: '/installningar?tab=email'
-        });
-      }
-      
-      // Butiker
-      if (searchTermLower.includes('butik') || 
-          searchTermLower.includes('store') ||
-          searchTermLower.includes('shop') ||
-          searchTermLower.includes('company') ||
-          searchTermLower.includes('företag')) {
-        settingsResults.push({
-          type: 'settings',
+        },
+        {
+          id: 'butiker',
+          keywords: ['butik', 'store', 'shop', 'company', 'företag', 'organisation', 'organization'],
           name: 'Butikshantering',
           description: 'Hantera dina butiker och organisationer',
           url: '/installningar?tab=butiker'
-        });
+        },
+        {
+          id: 'konto',
+          keywords: ['account', 'konto', 'user', 'användare', 'profil', 'profile', 'lösenord', 'password'],
+          name: 'Kontoinställningar',
+          description: 'Hantera ditt konto och säkerhetsinställningar',
+          url: '/installningar?tab=konto'
+        }
+      ];
+      
+      // Mer intelligent matchning mot inställningar
+      // Kontrollera först om det är en exakt matchning på någon nyckelord
+      let exactMatches = settings.filter(setting => 
+        setting.keywords.some(keyword => keyword === searchTermLower) ||
+        setting.name.toLowerCase() === searchTermLower
+      );
+      
+      // Om det inte finns exakta matchningar, använd delvis matchning
+      if (exactMatches.length === 0) {
+        exactMatches = settings.filter(setting => 
+          setting.keywords.some(keyword => keyword.includes(searchTermLower) || 
+                                          searchTermLower.includes(keyword))
+        );
       }
       
-      results.settings = settingsResults;
+      // Om fortfarande inga matchningar, använd ännu bredare matchning
+      if (exactMatches.length === 0) {
+        exactMatches = settings.filter(setting => 
+          setting.keywords.some(keyword => 
+            keyword.length > 3 && 
+            (keyword.includes(searchTermLower.substring(0, 3)) || 
+             searchTermLower.includes(keyword.substring(0, 3)))
+          )
+        );
+      }
+      
+      // Lägg till matchande inställningar till resultatet
+      results.settings = exactMatches.map(setting => ({
+        type: 'settings',
+        name: setting.name,
+        description: setting.description,
+        url: setting.url
+      }));
     }
 
     // Vänta på att alla sökningar ska slutföras
-    await Promise.all(searchPromises);
+    await Promise.all(promises);
 
     // Returnera sökresultaten med förbättrad metadata
     return res.status(200).json({
