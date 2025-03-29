@@ -13,7 +13,7 @@ import {
   Accordion,
   AccordionItem
 } from '@heroui/react';
-import MailTemplateTest from '../MailTemplateTest';
+import MailTemplateTest from './MailTemplateTest';
 
 interface MailTemplate {
   id: number;
@@ -332,7 +332,7 @@ const TemplateSettings: React.FC<TemplateSettingsProps> = ({ onSettingsUpdated }
             </div>
           </AccordionItem>
           
-          <AccordionItem 
+          {/* <AccordionItem 
             key="advanced" 
             title={
               <h3 className="text-md font-medium">Avancerade mailmallar</h3>
@@ -377,7 +377,7 @@ const TemplateSettings: React.FC<TemplateSettingsProps> = ({ onSettingsUpdated }
                 </div>
               ))}
             </div>
-          </AccordionItem>
+          </AccordionItem> */}
           
           
         </Accordion>

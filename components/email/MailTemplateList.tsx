@@ -26,8 +26,8 @@ import {
 } from '@heroui/react';
 
 import { DeleteIcon, EditIcon, ChevronDownIcon, SearchIcon } from '@/components/icons';
-import MailTemplateTest from '@/components/MailTemplateTest';
-import EnhancedEmailEditor from './MailTemplateForm';
+import MailTemplateTest from '@/components/email/MailTemplateTest';
+import MailTemplateForm from './MailTemplateForm';
 
 interface MailTemplate {
   id: number;
@@ -506,7 +506,7 @@ const EnhancedTemplateList: React.FC<TemplateListProps> = ({
             <h2 className="text-xl font-bold">Skapa ny mailmall</h2>
           </ModalHeader>
           <ModalBody>
-            <EnhancedEmailEditor
+            <MailTemplateForm
               onSave={handleSaveTemplate}
               onCancel={() => setCreateModalOpen(false)}
             />
@@ -527,7 +527,7 @@ const EnhancedTemplateList: React.FC<TemplateListProps> = ({
           </ModalHeader>
           <ModalBody>
             {selectedTemplate && (
-              <EnhancedEmailEditor
+              <MailTemplateForm
                 initialTemplate={selectedTemplate}
                 onSave={handleSaveTemplate}
                 onCancel={() => {

@@ -172,7 +172,7 @@ const EditorToolbar = ({ onInsertVariable, onFormat }) => {
 };
 
 // Huvudkomponent för mallredigeraren
-const EnhancedEmailEditor = ({ 
+const MailTemplateForm = ({ 
   initialTemplate = { name: '', subject: '', body: '' },
   onSave,
   onCancel,
@@ -529,4 +529,4 @@ const EnhancedEmailEditor = ({
   );
 };
 
-export default EnhancedEmailEditor;
+export default MailTemplateForm;

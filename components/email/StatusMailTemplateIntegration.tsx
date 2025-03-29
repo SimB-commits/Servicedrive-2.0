@@ -11,7 +11,7 @@ import {
   Divider,
   addToast
 } from '@heroui/react';
-import MailTemplateTest from '../MailTemplateTest';
+import MailTemplateTest from './MailTemplateTest';
 
 interface MailTemplate {
   id: number;

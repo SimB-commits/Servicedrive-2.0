@@ -16,7 +16,7 @@ import {
   Pagination,
 } from "@heroui/react";
 import { title } from "@/components/primitives";
-import TicketDrawer from "@/components/TicketDrawer";
+import TicketDrawer from "@/components/tickets/TicketDrawer";
 /* import TicketEditDrawer, { Ticket } from "@/components/TicketEditDrawer"; */
 import { DeleteIcon, EditIcon, EyeIcon } from "@/components/icons";
 
