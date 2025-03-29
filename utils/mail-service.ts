@@ -481,6 +481,22 @@ export const sendNewTicketEmail = async (
     // Hämta storeId från ärendet
     const storeId = ticket.storeId;
     
+    // Hämta butiksinformation om den inte finns i ticket-objektet
+    let store = ticket.store;
+    if (!store && storeId) {
+      try {
+        store = await prisma.store.findUnique({
+          where: { id: storeId }
+        });
+      } catch (error) {
+        logger.warn(`Kunde inte hämta butiksinformation för ärende #${ticket.id}, använder standardnamn`, {
+          error: error instanceof Error ? error.message : "Okänt fel",
+          ticketId: ticket.id,
+          storeId
+        });
+      }
+    }
+    
     // Hämta mailmallens inställningar för bekräftelsemail vid nya ärenden
     const mailTemplateSetting = await prisma.mailTemplateSettings.findUnique({
       where: {
@@ -539,7 +555,7 @@ export const sendNewTicketEmail = async (
     }
     
     // Bygg utökade variabler med länkar
-    const variables = buildTicketVariables(ticket);
+    const variables = buildTicketVariables(ticket, store);
     
     // Lägg till användbara länkar i variablerna
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || '';
@@ -577,16 +593,15 @@ export const sendNewTicketEmail = async (
  * Byggfunktion för att skapa variabeldata från ett ärende
  * Centraliserad funktion för att skapa konsistenta variabler
  */
-export const buildTicketVariables = (ticket: any, store?: any): TemplateVariables => {
+export const buildTicketVariables = (ticket: any, storeObj?: any): TemplateVariables => {
   const dynamicFields = typeof ticket.dynamicFields === 'object' && ticket.dynamicFields !== null
     ? ticket.dynamicFields
     : {};
 
-  // Använd butiksnamn från store-objektet om tillgängligt, annars fallback
-  const useCompanyName = store?.company || 
-    ticket.store?.company || 
-    process.env.COMPANY_NAME || 
-    'Servicedrive';
+  // Förbättrad logik för att säkerställa att butiksnamnet alltid är tillgängligt
+  // Prioritering: storeObj parameter > ticket.store > miljövariabel > standardvärde
+  const store = storeObj || ticket.store;
+  const companyName = store?.name || store?.company || process.env.COMPANY_NAME || 'Servicedrive';
 
   return {
     ärendeID: ticket.id,
@@ -595,7 +610,8 @@ export const buildTicketVariables = (ticket: any, store?: any): TemplateVariable
     ärendeTyp: ticket.ticketType?.name || '',
     ärendeStatus: ticket.customStatus?.name || ticket.status || '',
     ärendeDatum: ticket.createdAt,
-    företagsNamn: useCompanyName,
+    företagsNamn: companyName, // Använder förbättrad logik för butiksnamn
+    butiksNamn: companyName,   // Alias för företagsNamn för ökad flexibilitet
     deadline: ticket.dueDate || '',
     // Data om användare som hanterar ärendet, om tillgängligt
     handläggare: ticket.assignedUser ? 

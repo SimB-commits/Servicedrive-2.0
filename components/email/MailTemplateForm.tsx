@@ -125,8 +125,9 @@ const EditorToolbar = ({ onInsertVariable, onFormat }) => {
             <div className="font-medium text-sm mb-2">Övriga variabler</div>
             <div className="grid grid-cols-2 gap-1">
               <Button size="sm" variant="flat" onPress={() => onInsertVariable('handläggare')}>Handläggare</Button>
+              <Button size="sm" variant="flat" onPress={() => onInsertVariable('handläggareEmail')}>Handläggare Email</Button>
               <Button size="sm" variant="flat" onPress={() => onInsertVariable('företagsNamn')}>Företagsnamn</Button>
-              
+              <Button size="sm" variant="flat" onPress={() => onInsertVariable('butiksNamn')}>Butiksnamn</Button>
               <Button size="sm" variant="flat" onPress={() => onInsertVariable('aktuellDatum')}>Dagens datum</Button>
             </div>
           </div>
@@ -311,7 +312,9 @@ const MailTemplateForm = ({
       ärendeLänk: 'https://app.servicedrive.se/arenden/12345',
       deadline: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toLocaleDateString('sv-SE'),
       handläggare: 'Martin Svensson',
+      handläggareEmail: 'martin.svensson@example.com',
       företagsNamn: 'Demo Företag AB',
+      butiksNamn: 'Demo Företag AB',
       gammalStatus: 'Ny',
       aktuellDatum: new Date().toLocaleDateString('sv-SE')
     };
@@ -320,7 +323,7 @@ const MailTemplateForm = ({
     let previewContent = templateBody;
     Object.entries(variables).forEach(([key, value]) => {
       const regex = new RegExp(`{${key}}`, 'g');
-      previewContent = previewContent.replace(regex, value);
+      previewContent = previewContent.replace(regex, String(value));
     });
     
     return previewContent;
@@ -487,8 +490,9 @@ const MailTemplateForm = ({
                 <h4 className="font-medium text-sm mt-3 mb-1">Övriga variabler:</h4>
                 <ul className="list-disc list-inside text-sm">
                   <li>{'{handläggare}'} - Namn på handläggaren</li>
+                  <li>{'{handläggareEmail}'} - Handläggarens e-postadress</li>
                   <li>{'{företagsNamn}'} - Ditt företagsnamn</li>
-                  
+                  <li>{'{butiksNamn}'} - Butikens namn (samma som företagsnamn)</li>
                   <li>{'{aktuellDatum}'} - Dagens datum</li>
                 </ul>
               </div>
