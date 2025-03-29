@@ -13,7 +13,8 @@ import {
   DropdownItem,
   Avatar,
   Input,
-  Badge
+  Badge,
+  Spinner
 } from "@heroui/react";
 import NextLink from "next/link";
 import { useSession } from "next-auth/react";
@@ -66,6 +67,8 @@ export const Navbar = () => {
   const { data: session } = useSession();
   const [showSearchBar, setShowSearchBar] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [isSearching, setIsSearching] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
   const [notificationCount, setNotificationCount] = useState(0);
   const [scrolled, setScrolled] = useState(false);
   const [recentSearches, setRecentSearches] = useState<string[]>([]);
@@ -107,36 +110,63 @@ export const Navbar = () => {
   // Handle search query change
   const handleSearchChange = (value: string) => {
     setSearchQuery(value);
+    // Återställ eventuella felmeddelanden när användaren ändrar söktermen
+    if (searchError) {
+      setSearchError(null);
+    }
   };
 
   // Navigate to search page with query
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (searchQuery.trim()) {
-      // Save to recent searches (max 5)
-      const updatedSearches = [
-        searchQuery, 
-        ...recentSearches.filter(s => s !== searchQuery)
-      ].slice(0, 5);
-      
-      setRecentSearches(updatedSearches);
-      
-      // Save to localStorage
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('recentSearches', JSON.stringify(updatedSearches));
+    const trimmedQuery = searchQuery.trim();
+    
+    if (trimmedQuery) {
+      // Enkel validering
+      if (trimmedQuery.length < 2) {
+        setSearchError("Söktermen måste vara minst 2 tecken");
+        return;
       }
       
-      // Navigate to search page
-      router.push(`/sok?q=${encodeURIComponent(searchQuery)}`);
+      setSearchError(null);
+      setIsSearching(true);
       
-      // Close search bar after search
-      setShowSearchBar(false);
-      setSearchQuery("");
+      try {
+        // Spara till senaste sökningar (max 5)
+        const updatedSearches = [
+          trimmedQuery, 
+          ...recentSearches.filter(s => s !== trimmedQuery)
+        ].slice(0, 5);
+        
+        setRecentSearches(updatedSearches);
+        
+        // Spara till localStorage med felhantering
+        try {
+          if (typeof window !== 'undefined') {
+            localStorage.setItem('recentSearches', JSON.stringify(updatedSearches));
+          }
+        } catch (storageError) {
+          console.error("Failed to save recent searches:", storageError);
+          // Fortsätt trots fel med localStorage - det är inte kritiskt
+        }
+        
+        // Navigera till söksidan
+        router.push(`/sok?q=${encodeURIComponent(trimmedQuery)}`);
+        
+        // Stäng sökfältet och återställ söktermen
+        setShowSearchBar(false);
+        setSearchQuery("");
+      } catch (error) {
+        console.error("Search error:", error);
+        setSearchError("Ett fel inträffade. Försök igen.");
+      } finally {
+        setIsSearching(false);
+      }
     }
   };
-
-  // Handle selecting a recent search
+  
+  // Hantera val av tidigare sökning
   const handleSelectRecentSearch = (search: string) => {
     router.push(`/sok?q=${encodeURIComponent(search)}`);
     setShowSearchBar(false);
@@ -149,6 +179,7 @@ export const Navbar = () => {
       const searchBar = document.getElementById('global-search-bar');
       if (showSearchBar && searchBar && !searchBar.contains(e.target as Node)) {
         setShowSearchBar(false);
+        setSearchError(null);
       }
     };
 
@@ -195,58 +226,70 @@ export const Navbar = () => {
 
       {/* Center section: Store selector or search bar */}
       <NavbarContent className="flex-1 justify-center">
-        {showSearchBar ? (
-          <div className="w-full max-w-xl" id="global-search-bar">
-            <form onSubmit={handleSearch}>
-              <Dropdown isOpen={recentSearches.length > 0 && searchQuery === ""}>
-                <DropdownTrigger>
-                  <Input
-                    classNames={{
-                      inputWrapper: "bg-default-100 shadow-sm",
-                      input: "text-sm"
-                    }}
-                    placeholder="Sök efter ärenden, kunder eller inställningar..."
-                    startContent={<SearchIcon className="text-default-400" />}
-                    endContent={
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="light"
-                        onPress={() => setShowSearchBar(false)}
-                      >
-                        Avbryt
-                      </Button>
-                    }
-                    autoFocus
-                    className="w-full"
-                    value={searchQuery}
-                    onValueChange={handleSearchChange}
-                  />
-                </DropdownTrigger>
-                <DropdownMenu aria-label="Senaste sökningar">
-                  <DropdownItem key="recent-header" isReadOnly className="opacity-70">
-                    Senaste sökningar
-                  </DropdownItem>
-                  {recentSearches.map((search, index) => (
-                    <DropdownItem 
-                      key={`recent-search-${index}`}
-                      onPress={() => handleSelectRecentSearch(search)}
-                    >
-                      <div className="flex items-center gap-2">
-                        <SearchIcon className="w-4 h-4 text-default-400" />
-                        {search}
-                      </div>
-                    </DropdownItem>
-                  ))}
-                </DropdownMenu>
-              </Dropdown>
-            </form>
-          </div>
-        ) : (
-          <div className="hidden md:flex justify-center">
-            <StoreSelector />
-          </div>
-        )}
+      {showSearchBar ? (
+  <div className="w-full max-w-xl" id="global-search-bar">
+    <form onSubmit={handleSearch}>
+      <Dropdown isOpen={recentSearches.length > 0 && searchQuery === ""}>
+        <DropdownTrigger>
+          <Input
+            classNames={{
+              inputWrapper: "bg-default-100 shadow-sm",
+              input: "text-sm"
+            }}
+            placeholder="Sök efter ärenden, kunder eller inställningar..."
+            startContent={<SearchIcon className="text-default-400" />}
+            endContent={
+              <>
+                {isSearching && <Spinner size="sm" className="mr-2" />}
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="light"
+                  onPress={() => {
+                    setShowSearchBar(false);
+                    setSearchError(null);
+                  }}
+                  isDisabled={isSearching}
+                >
+                  Avbryt
+                </Button>
+              </>
+            }
+            autoFocus
+            className="w-full"
+            value={searchQuery}
+            onValueChange={handleSearchChange}
+            isDisabled={isSearching}
+            isInvalid={!!searchError}
+          />
+        </DropdownTrigger>
+        <DropdownMenu aria-label="Senaste sökningar">
+          <DropdownItem key="recent-header" isReadOnly className="opacity-70">
+            Senaste sökningar
+          </DropdownItem>
+          {recentSearches.map((search, index) => (
+            <DropdownItem 
+              key={`recent-search-${index}`}
+              onPress={() => handleSelectRecentSearch(search)}
+            >
+              <div className="flex items-center gap-2">
+                <SearchIcon className="w-4 h-4 text-default-400" />
+                {search}
+              </div>
+            </DropdownItem>
+          ))}
+        </DropdownMenu>
+      </Dropdown>
+      {searchError && (
+        <p className="text-danger text-xs mt-1 px-2">{searchError}</p>
+      )}
+    </form>
+  </div>
+) : (
+  <div className="hidden md:flex justify-center">
+    <StoreSelector />
+  </div>
+)}
       </NavbarContent>
 
       {/* Right section: Actions and user menu */}

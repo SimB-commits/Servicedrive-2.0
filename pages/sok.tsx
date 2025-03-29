@@ -1,369 +1,366 @@
 // pages/sok.tsx
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
-import { useSession } from 'next-auth/react';
 import {
   Card,
   CardBody,
-  Input,
   Button,
+  Input,
+  Spinner,
   Tabs,
   Tab,
-  Spinner,
-  Chip,
-  Table,
-  TableHeader,
-  TableBody,
-  TableColumn,
-  TableRow,
-  TableCell,
-  Link,
-  Pagination
+  Divider,
 } from '@heroui/react';
+import { SearchIcon, EyeIcon } from '@/components/icons';
 import { title } from '@/components/primitives';
-import { SearchIcon } from '@/components/icons';
+import NextLink from 'next/link';
 
-// Typ för ett sökresultat
-type SearchResult = {
-  type: 'ticket' | 'customer' | 'setting';
-  id: number | string;
-  title: string;
-  subtitle?: string;
-  metaInfo?: string;
+// Typningar för sökresultat
+interface Customer {
+  id: number;
+  firstName?: string;
+  lastName?: string;
+  email: string;
+  phoneNumber?: string;
+}
+
+interface Ticket {
+  id: number;
+  status?: string;
+  customer?: Customer;
+  ticketType?: {
+    name: string;
+  };
+  customStatus?: {
+    name: string;
+    color: string;
+  };
+}
+
+interface SettingResult {
+  type: string;
+  name: string;
+  description: string;
   url: string;
-  relevance: number;
-  data: any; // Den ursprungliga dataobjektet
-};
+}
 
-const SearchPage = () => {
+interface SearchResults {
+  customers: Customer[];
+  tickets: Ticket[];
+  settings: SettingResult[];
+}
+
+interface SearchResponse {
+  query: string;
+  results: SearchResults;
+  totalCount: {
+    customers: number;
+    tickets: number;
+    settings: number;
+    total: number;
+  };
+}
+
+export default function SearchPage() {
   const router = useRouter();
-  const { data: session, status } = useSession();
-  const { q: queryParam } = router.query;
+  const { q } = router.query;
   
-  const [searchQuery, setSearchQuery] = useState('');
-  const [isSearching, setIsSearching] = useState(false);
-  const [results, setResults] = useState<SearchResult[]>([]);
+  const [searchQuery, setSearchQuery] = useState<string>('');
+  const [results, setResults] = useState<SearchResults | null>(null);
+  const [loading, setLoading] = useState<boolean>(false);
+  const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<string>('all');
-  const [page, setPage] = useState(1);
-  const [resultsPerPage, setResultsPerPage] = useState(10);
+  const [totalCount, setTotalCount] = useState<Record<string, number>>({
+    customers: 0,
+    tickets: 0,
+    settings: 0,
+    total: 0
+  });
 
-  // Uppdatera söktermen när URL-parametern ändras
+  // Uppdatera sökfrågan när URL-parametern ändras
   useEffect(() => {
-    if (typeof queryParam === 'string') {
-      setSearchQuery(queryParam);
-      performSearch(queryParam);
+    if (q && typeof q === 'string') {
+      setSearchQuery(q);
+      performSearch(q);
     }
-  }, [queryParam]);
+  }, [q]);
 
-  // Utför sökningen
+  // Sökfunktion
   const performSearch = async (query: string) => {
-    if (!query.trim()) {
-      setResults([]);
-      return;
-    }
-
-    setIsSearching(true);
-
-    try {
-      // Sökning i ärenden
-      const ticketsResponse = await fetch(`/api/tickets?search=${encodeURIComponent(query)}`);
-      const tickets = await ticketsResponse.json();
-
-      // Sökning i kunder
-      const customersResponse = await fetch(`/api/customers?search=${encodeURIComponent(query)}`);
-      const customers = await customersResponse.json();
-
-      // Sammanställ resultat
-      const combinedResults: SearchResult[] = [
-        // Mappa ärenden till SearchResult format
-        ...tickets.map(ticket => ({
-          type: 'ticket' as const,
-          id: ticket.id,
-          title: `Ärende #${ticket.id}`,
-          subtitle: ticket.ticketType?.name || 'Okänd ärendetyp',
-          metaInfo: new Date(ticket.createdAt).toLocaleDateString('sv-SE'),
-          url: `/arenden/${ticket.id}`,
-          relevance: calculateRelevance(query, ticket),
-          data: ticket
-        })),
-        
-        // Mappa kunder till SearchResult format
-        ...customers.map(customer => ({
-          type: 'customer' as const,
-          id: customer.id,
-          title: `${customer.firstName || ''} ${customer.lastName || ''}`.trim() || customer.email,
-          subtitle: customer.email,
-          metaInfo: customer.phoneNumber || '',
-          url: `/kunder/${customer.id}`,
-          relevance: calculateRelevance(query, customer),
-          data: customer
-        }))
-      ];
-
-      // Sortera resultat efter relevans
-      setResults(combinedResults.sort((a, b) => b.relevance - a.relevance));
-    } catch (error) {
-      console.error('Fel vid sökning:', error);
-    } finally {
-      setIsSearching(false);
-    }
-  };
-
-  // Beräkna relevans baserat på matchningar mot olika fält
-  const calculateRelevance = (query: string, item: any): number => {
-    const lowerQuery = query.toLowerCase();
-    let score = 0;
-
-    // Om det är ett ärende
-    if (item.ticketType) {
-      // Poäng om ID:t matchar
-      if (item.id.toString().includes(lowerQuery)) score += 10;
-      
-      // Poäng om ärendetypen matchar
-      if (item.ticketType?.name?.toLowerCase().includes(lowerQuery)) score += 5;
-      
-      // Poäng om något dynamiskt fält matchar
-      if (item.dynamicFields) {
-        Object.values(item.dynamicFields).forEach((value: any) => {
-          if (String(value).toLowerCase().includes(lowerQuery)) score += 3;
-        });
-      }
-      
-      // Poäng om kundens namn matchar
-      if (item.customer) {
-        const customerName = `${item.customer.firstName || ''} ${item.customer.lastName || ''}`.toLowerCase();
-        if (customerName.includes(lowerQuery)) score += 4;
-        if (item.customer.email?.toLowerCase().includes(lowerQuery)) score += 3;
-      }
-    }
+    if (!query.trim() || query.trim().length < 2) return;
     
-    // Om det är en kund
-    else if (item.email) {
-      // Poäng om namn matchar
-      const fullName = `${item.firstName || ''} ${item.lastName || ''}`.toLowerCase();
-      if (fullName.includes(lowerQuery)) score += 10;
+    setLoading(true);
+    setError(null);
+    
+    try {
+      const response = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
       
-      // Poäng om email matchar
-      if (item.email.toLowerCase().includes(lowerQuery)) score += 8;
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Sökningen misslyckades');
+      }
       
-      // Poäng om telefon matchar
-      if (item.phoneNumber?.toLowerCase().includes(lowerQuery)) score += 7;
-      
-      // Poäng om adress matchar
-      if (item.address?.toLowerCase().includes(lowerQuery)) score += 5;
-      if (item.city?.toLowerCase().includes(lowerQuery)) score += 5;
+      const data: SearchResponse = await response.json();
+      setResults(data.results);
+      setTotalCount(data.totalCount || {
+        customers: data.results.customers.length,
+        tickets: data.results.tickets.length,
+        settings: data.results.settings.length,
+        total: data.results.customers.length + data.results.tickets.length + data.results.settings.length
+      });
+    } catch (err) {
+      console.error('Search error:', err);
+      setError(err instanceof Error ? err.message : 'Ett fel inträffade vid sökning');
+    } finally {
+      setLoading(false);
     }
-
-    return score;
   };
 
-  // Hantera ny sökning
+  // Hantera nytt sökformulär på söksidan
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
     
-    // Uppdatera URL:en för att uppdatera sökningen
-    if (searchQuery.trim()) {
-      router.push({
-        pathname: '/sok',
-        query: { q: searchQuery }
-      }, undefined, { shallow: true });
-      
-      // Utför sökningen direkt
+    if (searchQuery.trim().length >= 2) {
+      router.push(`/sok?q=${encodeURIComponent(searchQuery)}`, undefined, { shallow: true });
       performSearch(searchQuery);
+    } else if (searchQuery.trim().length > 0) {
+      setError('Söktermen måste vara minst 2 tecken');
     }
   };
 
-  // Filtrera resultat baserat på aktuell flik
-  const filteredResults = useMemo(() => {
-    if (activeTab === 'all') return results;
-    return results.filter(result => result.type === activeTab);
-  }, [results, activeTab]);
+  // Filtrering av resultat baserat på aktiv flik
+  const getFilteredResults = () => {
+    if (!results) return null;
+    
+    switch (activeTab) {
+      case 'customers':
+        return { ...results, tickets: [], settings: [] };
+      case 'tickets':
+        return { ...results, customers: [], settings: [] };
+      case 'settings':
+        return { ...results, customers: [], tickets: [] };
+      default:
+        return results;
+    }
+  };
 
-  // Beräkna antal sidor och nuvarande sidresultat
-  const totalPages = Math.ceil(filteredResults.length / resultsPerPage);
-  const currentPageResults = useMemo(() => {
-    const startIndex = (page - 1) * resultsPerPage;
-    return filteredResults.slice(startIndex, startIndex + resultsPerPage);
-  }, [filteredResults, page, resultsPerPage]);
-
-  // Gruppera antal per typ
-  const resultCountsByType = useMemo(() => {
-    const counts = {
-      all: results.length,
-      ticket: results.filter(r => r.type === 'ticket').length,
-      customer: results.filter(r => r.type === 'customer').length,
-      setting: results.filter(r => r.type === 'setting').length
-    };
-    return counts;
-  }, [results]);
-
-  // Om användaren inte är inloggad
-  if (status === 'unauthenticated') {
-    router.push('/auth/login');
-    return null;
-  }
+  // Hjälpfunktion för att visa kundnamn
+  const getCustomerName = (customer?: Customer): string => {
+    if (!customer) return "-";
+    
+    if (customer.firstName || customer.lastName) {
+      return `${customer.firstName || ''} ${customer.lastName || ''}`.trim();
+    }
+    
+    return customer.email || `Kund #${customer.id}`;
+  };
+  
+  const filteredResults = getFilteredResults();
 
   return (
     <section className="flex flex-col items-center justify-center gap-4 py-8 md:py-10">
-      <div className="inline-block max-w-lg text-center mb-6">
-        <h1 className={title({ size: 'sm' })}>Sökning</h1>
-        <p className="text-default-500 mt-2">Sök efter ärenden, kunder eller inställningar</p>
+      <div className="inline-block max-w-xl text-center">
+        <h1 className={title({ size: 'md' })}>Sökresultat</h1>
+        {q && <p className="text-default-600 mt-2">Visar resultat för "{q}"</p>}
       </div>
       
-      <div className="w-full max-w-5xl">
-        {/* Sökformulär */}
-        <Card className="mb-6">
+      <Card className="w-full max-w-5xl mb-8">
+        <CardBody>
+          <form onSubmit={handleSearch}>
+            <Input
+              value={searchQuery}
+              onValueChange={setSearchQuery}
+              placeholder="Sök efter kunder, ärenden eller inställningar..."
+              startContent={<SearchIcon className="text-default-400" />}
+              endContent={
+                loading ? <Spinner size="sm" /> : 
+                <Button type="submit" variant="flat" size="sm">Sök</Button>
+              }
+              size="lg"
+              className="mb-2"
+              isInvalid={!!error && !loading && searchQuery.length < 2}
+              errorMessage={!loading && searchQuery.length < 2 ? error : undefined}
+            />
+          </form>
+        </CardBody>
+      </Card>
+      
+      {error && searchQuery.length >= 2 && (
+        <Card className="w-full max-w-5xl mb-4 bg-danger-50">
           <CardBody>
-            <form onSubmit={handleSearch} className="flex gap-2">
-              <Input
-                fullWidth
-                placeholder="Sök efter ärenden, kunder eller inställningar..."
-                value={searchQuery}
-                onValueChange={setSearchQuery}
-                startContent={<SearchIcon className="text-default-400" />}
-                size="lg"
-                autoFocus
-              />
-              <Button
-                color="primary"
-                type="submit"
-                isLoading={isSearching}
-                isDisabled={!searchQuery.trim()}
-              >
-                Sök
-              </Button>
-            </form>
+            <p className="text-danger">{error}</p>
           </CardBody>
         </Card>
-        
-        {/* Resultatsektion */}
-        {queryParam ? (
-          <div className="space-y-4">
-            {isSearching ? (
-              <div className="flex justify-center items-center py-12">
-                <Spinner size="lg" color="primary" />
-                <span className="ml-4">Söker...</span>
-              </div>
-            ) : (
-              <>
-                <div className="flex justify-between items-center">
-                  <h2 className="text-xl font-semibold">
-                    {results.length > 0 
-                      ? `${results.length} resultat för "${queryParam}"` 
-                      : `Inga resultat för "${queryParam}"`}
-                  </h2>
-                </div>
-                
-                {results.length > 0 && (
-                  <>
-                    <Tabs 
-                      selectedKey={activeTab}
-                      onSelectionChange={(key) => {
-                        setActiveTab(key as string);
-                        setPage(1); // Återställ till första sidan vid filikändring
-                      }}
-                      variant="light"
-                      color="primary"
-                      classNames={{
-                        tabList: "gap-4",
-                        tab: "py-2"
-                      }}
-                    >
-                      <Tab 
-                        key="all" 
-                        title={
-                          <div className="flex items-center gap-2">
-                            <span>Alla</span>
-                            <Chip size="sm" variant="flat">{resultCountsByType.all}</Chip>
+      )}
+      
+      {loading ? (
+        <div className="flex flex-col items-center justify-center py-12">
+          <Spinner size="lg" />
+          <p className="mt-4">Söker...</p>
+        </div>
+      ) : filteredResults ? (
+        <div className="w-full max-w-5xl">
+          <Tabs 
+            selectedKey={activeTab} 
+            onSelectionChange={(key) => setActiveTab(key as string)}
+            variant="underlined"
+            color="primary"
+          >
+            <Tab 
+              key="all" 
+              title={`Alla (${totalCount.total || 0})`}
+            />
+            <Tab 
+              key="customers" 
+              title={`Kunder (${totalCount.customers || 0})`}
+              isDisabled={!results?.customers.length}
+            />
+            <Tab 
+              key="tickets" 
+              title={`Ärenden (${totalCount.tickets || 0})`}
+              isDisabled={!results?.tickets.length}
+            />
+            <Tab 
+              key="settings" 
+              title={`Inställningar (${totalCount.settings || 0})`}
+              isDisabled={!results?.settings.length}
+            />
+          </Tabs>
+          
+          <div className="mt-6">
+            {/* Kundresultat */}
+            {filteredResults.customers.length > 0 && (
+              <div className="mb-6">
+                <h2 className="text-xl font-semibold mb-3">Kunder</h2>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {filteredResults.customers.map((customer) => (
+                    <Card key={`customer-${customer.id}`} className="hover:bg-default-50 transition-colors">
+                      <CardBody>
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <h3 className="text-lg font-medium">{getCustomerName(customer)}</h3>
+                            <p className="text-default-500">{customer.email}</p>
+                            {customer.phoneNumber && <p className="text-default-500">{customer.phoneNumber}</p>}
                           </div>
-                        } 
-                      />
-                      <Tab 
-                        key="ticket" 
-                        title={
-                          <div className="flex items-center gap-2">
-                            <span>Ärenden</span>
-                            <Chip size="sm" variant="flat">{resultCountsByType.ticket}</Chip>
-                          </div>
-                        } 
-                        isDisabled={resultCountsByType.ticket === 0}
-                      />
-                      <Tab 
-                        key="customer" 
-                        title={
-                          <div className="flex items-center gap-2">
-                            <span>Kunder</span>
-                            <Chip size="sm" variant="flat">{resultCountsByType.customer}</Chip>
-                          </div>
-                        } 
-                        isDisabled={resultCountsByType.customer === 0}
-                      />
-                    </Tabs>
-                    
-                    <Table
-                      aria-label="Sökresultat"
-                      bottomContent={
-                        totalPages > 1 ? (
-                          <div className="flex w-full justify-center">
-                            <Pagination
-                              isCompact
-                              showControls
-                              showShadow
-                              color="primary"
-                              page={page}
-                              total={totalPages}
-                              onChange={setPage}
-                            />
-                          </div>
-                        ) : null
-                      }
-                      bottomContentPlacement="outside"
-                    >
-                      <TableHeader>
-                        <TableColumn>Titel</TableColumn>
-                        <TableColumn>Beskrivning</TableColumn>
-                        <TableColumn>Typ</TableColumn>
-                        <TableColumn>Info</TableColumn>
-                      </TableHeader>
-                      <TableBody emptyContent="Inga resultat hittades.">
-                        {currentPageResults.map((result) => (
-                          <TableRow 
-                            key={`${result.type}-${result.id}`}
-                            onClick={() => router.push(result.url)}
-                            className="cursor-pointer hover:bg-default-100"
+                          <Button
+                            as={NextLink}
+                            href={`/kunder/${customer.id}`}
+                            isIconOnly
+                            variant="flat"
+                            size="sm"
                           >
-                            <TableCell>
-                              <Link href={result.url} className="font-medium">{result.title}</Link>
-                            </TableCell>
-                            <TableCell>{result.subtitle || '-'}</TableCell>
-                            <TableCell>
-                              <Chip 
-                                color={result.type === 'ticket' ? 'primary' : result.type === 'customer' ? 'success' : 'secondary'}
-                                variant="flat"
-                                size="sm"
-                              >
-                                {result.type === 'ticket' ? 'Ärende' : 
-                                 result.type === 'customer' ? 'Kund' : 'Inställning'}
-                              </Chip>
-                            </TableCell>
-                            <TableCell>{result.metaInfo || '-'}</TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </>
-                )}
-              </>
+                            <EyeIcon />
+                          </Button>
+                        </div>
+                      </CardBody>
+                    </Card>
+                  ))}
+                </div>
+              </div>
+            )}
+            
+            {/* Ärendeesultat */}
+            {filteredResults.tickets.length > 0 && (
+              <div className="mb-6">
+                <h2 className="text-xl font-semibold mb-3">Ärenden</h2>
+                <div className="space-y-3">
+                  {filteredResults.tickets.map((ticket) => {
+                    // Bestäm vilken status som ska visas
+                    const statusName = ticket.customStatus 
+                      ? ticket.customStatus.name 
+                      : ticket.status || '-';
+                    
+                    const statusColor = ticket.customStatus 
+                      ? ticket.customStatus.color 
+                      : '#cccccc';
+                    
+                    return (
+                      <Card key={`ticket-${ticket.id}`} className="hover:bg-default-50 transition-colors">
+                        <CardBody>
+                          <div className="flex justify-between items-start">
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <h3 className="text-lg font-medium">#{ticket.id}</h3>
+                                <div className="flex items-center">
+                                  <div 
+                                    className="w-3 h-3 rounded-full mr-1" 
+                                    style={{ backgroundColor: statusColor }}
+                                  />
+                                  <span className="text-sm">{statusName}</span>
+                                </div>
+                              </div>
+                              <p className="text-default-700 font-medium">
+                                {ticket.ticketType?.name || "-"}
+                              </p>
+                              <p className="text-default-500">Kund: {getCustomerName(ticket.customer)}</p>
+                            </div>
+                            <Button
+                              as={NextLink}
+                              href={`/arenden/${ticket.id}`}
+                              isIconOnly
+                              variant="flat"
+                              size="sm"
+                            >
+                              <EyeIcon />
+                            </Button>
+                          </div>
+                        </CardBody>
+                      </Card>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+            
+            {/* Inställningsresultat */}
+            {filteredResults.settings.length > 0 && (
+              <div className="mb-6">
+                <h2 className="text-xl font-semibold mb-3">Inställningar</h2>
+                <div className="space-y-2">
+                  {filteredResults.settings.map((setting, index) => (
+                    <Card key={`setting-${index}`} className="hover:bg-default-50 transition-colors">
+                      <CardBody>
+                        <div className="flex justify-between items-center">
+                          <div>
+                            <h3 className="text-lg font-medium">{setting.name}</h3>
+                            <p className="text-default-500">{setting.description}</p>
+                          </div>
+                          <Button
+                            as={NextLink}
+                            href={setting.url}
+                            variant="flat"
+                            size="sm"
+                          >
+                            Gå till inställning
+                          </Button>
+                        </div>
+                      </CardBody>
+                    </Card>
+                  ))}
+                </div>
+              </div>
+            )}
+            
+            {totalCount.total === 0 && (
+              <div className="text-center py-12">
+                <p className="text-default-500 text-lg">Inga resultat hittades.</p>
+                <p className="text-default-400 mt-2">
+                  Försök med andra söktermer eller sök i alla kategorier.
+                </p>
+              </div>
             )}
           </div>
-        ) : (
-          <div className="text-center py-12 text-default-500">
-            <p>Ange en sökterm för att söka</p>
+        </div>
+      ) : (
+        q && (
+          <div className="text-center py-12">
+            <p className="text-default-500 text-lg">Inga resultat hittades.</p>
+            <p className="text-default-400 mt-2">
+              Försök med andra söktermer eller se till att du är inloggad med rätt konto.
+            </p>
           </div>
-        )}
-      </div>
+        )
+      )}
     </section>
   );
-};
-
-export default SearchPage;
+}
