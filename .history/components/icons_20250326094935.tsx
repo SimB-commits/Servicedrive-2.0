@@ -436,21 +436,3 @@ export const TicketIcon = ({ size = 18, ...props }) => (
     <path d="M18 15h4" />
   </svg>
 );
-
-
-export const ArrowRightIcon = ({ size = 24, width, height, ...props }) => (
-  <svg 
-    height={size || height} 
-    width={size || width} 
-    viewBox="0 0 24 24" 
-    fill="none" 
-    stroke="currentColor" 
-    strokeWidth="2" 
-    strokeLinecap="round" 
-    strokeLinejoin="round" 
-    {...props}
-  >
-    <path d="M5 12h14" />
-    <path d="m12 5 7 7-7 7" />
-  </svg>
-);
