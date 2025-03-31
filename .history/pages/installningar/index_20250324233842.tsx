@@ -1,4 +1,4 @@
-// pages/installningar/index.tsx (uppdaterad version med prenumerationstabb)
+// pages/installningar/index.tsx
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import { useSession } from 'next-auth/react';
@@ -7,6 +7,10 @@ import {
   Tab,
   Card, 
   CardBody,
+  Button,
+  Input,
+  Form,
+  addToast,
   Spinner
 } from '@heroui/react';
 import { title } from '@/components/primitives';
@@ -20,10 +24,9 @@ import AccountSettings from '@/components/AccountSettings';
 import ImportExportManager from '@/components/ImportExport';
 import StoreManager from '@/components/StoreManager';
 import EmailSettings from '@/components/email/EmailSettings';
-import SubscriptionPage from '@/components/subscription/SubscriptionPage';
 
 // Typer för att hantera aktiv tab
-type TabKey = 'konto' | 'arendetyper' | 'kundkortsmallar' | 'mailmallar' | 'dataimport' | 'butiker' | 'arendestatusar' | 'email' | 'subscription';
+type TabKey = 'konto' | 'arendetyper' | 'kundkortsmallar' | 'mailmallar' | 'dataimport' | 'butiker' | 'arendestatusar' | 'email';
 
 export default function InstallningarPage() {
   const { data: session, status } = useSession();
@@ -37,7 +40,7 @@ export default function InstallningarPage() {
     if (tab && typeof tab === 'string') {
       // Validera att tab är en giltig flik
       const isValidTab = (tab: string): tab is TabKey => 
-        ['konto', 'arendetyper', 'kundkortsmallar', 'mailmallar', 'dataimport', 'butiker', 'arendestatusar', 'email', 'subscription'].includes(tab);
+        ['konto', 'arendetyper', 'kundkortsmallar', 'mailmallar', 'dataimport', 'butiker', 'arendestatusar', 'email'].includes(tab);
       
       if (isValidTab(tab)) {
         setSelectedTab(tab);
@@ -70,8 +73,6 @@ export default function InstallningarPage() {
         return <ArendestatusarContent />;
       case 'email':
         return <EmailSettings />;
-      case 'subscription':
-        return <SubscriptionPage />;
       default:
         return <div>Välj en inställningskategori</div>;
     }
@@ -130,7 +131,6 @@ export default function InstallningarPage() {
             <Tab key="dataimport" title="Import/Export" />
             <Tab key="butiker" title="Butiker" />
             <Tab key="email" title="E-postinställningar" />
-            <Tab key="subscription" title="Prenumeration" />
           </Tabs>
         </div>
         
