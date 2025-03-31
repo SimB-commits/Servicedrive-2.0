@@ -98,40 +98,39 @@ model VerificationToken {
 }
 
 model Store {
-  id                    Int                    @id @default(autoincrement())
-  name                  String
-  company               String
-  address               String
-  users                 UserStore[]
-  customers             Customer[]
-  tickets               Ticket[]
-  ticketTypes           TicketType[]
-  CustomerCards         CustomerCard[]
-  createdAt             DateTime               @default(now())
-  updatedAt             DateTime               @updatedAt
-  SenderAddress         SenderAddress[]
-  VerifiedDomain        VerifiedDomain[]
-  templateSettings      MailTemplateSettings[]
-  Setting               Setting[]
-  subscriptionPlan      SubscriptionPlan       @default(STARTUP)
-  subscriptionStartDate DateTime               @default(now())
-  subscriptionEndDate   DateTime? // För årliga planer
-  subscriptionAutoRenew Boolean                @default(false)
-  monthlyTicketCount    Int                    @default(0)
-  ticketCountResetDate  DateTime               @default(now())
-  StoreUsageMetrics     StoreUsageMetrics[]
+  id               Int                    @id @default(autoincrement())
+  name             String
+  company          String
+  address          String
+  users            UserStore[]
+  customers        Customer[]
+  tickets          Ticket[]
+  ticketTypes      TicketType[]
+  CustomerCards    CustomerCard[]
+  createdAt        DateTime               @default(now())
+  updatedAt        DateTime               @updatedAt
+  SenderAddress    SenderAddress[]
+  VerifiedDomain   VerifiedDomain[]
+  templateSettings MailTemplateSettings[]
+  Setting          Setting[]
+  subscriptionPlan        SubscriptionPlan  @default(STARTUP)
+  subscriptionStartDate   DateTime          @default(now())
+  subscriptionEndDate     DateTime?         // För årliga planer
+  subscriptionAutoRenew   Boolean           @default(false)
+  monthlyTicketCount      Int               @default(0)
+  ticketCountResetDate    DateTime          @default(now())
 }
 
 model StoreUsageMetrics {
-  id                    String   @id @default(uuid())
-  storeId               Int
-  store                 Store    @relation(fields: [storeId], references: [id])
-  adminCount            Int      @default(1)
-  customTicketTypeCount Int      @default(0)
-  customStatusCount     Int      @default(0)
-  verifiedDomainCount   Int      @default(0)
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
+  id                      String            @id @default(uuid())
+  storeId                 Int
+  store                   Store             @relation(fields: [storeId], references: [id])
+  adminCount              Int               @default(1)
+  customTicketTypeCount   Int               @default(0)
+  customStatusCount       Int               @default(0)
+  verifiedDomainCount     Int               @default(0)
+  createdAt               DateTime          @default(now())
+  updatedAt               DateTime          @updatedAt
 }
 
 model UserStore {

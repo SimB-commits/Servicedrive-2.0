@@ -1,0 +1,1032 @@
+# Plan för implementering av användarnivåer i Servicedrive 2.0
+
+## Övergripande strategi
+
+Efter noggrann genomgång av Servicedrive 2.0 kodbas och teknisk dokumentation föreslår jag följande strategiska tillvägagångssätt för att implementera de olika prisnivåerna:
+
+1. Utöka databasmodellen för att inkludera prenumerationsplaner
+2. Implementera affärslogik för att begränsa funktionalitet baserat på plan
+3. Anpassa UI för att visa/dölja funktioner baserat på användarens plan
+4. Skapa gränssnitt för administratörer att hantera sin prenumeration
+5. Implementera system för att automatisera begränsningar och påminnelser
+
+## Fas 1: Databasmodellering
+
+**Filer som behöver tillgång till:**
+- `prisma/schema.prisma`
+- `prisma/migrations/` (för att förstå befintlig databasstruktur)
+
+**Arbetsuppgifter:**
+
+1. Skapa en ny enum `SubscriptionPlan` i Prisma-schemat:
+```prisma
+enum SubscriptionPlan {
+  STARTUP
+  TEAM
+  GROWING
+  PROFESSIONAL
+}
+```
+
+2. Utöka `Store`-modellen med prenumerationsrelaterade fält:
+```prisma
+model Store {
+  // Befintliga fält...
+  subscriptionPlan        SubscriptionPlan  @default(STARTUP)
+  subscriptionStartDate   DateTime          @default(now())
+  subscriptionEndDate     DateTime?         // För årliga planer
+  subscriptionAutoRenew   Boolean           @default(false)
+  monthlyTicketCount      Int               @default(0)
+  ticketCountResetDate    DateTime          @default(now())
+  // Övriga fält...
+}
+```
+
+3. Lägg till begränsningar för att spåra användning:
+```prisma
+model StoreUsageMetrics {
+  id                      String            @id @default(uuid())
+  storeId                 Int
+  store                   Store             @relation(fields: [storeId], references: [id])
+  adminCount              Int               @default(1)
+  customTicketTypeCount   Int               @default(0)
+  customStatusCount       Int               @default(0)
+  verifiedDomainCount     Int               @default(0)
+  createdAt               DateTime          @default(now())
+  updatedAt               DateTime          @updatedAt
+}
+```
+
+4. Skapa migration för att uppdatera befintliga stores med standardplan (STARTUP)
+
+## Fas 2: Affärslogik för planbegränsningar
+
+**Filer som behöver tillgång till:**
+- `utils/` (för att analysera befintlig struktur)
+- `lib/prisma.ts`
+- `pages/api/tickets/index.ts`
+- `pages/api/tickets/[id].ts`
+- `pages/api/tickets/types/`
+- `pages/api/stores/`
+- `pages/api/auth/`
+
+**Arbetsuppgifter:**
+
+1. Skapa en ny utilmodul `utils/planRestrictions.ts` med begränsningskontroller:
+
+```typescript
+// Ticketbegränsningar
+export async function canCreateTicket(storeId: number): Promise<boolean> {
+  const store = await prisma.store.findUnique({
+    where: { id: storeId },
+    include: { StoreUsageMetrics: true }
+  });
+  
+  // För STARTUP-plan, kontrollera månatliga begränsningar
+  if (store.subscriptionPlan === 'STARTUP') {
+    // Kontrollera om begränsningen på 50 ärenden/månad har nåtts
+    return store.monthlyTicketCount < 50;
+  }
+  
+  // För andra planer finns ingen begränsning
+  return true;
+}
+
+// Ärendetypsbegränsningar
+export async function canCreateTicketType(storeId: number): Promise<boolean> {
+  const store = await prisma.store.findUnique({
+    where: { id: storeId },
+    include: { StoreUsageMetrics: true }
+  });
+  
+  const metrics = store.StoreUsageMetrics;
+  const plan = store.subscriptionPlan;
+  
+  // Kontrollera begränsning baserat på plan
+  switch(plan) {
+    case 'STARTUP': return metrics.customTicketTypeCount < 2;
+    case 'TEAM': return metrics.customTicketTypeCount < 5;
+    case 'GROWING': return metrics.customTicketTypeCount < 10;
+    case 'PROFESSIONAL': return true; // Obegränsat
+    default: return false;
+  }
+}
+
+// Liknande funktioner för andra begränsningar...
+```
+
+2. Implementera middleware för att kontrollera begränsningar före API-anrop i `middleware/planRestrictions.ts`:
+
+```typescript
+import { NextResponse } from 'next/server';
+import type { NextRequest } from 'next/server';
+import { getToken } from 'next-auth/jwt';
+import { prisma } from '@/lib/prisma';
+import * as planRestrictions from '@/utils/planRestrictions';
+
+export async function planRestrictionMiddleware(req: NextRequest, handler) {
+  const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
+  const { pathname } = req.nextUrl;
+  
+  // Hämta aktiv store från token
+  const storeId = token?.storeId;
+  
+  // Kontrollera olika begränsningar baserat på API endpoint
+  if (pathname.startsWith('/api/tickets') && req.method === 'POST') {
+    const canCreate = await planRestrictions.canCreateTicket(storeId);
+    if (!canCreate) {
+      return new NextResponse(
+        JSON.stringify({ 
+          error: 'Plan limit reached', 
+          message: 'Din plan tillåter endast 50 ärenden per månad. Uppgradera för obegränsade ärenden.' 
+        }),
+        { status: 403, headers: { 'content-type': 'application/json' } }
+      );
+    }
+  }
+  
+  // Liknande kontroller för andra begränsningar...
+  
+  return handler(req);
+}
+```
+
+3. Skapa en schemalagd funktion för att återställa månatlig ärendehantering:
+
+```typescript
+// Kan implementeras som en cron job eller köras vid första API-anrop varje dag
+export async function resetMonthlyTicketCountIfNeeded() {
+  const stores = await prisma.store.findMany({
+    where: {
+      ticketCountResetDate: {
+        lt: new Date()
+      }
+    }
+  });
+  
+  // Återställ räknare och uppdatera nästa återställningsdatum
+  for (const store of stores) {
+    const nextMonth = new Date();
+    nextMonth.setMonth(nextMonth.getMonth() + 1);
+    nextMonth.setDate(1); // Första dagen i nästa månad
+    
+    await prisma.store.update({
+      where: { id: store.id },
+      data: {
+        monthlyTicketCount: 0,
+        ticketCountResetDate: nextMonth
+      }
+    });
+  }
+}
+```
+
+4. Implementera historikbegränsningar genom att skapa en rensningsfunktion:
+
+```typescript
+// Kan köras schemalagt eller vid behov
+export async function purgeOldTickets() {
+  const stores = await prisma.store.findMany({
+    include: { subscriptionPlan: true }
+  });
+  
+  for (const store of stores) {
+    let monthsToKeep = 3; // STARTUP
+    
+    switch(store.subscriptionPlan) {
+      case 'TEAM': monthsToKeep = 12; break;
+      case 'GROWING': monthsToKeep = 24; break; // Antar 2 år
+      case 'PROFESSIONAL': monthsToKeep = 60; break; // 5 år
+    }
+    
+    const cutoffDate = new Date();
+    cutoffDate.setMonth(cutoffDate.getMonth() - monthsToKeep);
+    
+    // Markera ärenden som arkiverade istället för att ta bort dem
+    await prisma.ticket.updateMany({
+      where: {
+        storeId: store.id,
+        updatedAt: {
+          lt: cutoffDate
+        },
+        archived: false
+      },
+      data: {
+        archived: true
+      }
+    });
+  }
+}
+```
+
+## Fas 3: UI-anpassningar
+
+**Filer som behöver tillgång till:**
+- `components/` (för att analysera befintliga komponenter)
+- `layouts/` (för att förstå layoutstruktur)
+- `pages/_app.tsx` 
+- `contexts/` (om det finns)
+
+**Arbetsuppgifter:**
+
+1. Skapa en prenumerationskontext för att göra planinfo tillgänglig genom appen:
+
+```typescript
+// contexts/SubscriptionContext.tsx
+import React, { createContext, useContext, useState, useEffect } from 'react';
+import { useSession } from 'next-auth/react';
+
+type SubscriptionContextType = {
+  plan: string;
+  isLoading: boolean;
+  canUseFeature: (feature: string) => boolean;
+  planLimits: {
+    maxAdmins: number;
+    maxTicketTypes: number;
+    maxCustomStatuses: number;
+    maxVerifiedDomains: number;
+    historyMonths: number;
+    hasUnlimitedTickets: boolean;
+  };
+};
+
+const SubscriptionContext = createContext<SubscriptionContextType | undefined>(undefined);
+
+export const SubscriptionProvider: React.FC = ({ children }) => {
+  const { data: session } = useSession();
+  const [plan, setPlan] = useState<string>('STARTUP');
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+  
+  // Hämta aktuell prenumerationsinformation när sessionen ändras
+  useEffect(() => {
+    if (session?.user?.storeId) {
+      fetchSubscriptionInfo(session.user.storeId)
+        .then(data => {
+          setPlan(data.plan);
+          setIsLoading(false);
+        });
+    }
+  }, [session]);
+  
+  // Beräkna plangränser baserat på plan
+  const planLimits = {
+    maxAdmins: plan === 'STARTUP' ? 1 : 
+               plan === 'TEAM' ? 3 : 
+               plan === 'GROWING' ? 5 : 10,
+    // Liknande för andra begränsningar...
+  };
+  
+  // Kontrollera om en specifik funktion är tillgänglig för aktuell plan
+  const canUseFeature = (feature: string): boolean => {
+    switch(feature) {
+      case 'customStatus':
+        return plan !== 'STARTUP';
+      case 'emailTemplates':
+        return plan !== 'STARTUP';
+      case 'smsNotifications':
+        return plan === 'PROFESSIONAL';
+      case 'domainVerification':
+        return plan === 'GROWING' || plan === 'PROFESSIONAL';
+      case 'multipleStores':
+        return plan === 'PROFESSIONAL';
+      // Andra funktioner...
+      default:
+        return false;
+    }
+  };
+  
+  return (
+    <SubscriptionContext.Provider value={{ 
+      plan, 
+      isLoading, 
+      canUseFeature,
+      planLimits
+    }}>
+      {children}
+    </SubscriptionContext.Provider>
+  );
+};
+
+// Custom hook för att använda kontexten
+export const useSubscription = () => {
+  const context = useContext(SubscriptionContext);
+  if (context === undefined) {
+    throw new Error('useSubscription must be used within a SubscriptionProvider');
+  }
+  return context;
+};
+```
+
+2. Integrera prenumerationsprovidern i applikationen:
+
+```typescript
+// pages/_app.tsx
+import { SubscriptionProvider } from '@/contexts/SubscriptionContext';
+
+function MyApp({ Component, pageProps }) {
+  return (
+    <SessionProvider session={pageProps.session}>
+      <SubscriptionProvider>
+        {/* Andra providers */}
+        <Component {...pageProps} />
+      </SubscriptionProvider>
+    </SessionProvider>
+  );
+}
+```
+
+3. Skapa en återanvändbar komponent för att visa "uppgradera-prompt":
+
+```typescript
+// components/UpgradePrompt.tsx
+import React from 'react';
+import { useSubscription } from '@/contexts/SubscriptionContext';
+import Link from 'next/link';
+
+type UpgradePromptProps = {
+  feature: string;
+  message?: string;
+};
+
+export const UpgradePrompt: React.FC<UpgradePromptProps> = ({ 
+  feature, 
+  message = 'Uppgradera din plan för att låsa upp denna funktion.' 
+}) => {
+  const { plan } = useSubscription();
+  
+  // Avgör till vilken plan användaren bör uppgradera
+  const suggestedPlan = () => {
+    switch(feature) {
+      case 'customStatus':
+      case 'emailTemplates':
+        return 'Team';
+      case 'domainVerification':
+        return 'Growing';
+      case 'smsNotifications':
+      case 'multipleStores':
+        return 'Professional';
+      default:
+        return 'Team';
+    }
+  };
+  
+  return (
+    <div className="bg-warning-50 border border-warning-200 rounded-md p-4 my-4">
+      <div className="flex items-center">
+        <svg className="w-5 h-5 text-warning-400 mr-2" fill="currentColor" viewBox="0 0 20 20">
+          <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-11a1 1 0 10-2 0v3a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V7z" clipRule="evenodd" />
+        </svg>
+        <h3 className="text-warning-800 font-medium">{message}</h3>
+      </div>
+      <div className="mt-2">
+        <p className="text-warning-700 text-sm">
+          Din nuvarande plan ({plan}) inkluderar inte denna funktion. 
+          Uppgradera till {suggestedPlan()} eller högre för att få tillgång.
+        </p>
+        <Link 
+          href="/installningar/prenumeration" 
+          className="mt-3 inline-block bg-warning-500 hover:bg-warning-600 text-white py-2 px-4 rounded-md text-sm"
+        >
+          Utforska uppgraderingsalternativ
+        </Link>
+      </div>
+    </div>
+  );
+};
+```
+
+4. Skapa en HOC (Higher-Order Component) för att skydda funktioner:
+
+```typescript
+// components/withPlanRestriction.tsx
+import React from 'react';
+import { useSubscription } from '@/contexts/SubscriptionContext';
+import { UpgradePrompt } from '@/components/UpgradePrompt';
+
+export function withPlanRestriction(
+  WrappedComponent: React.ComponentType<any>,
+  feature: string,
+  message?: string
+) {
+  return function WithPlanRestriction(props: any) {
+    const { canUseFeature, isLoading } = useSubscription();
+    
+    if (isLoading) {
+      return <div>Laddar...</div>;
+    }
+    
+    if (!canUseFeature(feature)) {
+      return <UpgradePrompt feature={feature} message={message} />;
+    }
+    
+    return <WrappedComponent {...props} />;
+  };
+}
+
+// Användningsexempel:
+// const ProtectedComponent = withPlanRestriction(MyComponent, 'customStatus', 'Anpassade statusar kräver Team-planen eller högre');
+```
+
+5. Anpassa relevanta sidor och komponenter för att implementera planbegränsningar:
+
+```typescript
+// components/StatusManager.tsx
+import { useSubscription } from '@/contexts/SubscriptionContext';
+import { UpgradePrompt } from '@/components/UpgradePrompt';
+
+export const StatusManager = () => {
+  const { canUseFeature, planLimits } = useSubscription();
+  const [statuses, setStatuses] = useState([]);
+  
+  // Om användaren inte kan använda anpassade statusar
+  if (!canUseFeature('customStatus')) {
+    return (
+      <UpgradePrompt 
+        feature="customStatus" 
+        message="Anpassade ärendestatusar kräver Team-planen eller högre." 
+      />
+    );
+  }
+  
+  return (
+    <div>
+      <h2>Hantera ärendestatusar</h2>
+      
+      {/* Visa varning om användaren närmar sig gränsen */}
+      {statuses.length >= planLimits.maxCustomStatuses - 2 && (
+        <div className="bg-warning-50 border border-warning-200 p-3 rounded-md mb-4">
+          <p>Du närmar dig din gräns för anpassade statusar. 
+             Du kan skapa {planLimits.maxCustomStatuses - statuses.length} till.</p>
+        </div>
+      )}
+      
+      {/* Visa endast "Lägg till ny status" om under gränsen */}
+      {statuses.length < planLimits.maxCustomStatuses ? (
+        <button className="btn btn-primary">Lägg till ny status</button>
+      ) : (
+        <div className="mt-4">
+          <UpgradePrompt 
+            feature="customStatus" 
+            message={`Din plan tillåter maximalt ${planLimits.maxCustomStatuses} anpassade statusar.`} 
+          />
+        </div>
+      )}
+      
+      {/* Visa befintliga statusar */}
+      <div className="mt-4">
+        {statuses.map(status => (
+          <div key={status.id}>{/* Status UI */}</div>
+        ))}
+      </div>
+    </div>
+  );
+};
+```
+
+## Fas 4: Prenumerationshantering
+
+**Filer som behöver tillgång till:**
+- `pages/installningar/` (eller skapa ny)
+- `pages/api/subscription/` (behöver skapas)
+- `components/subscription/` (behöver skapas)
+
+**Arbetsuppgifter:**
+
+1. Skapa en API-endpoint för att hämta prenumerationsinformation:
+
+```typescript
+// pages/api/subscription/index.ts
+import { NextApiRequest, NextApiResponse } from 'next';
+import { getServerSession } from 'next-auth/next';
+import { authOptions } from '../auth/[...nextauth]';
+import { prisma } from '@/lib/prisma';
+
+export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  const session = await getServerSession(req, res, authOptions);
+  
+  if (!session) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+  
+  const storeId = session.user.storeId;
+  
+  // GET - Hämta prenumerationsinformation
+  if (req.method === 'GET') {
+    const store = await prisma.store.findUnique({
+      where: { id: storeId },
+      include: { 
+        StoreUsageMetrics: true 
+      }
+    });
+    
+    // Beräkna användning och begränsningar
+    const usage = {
+      ticketsUsed: store.monthlyTicketCount,
+      ticketsLimit: store.subscriptionPlan === 'STARTUP' ? 50 : null,
+      admins: store.StoreUsageMetrics.adminCount,
+      adminsLimit: store.subscriptionPlan === 'STARTUP' ? 1 : 
+                   store.subscriptionPlan === 'TEAM' ? 3 : 
+                   store.subscriptionPlan === 'GROWING' ? 5 : 10,
+      // Andra användningssiffror...
+    };
+    
+    return res.status(200).json({
+      plan: store.subscriptionPlan,
+      startDate: store.subscriptionStartDate,
+      endDate: store.subscriptionEndDate,
+      autoRenew: store.subscriptionAutoRenew,
+      usage
+    });
+  }
+  
+  // PUT - Uppdatera prenumeration (t.ex. uppgradera)
+  else if (req.method === 'PUT') {
+    const { plan } = req.body;
+    
+    // Här skulle vi integrera med ett betalsystem
+    // För tillfället, bara uppdatera planen
+    
+    const updatedStore = await prisma.store.update({
+      where: { id: storeId },
+      data: {
+        subscriptionPlan: plan,
+        // Uppdatera andra fält som skulle ändras vid uppgradering
+      }
+    });
+    
+    return res.status(200).json({
+      success: true,
+      plan: updatedStore.subscriptionPlan
+    });
+  }
+  
+  return res.status(405).json({ error: 'Method not allowed' });
+}
+```
+
+2. Skapa en prenumerationshanteringssida:
+
+```typescript
+// pages/installningar/prenumeration.tsx
+import { useState, useEffect } from 'react';
+import { useSession } from 'next-auth/react';
+import Head from 'next/head';
+
+export default function SubscriptionPage() {
+  const { data: session } = useSession();
+  const [subscription, setSubscription] = useState(null);
+  const [loading, setLoading] = useState(true);
+  
+  useEffect(() => {
+    if (session) {
+      fetch('/api/subscription')
+        .then(res => res.json())
+        .then(data => {
+          setSubscription(data);
+          setLoading(false);
+        })
+        .catch(err => {
+          console.error('Failed to fetch subscription info:', err);
+          setLoading(false);
+        });
+    }
+  }, [session]);
+  
+  const upgradePlan = async (newPlan) => {
+    setLoading(true);
+    try {
+      const res = await fetch('/api/subscription', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ plan: newPlan })
+      });
+      
+      if (res.ok) {
+        const data = await res.json();
+        setSubscription({
+          ...subscription,
+          plan: data.plan
+        });
+      }
+    } catch (error) {
+      console.error('Failed to upgrade plan:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+  
+  if (loading) {
+    return <div>Laddar prenumerationsinformation...</div>;
+  }
+  
+  return (
+    <>
+      <Head>
+        <title>Prenumeration - Servicedrive</title>
+      </Head>
+      
+      <div className="container mx-auto px-4 py-8">
+        <h1 className="text-2xl font-bold mb-6">Prenumerationshantering</h1>
+        
+        {/* Aktuell plan */}
+        <div className="bg-white rounded-lg shadow p-6 mb-8">
+          <h2 className="text-xl font-semibold mb-4">Aktuell plan: {subscription?.plan}</h2>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <h3 className="font-medium text-gray-700">Detaljer</h3>
+              <p>Startdatum: {new Date(subscription?.startDate).toLocaleDateString()}</p>
+              {subscription?.endDate && (
+                <p>Slutdatum: {new Date(subscription?.endDate).toLocaleDateString()}</p>
+              )}
+              <p>Automatisk förnyelse: {subscription?.autoRenew ? 'Ja' : 'Nej'}</p>
+            </div>
+            
+            <div>
+              <h3 className="font-medium text-gray-700">Användning</h3>
+              <div className="mt-2">
+                <p>Administratörer: {subscription?.usage.admins} / {subscription?.usage.adminsLimit || 'Obegränsat'}</p>
+                
+                {subscription?.plan === 'STARTUP' && (
+                  <div className="mt-2">
+                    <p>Ärenden denna månad: {subscription?.usage.ticketsUsed} / 50</p>
+                    <div className="w-full bg-gray-200 rounded-full h-2.5 mt-1">
+                      <div 
+                        className="bg-primary-600 h-2.5 rounded-full" 
+                        style={{ width: `${Math.min(100, (subscription?.usage.ticketsUsed / 50) * 100)}%` }}
+                      ></div>
+                    </div>
+                  </div>
+                )}
+                
+                {/* Andra användningsstatistik */}
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        {/* Plan-jämförelse och uppgradering */}
+        <div className="bg-white rounded-lg shadow p-6">
+          <h2 className="text-xl font-semibold mb-4">Uppgradera din plan</h2>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mt-6">
+            {/* STARTUP */}
+            <div className={`border rounded-lg p-4 ${subscription?.plan === 'STARTUP' ? 'border-primary-500 ring-2 ring-primary-200' : 'border-gray-200'}`}>
+              <h3 className="font-bold text-lg">Startup</h3>
+              <p className="text-lg font-semibold mt-2">Gratis</p>
+              <ul className="mt-4 space-y-2">
+                <li className="flex items-start">
+                  <span className="text-success-500 mr-2">✓</span>
+                  <span>1 administratör</span>
+                </li>
+                <li className="flex items-start">
+                  <span className="text-success-500 mr-2">✓</span>
+                  <span>Upp till 50 ärenden/månad</span>
+                </li>
+                {/* Andra funktioner */}
+              </ul>
+              
+              {subscription?.plan !== 'STARTUP' && (
+                <button 
+                  onClick={() => upgradePlan('STARTUP')}
+                  className="mt-4 w-full py-2 px-4 border border-primary-300 text-primary-700 rounded-md hover:bg-primary-50"
+                >
+                  Nedgradera
+                </button>
+              )}
+            </div>
+            
+            {/* TEAM */}
+            <div className={`border rounded-lg p-4 ${subscription?.plan === 'TEAM' ? 'border-primary-500 ring-2 ring-primary-200' : 'border-gray-200'}`}>
+              <h3 className="font-bold text-lg">Team</h3>
+              <p className="text-lg font-semibold mt-2">199 kr/mån</p>
+              <ul className="mt-4 space-y-2">
+                <li className="flex items-start">
+                  <span className="text-success-500 mr-2">✓</span>
+                  <span>3 administratörer</span>
+                </li>
+                <li className="flex items-start">
+                  <span className="text-success-500 mr-2">✓</span>
+                  <span>Obegränsat antal ärenden</span>
+                </li>
+                {/* Andra funktioner */}
+              </ul>
+              
+              {subscription?.plan !== 'TEAM' && (
+                <button 
+                  onClick={() => upgradePlan('TEAM')}
+                  className={`mt-4 w-full py-2 px-4 rounded-md ${
+                    subscription?.plan === 'STARTUP' 
+                      ? 'bg-primary-600 text-white hover:bg-primary-700' 
+                      : 'border border-primary-300 text-primary-700 hover:bg-primary-50'
+                  }`}
+                >
+                  {subscription?.plan === 'STARTUP' ? 'Uppgradera' : 'Nedgradera'}
+                </button>
+              )}
+            </div>
+            
+            {/* GROWING */}
+            {/* Liknande struktur som ovan */}
+            
+            {/* PROFESSIONAL */}
+            {/* Liknande struktur som ovan */}
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+```
+
+Reviderad Fas 5: Domänverifiering och e-postinställningar
+Filer som behöver tillgång till:
+
+utils/mail-service.ts
+utils/sendgridDomain.ts
+pages/api/mail/
+
+Arbetsuppgifter:
+
+Uppdatera domänverifieringstjänsten för att hantera begränsningar:
+
+typescriptCopy// utils/sendgridDomain.ts
+import { prisma } from '@/lib/prisma';
+
+export async function canVerifyDomain(storeId: number): Promise<boolean> {
+  const store = await prisma.store.findUnique({
+    where: { id: storeId },
+    include: { StoreUsageMetrics: true }
+  });
+  
+  // Kontrollera om planen tillåter domänverifiering
+  if (store.subscriptionPlan === 'STARTUP' || store.subscriptionPlan === 'TEAM') {
+    return false;
+  }
+  
+  // Kontrollera antal verifierade domäner baserat på plan
+  const maxDomains = store.subscriptionPlan === 'GROWING' ? 1 : 3; // 3 för PROFESSIONAL
+  
+  return store.StoreUsageMetrics.verifiedDomainCount < maxDomains;
+}
+
+// Lägg till motsvarande kontroll i domänverifieringsfunktionen
+export async function verifyDomain(domain: string, storeId: number) {
+  // Kontrollera om butiken kan verifiera fler domäner
+  const canVerify = await canVerifyDomain(storeId);
+  if (!canVerify) {
+    throw new Error('Domänverifieringsgräns uppnådd eller inte tillgänglig i din plan');
+  }
+  
+  // Fortsätt med befintlig verifieringslogik...
+}
+
+Skapa en komponent för att hantera e-postinställningar baserat på plan:
+
+typescriptCopy// components/email/EmailSettings.tsx
+import React, { useState, useEffect } from 'react';
+import { useSubscription } from '@/contexts/SubscriptionContext';
+import { UpgradePrompt } from '@/components/UpgradePrompt';
+
+export const EmailSettings = () => {
+  const { canUseFeature, plan } = useSubscription();
+  const [domains, setDomains] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+  
+  useEffect(() => {
+    // Hämta verifierade domäner
+    fetchDomains();
+  }, []);
+  
+  const fetchDomains = async () => {
+    try {
+      const res = await fetch('/api/mail/domains');
+      const data = await res.json();
+      setDomains(data);
+    } catch (error) {
+      console.error('Failed to fetch domains:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+  
+  // Kolla om funktionen är tillgänglig i aktuell plan
+  if (!canUseFeature('domainVerification')) {
+    return (
+      <UpgradePrompt 
+        feature="domainVerification" 
+        message="Domänverifiering kräver planen 'Växande' eller högre." 
+      />
+    );
+  }
+  
+  // Beräkna hur många domäner som kan läggas till
+  const maxDomains = plan === 'GROWING' ? 1 : 3; // PROFESSIONAL
+  const remainingDomains = maxDomains - domains.length;
+  
+  return (
+    <div className="space-y-6">
+      <h2 className="text-xl font-bold">E-postdomäninställningar</h2>
+      
+      <div className="bg-white p-4 rounded-lg shadow">
+        <div className="flex justify-between items-center">
+          <h3 className="font-medium">Verifierade domäner</h3>
+          {remainingDomains > 0 ? (
+            <button 
+              className="bg-primary-500 hover:bg-primary-600 text-white px-4 py-2 rounded-md"
+              onClick={() => {/* Öppna modal för att lägga till domän */}}
+            >
+              Lägg till domän
+            </button>
+          ) : (
+            <span className="text-gray-500">
+              Maximalt antal domäner uppnått
+            </span>
+          )}
+        </div>
+        
+        {isLoading ? (
+          <div className="py-8 flex justify-center">
+            <span>Laddar domäner...</span>
+          </div>
+        ) : (
+          <>
+            {domains.length === 0 ? (
+              <div className="py-8 text-center">
+                <p>Inga verifierade domäner. Lägg till en domän för att använda egna e-postadresser.</p>
+              </div>
+            ) : (
+              <ul className="mt-4 divide-y">
+                {domains.map(domain => (
+                  <li key={domain.id} className="py-3 flex justify-between items-center">
+                    <div>
+                      <p className="font-medium">{domain.domain}</p>
+                      <p className="text-sm text-gray-500">
+                        Status: {domain.status === 'verified' ? 'Verifierad' : 'Väntande'}
+                      </p>
+                    </div>
+                    
+                    <button 
+                      className="text-danger-600 hover:text-danger-700"
+                      onClick={() => {/* Ta bort domän */}}
+                    >
+                      Ta bort
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+            
+            {plan === 'GROWING' && domains.length === 1 && (
+              <div className="mt-4 p-3 bg-warning-50 border border-warning-100 rounded">
+                <p className="text-sm">
+                  Din nuvarande plan tillåter endast 1 verifierad domän. 
+                  <a href="/installningar/prenumeration" className="ml-1 text-primary-600 hover:underline">
+                    Uppgradera till Professionell
+                  </a>{' '}
+                  för att lägga till upp till 3 domäner.
+                </p>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  );
+};
+
+## Fas 6: Upprätthållande och automatisering
+
+**Filer som behöver tillgång till:**
+- Skapa ny katalog för schemalagda jobb
+- API-endpoints för admin status
+
+**Arbetsuppgifter:**
+
+1. Skapa ett schemalagt jobb för att rensa ärendehistorik:
+
+```typescript
+// jobs/cleanupHistory.ts
+import { prisma } from '@/lib/prisma';
+import { getHistoryLimit } from '@/utils/planRestrictions';
+
+export async function cleanupOldTickets() {
+  console.log('Running history cleanup job...');
+  
+  const stores = await prisma.store.findMany();
+  
+  for (const store of stores) {
+    // Få historikbegränsning i månader för denna plan
+    const historyMonths = getHistoryLimit(store.subscriptionPlan);
+    
+    // Beräkna datum för historikgräns
+    const cutoffDate = new Date();
+    cutoffDate.setMonth(cutoffDate.getMonth() - historyMonths);
+    
+    // Arkivera (inte ta bort) ärenden äldre än gränsen
+    const result = await prisma.ticket.updateMany({
+      where: {
+        storeId: store.id,
+        updatedAt: { lt: cutoffDate },
+        archived: false
+      },
+      data: {
+        archived: true
+      }
+    });
+    
+    console.log(`Archived ${result.count} old tickets for store ${store.id} (${store.name})`);
+  }
+  
+  console.log('History cleanup completed');
+}
+```
+
+2. Skapa en API-endpoint för att se admin-status:
+
+```typescript
+// pages/api/admin/status.ts
+import { NextApiRequest, NextApiResponse } from 'next';
+import { getServerSession } from 'next-auth/next';
+import { authOptions } from '../auth/[...nextauth]';
+import { prisma } from '@/lib/prisma';
+
+export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  const session = await getServerSession(req, res, authOptions);
+  
+  if (!session || session.user.role !== 'ADMIN') {
+    return res.status(403).json({ error: 'Unauthorized' });
+  }
+  
+  if (req.method === 'GET') {
+    const storeId = session.user.storeId;
+    
+    // Hämta information om alla stores (för super admin)
+    // eller bara den aktiva (för vanlig admin)
+    const stores = session.user.role === 'SUPER_ADMIN'
+      ? await prisma.store.findMany({
+          include: { StoreUsageMetrics: true }
+        })
+      : await prisma.store.findMany({
+          where: { id: storeId },
+          include: { StoreUsageMetrics: true }
+        });
+    
+    // Sammanställ resultat med användningsinformation
+    const result = stores.map(store => ({
+      id: store.id,
+      name: store.name,
+      plan: store.subscriptionPlan,
+      usage: {
+        tickets: store.monthlyTicketCount,
+        ticketsLimit: store.subscriptionPlan === 'STARTUP' ? 50 : null,
+        admins: store.StoreUsageMetrics.adminCount,
+        adminsLimit: getAdminLimit(store.subscriptionPlan),
+        ticketTypes: store.StoreUsageMetrics.customTicketTypeCount,
+        ticketTypesLimit: getTicketTypeLimit(store.subscriptionPlan),
+        customStatuses: store.StoreUsageMetrics.customStatusCount,
+        customStatusesLimit: getCustomStatusLimit(store.subscriptionPlan),
+        // Övrig användning...
+      }
+    }));
+    
+    return res.status(200).json(result);
+  }
+  
+  return res.status(405).json({ error: 'Method not allowed' });
+}
+
+// Hjälpfunktioner för att hämta begränsningar
+function getAdminLimit(plan) {
+  switch (plan) {
+    case 'STARTUP': return 1;
+    case 'TEAM': return 3;
+    case 'GROWING': return 5;
+    case 'PROFESSIONAL': return 10;
+    default: return 1;
+  }
+}
+
+// Liknande funktioner för andra begränsningar...
+```
+
+## Sammanfattning av arbetsplanen
+
+Vår strategi för att implementera de olika planbegränsningarna innebär en holistisk tillvägagångssätt som täcker alla aspekter av systemet:
+
+1. **Databas**: Utöka databasen med prenumerationsmodeller för att spåra plan, användning och begränsningar
+2. **Affärslogik**: Skapa centraliserade begränsningskontroller som kan återanvändas i API:er
+3. **UI**: Anpassa användargränssnittet för att visa/dölja funktioner baserat på tillgänglig plan
+4. **Admin**: Skapa gränssnitt för att hantera prenumerationer och uppgraderingar
+5. **Integration**: Anpassa email- och SMS-funktioner baserat på planrestriktioner
+6. **Automation**: Implementera schemalagda jobb för att upprätthålla historikbegränsningar
+
+För att bibehålla god separation av ansvarsområden använder vi:
+- Centrala utilfunktioner för planbegränsningar
+- React context för UI-anpassning
+- Higher-Order Components för att begränsa funktionalitet
+- Middleware för API-begränsningar
+
+Denna implementation behåller också flexibilitet för framtida förändringar, då nya planer eller funktioner enkelt kan läggas till genom att uppdatera enum och associerade funktioner.
