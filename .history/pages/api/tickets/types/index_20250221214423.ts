@@ -6,7 +6,6 @@ import { getServerSession } from 'next-auth/next';
 import { authOptions } from '../../auth/authOptions';
 import { createTicketTypeSchema, CreateTicketTypeInput } from '../../../../utils/validation';
 import rateLimiter from '@/lib/rateLimiterApi';
-import planRestrictions from '@/utils/planRestrictions';
 
 const prisma = new PrismaClient();
 
@@ -45,14 +44,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
       case 'POST':
         try {
-          // Kontrollera planbegränsningar innan vi skapar en ny ärendetyp
-          const canCreateResult = await planRestrictions.canCreateTicketType(session.user.storeId);
-          if (!canCreateResult.allowed) {
-            return res.status(403).json({ 
-              error: 'Plan limit reached', 
-              message: canCreateResult.message
-            });
-          }
           // Validera inkommande data
           const parseResult = createTicketTypeSchema.safeParse(req.body);
           if (!parseResult.success) {
@@ -84,8 +75,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             },
             include: { fields: true }, // Inkludera fields i responsen
           });
-
-          await planRestrictions.incrementTicketTypeCount(session.user.storeId);
 
           console.log('TicketType created:', newTicketType);
           res.status(201).json(newTicketType);

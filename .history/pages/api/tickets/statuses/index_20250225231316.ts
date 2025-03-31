@@ -5,7 +5,6 @@ import { getServerSession } from 'next-auth/next';
 import { authOptions } from '../../auth/authOptions';
 import rateLimiter from '@/lib/rateLimiterApi';
 import { createTicketStatusSchema, CreateTicketStatusInput } from '@/utils/validation';
-import planRestrictions from '@/utils/planRestrictions';
 
 const prisma = new PrismaClient();
 
@@ -45,13 +44,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         }
       }
       case 'POST': {
-        const canCreateResult = await planRestrictions.canCreateCustomStatus(session.user.storeId);
-          if (!canCreateResult.allowed) {
-            return res.status(403).json({ 
-              error: 'Plan limit reached', 
-              message: canCreateResult.message
-            });
-          }
         try {
           // Validera inkommande data
           const parseResult = createTicketStatusSchema.safeParse(req.body);
@@ -74,9 +66,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
               storeId: session.user.storeId!,
             },
           });
-
-          await planRestrictions.incrementCustomStatusCount(session.user.storeId);
-
           console.log('UserTicketStatus created:', newStatus);
           return res.status(201).json(newStatus);
         } catch (error) {

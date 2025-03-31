@@ -6,7 +6,6 @@ import { getServerSession } from 'next-auth/next';
 import { authOptions } from '../auth/authOptions';
 import { createTicketSchema, CreateTicketInput } from '../../../utils/validation';
 import rateLimiter from '@/lib/rateLimiterApi';
-import planRestrictions from '@/utils/planRestrictions';
 
 const prisma = new PrismaClient();
 
@@ -79,14 +78,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
       case 'POST':
         try {
-          // Kontrollera planbegränsningar innan vi skapar ett nytt ärende
-          const canCreateResult = await planRestrictions.canCreateTicket(session.user.storeId);
-          if (!canCreateResult.allowed) {
-            return res.status(403).json({ 
-              error: 'Plan limit reached', 
-              message: canCreateResult.message
-            });
-          }
           // Validera inkommande data
           const parseResult = createTicketSchema.safeParse(req.body);
           if (!parseResult.success) {
@@ -173,8 +164,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             // Ignorera mailfil men logga det - don't let it affect ticket creation
             console.error(`Fel vid skickande av bekräftelsemail för ärende #${newTicket.id}:`, mailError);
           }
-
-          await planRestrictions.incrementTicketCount(session.user.storeId);
 
           console.log('Ticket created:', newTicket);
           
