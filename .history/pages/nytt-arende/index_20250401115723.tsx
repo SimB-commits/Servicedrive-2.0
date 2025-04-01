@@ -303,15 +303,15 @@ export default function CreateTicketPage() {
   };
 
   const handleTicketInputChange = (value: any, fieldName: string, fieldType?: string): void => {
-  // Använd getZonedValue med fälttyp för striktare validering
-  const processedValue = getZonedValue(value, fieldType);
-  
-  console.log("Uppdaterar fält", fieldName, "med värde", processedValue);
-  setTicketFormValues((prev) => ({
-    ...prev,
-    [fieldName]: processedValue,
-  }));
-};
+    // Använd getZonedValue med fälttyp för striktare validering
+    const processedValue = getZonedValue(value, fieldType);
+    
+    console.log("Uppdaterar fält", fieldName, "med värde", processedValue);
+    setTicketFormValues((prev) => ({
+      ...prev,
+      [fieldName]: processedValue,
+    }));
+  };
 
   const handleCustomerInputChange = (value: string, fieldName: string): void => {
     setCustomerFormValues((prev) => ({
@@ -859,19 +859,12 @@ export default function CreateTicketPage() {
                             {groupedFields.basic.map((field, idx) => (
                               <div key={idx} className={field.name.length > 15 ? "col-span-2" : "col-span-1"}>
                                 <Input
-                                  key={field.name}
                                   label={field.name}
                                   name={field.name}
-                                  type={field.fieldType === "DATE" ? "date" : 
-                                        field.fieldType === "NUMBER" ? "number" : 
-                                        "text"}
+                                  type={field.fieldType === "NUMBER" ? "number" : "text"}
                                   isRequired={field.isRequired}
                                   value={ticketFormValues[field.name] || ''}
-                                  onValueChange={(value: string) => handleTicketInputChange(
-                                    value, 
-                                    field.name, 
-                                    field.fieldType
-                                  )}
+                                  onValueChange={(value: string) => handleTicketInputChange(value, field.name)}
                                   isInvalid={!!formErrors[field.name]}
                                   errorMessage={formErrors[field.name]}
                                 />
@@ -889,13 +882,12 @@ export default function CreateTicketPage() {
                               {groupedFields.dates.map((field, idx) => (
                                 <div key={idx} className="col-span-1">
                                   <DatePicker
-                                    key={field.name}
                                     label={field.name}
                                     name={field.name}
-                                    value={getZonedValue(ticketFormValues[field.name], field.fieldType)}
+                                    value={getZonedValue(ticketFormValues[field.name])}
                                     onChange={(value) => {
                                       console.log(`${field.fieldType} onChange:`, value);
-                                      handleTicketInputChange(value, field.name, field.fieldType);
+                                      handleTicketInputChange(value, field.name);
                                     }}
                                     isRequired={field.isRequired}
                                     isInvalid={!!formErrors[field.name]}

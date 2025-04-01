@@ -102,47 +102,46 @@ export default function CreateTicketPage() {
   const [loadingTemplates, setLoadingTemplates] = useState(true);
 
   // Hjälpfunktion för att säkerställa ZonedDateTime
-  const getZonedValue = (value: any, fieldType?: string) => {
+  const getZonedValue = (value: any) => {
     if (!value) return null;
     
-    // Om det är en ZonedDateTime-objekt, returnera direkt
-    if (value && typeof value === "object" && "calendar" in value) {
-      return value;
-    }
-    
-    // Om det är en Date, konvertera till ZonedDateTime
-    if (value instanceof Date) {
-      return parseAbsoluteToLocal(value.toISOString());
-    }
-    
-    // Strikt datumhantering för DATE och DUE_DATE
-    if (fieldType === 'DATE' || fieldType === 'DUE_DATE') {
-      try {
-        // Acceptera endast YYYY-MM-DD format
-        const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
-        if (typeof value === 'string' && dateRegex.test(value)) {
-          const date = new Date(value);
-          if (!isNaN(date.getTime())) {
-            return parseAbsoluteToLocal(date.toISOString());
-          }
-        }
-      } catch (e) {
-        console.error('Datumkonverteringsfel:', e);
+    try {
+      // If it's already a ZonedDateTime object, return as is
+      if (value && typeof value === "object" && "calendar" in value) {
+        return value;
       }
+      
+      // If it's a string, parse it
+      if (typeof value === "string") {
+        // Remove the timezone part if present
+        const cleanDateString = value.replace(/\[.*\]$/, '');
+        
+        // Try parsing with Date
+        const date = new Date(cleanDateString);
+        
+        if (!isNaN(date.getTime())) {
+          // Use parseAbsoluteToLocal to create a ZonedDateTime
+          return parseAbsoluteToLocal(date.toISOString());
+        }
+      }
+      
+      // If it's a Date object
+      if (value instanceof Date) {
+        return parseAbsoluteToLocal(value.toISOString());
+      }
+      
+      // If it's an object with year, month, day
+      if (typeof value === "object" && "year" in value && "month" in value && "day" in value) {
+        const { year, month, day } = value;
+        const date = new Date(year, month - 1, day);
+        return parseAbsoluteToLocal(date.toISOString());
+      }
+      
+      return null;
+    } catch (error) {
+      console.error('Error in getZonedValue:', error);
       return null;
     }
-    
-    // För NUMBER och TEXT, returnera ursprungsvärdet
-    if (fieldType === 'NUMBER') {
-      return typeof value === 'number' ? value : 
-             typeof value === 'string' ? parseFloat(value) || null : 
-             null;
-    }
-    
-    // Standard TEXT-hantering
-    return typeof value === 'string' ? value : 
-           value !== null && value !== undefined ? String(value) : 
-           null;
   };
 
   // Hämta ärendetyper
@@ -302,16 +301,22 @@ export default function CreateTicketPage() {
     );
   };
 
-  const handleTicketInputChange = (value: any, fieldName: string, fieldType?: string): void => {
-  // Använd getZonedValue med fälttyp för striktare validering
-  const processedValue = getZonedValue(value, fieldType);
-  
-  console.log("Uppdaterar fält", fieldName, "med värde", processedValue);
-  setTicketFormValues((prev) => ({
-    ...prev,
-    [fieldName]: processedValue,
-  }));
-};
+  const handleTicketInputChange = (value: any, fieldName: string): void => {
+    console.log("Uppdaterar fält", fieldName, "med värde", value);
+    setTicketFormValues((prev) => ({
+      ...prev,
+      [fieldName]: value,
+    }));
+    
+    // Rensa eventuellt felmeddelande för detta fält när användaren ändrar värdet
+    if (formErrors[fieldName]) {
+      setFormErrors(prev => {
+        const newErrors = {...prev};
+        delete newErrors[fieldName];
+        return newErrors;
+      });
+    }
+  };
 
   const handleCustomerInputChange = (value: string, fieldName: string): void => {
     setCustomerFormValues((prev) => ({
@@ -859,19 +864,12 @@ export default function CreateTicketPage() {
                             {groupedFields.basic.map((field, idx) => (
                               <div key={idx} className={field.name.length > 15 ? "col-span-2" : "col-span-1"}>
                                 <Input
-                                  key={field.name}
                                   label={field.name}
                                   name={field.name}
-                                  type={field.fieldType === "DATE" ? "date" : 
-                                        field.fieldType === "NUMBER" ? "number" : 
-                                        "text"}
+                                  type={field.fieldType === "NUMBER" ? "number" : "text"}
                                   isRequired={field.isRequired}
                                   value={ticketFormValues[field.name] || ''}
-                                  onValueChange={(value: string) => handleTicketInputChange(
-                                    value, 
-                                    field.name, 
-                                    field.fieldType
-                                  )}
+                                  onValueChange={(value: string) => handleTicketInputChange(value, field.name)}
                                   isInvalid={!!formErrors[field.name]}
                                   errorMessage={formErrors[field.name]}
                                 />
@@ -889,13 +887,12 @@ export default function CreateTicketPage() {
                               {groupedFields.dates.map((field, idx) => (
                                 <div key={idx} className="col-span-1">
                                   <DatePicker
-                                    key={field.name}
                                     label={field.name}
                                     name={field.name}
-                                    value={getZonedValue(ticketFormValues[field.name], field.fieldType)}
+                                    value={getZonedValue(ticketFormValues[field.name])}
                                     onChange={(value) => {
                                       console.log(`${field.fieldType} onChange:`, value);
-                                      handleTicketInputChange(value, field.name, field.fieldType);
+                                      handleTicketInputChange(value, field.name);
                                     }}
                                     isRequired={field.isRequired}
                                     isInvalid={!!formErrors[field.name]}
