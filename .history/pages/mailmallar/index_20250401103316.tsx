@@ -56,8 +56,8 @@ export default function MailmallsPage() {
         <p className="mb-4">Skapa och hantera mailmallar för automatiserade utskick</p>
       </div>
       
-      {/* Visa varning om planens begränsningar för e-postmallar */}
-      {/* {!canUseEmailTemplates && (
+      {/* {/* Visa varning om planens begränsningar för e-postmallar */}
+      {!canUseEmailTemplates && (
         <PlanLimitNotice 
           resourceType="customStatus" // Använder customStatus eftersom det saknas specifik resourceType för e-postmallar
           className="w-full max-w-6xl mb-4"
@@ -103,8 +103,8 @@ export default function MailmallsPage() {
           {/* Avsändarinställningar-fliken */}
           <Tab key="settings" title="Avsändarinställningar">
             <div className="space-y-6 mt-4">
-              {/* Visa varning för gratisanvändare */}
-              {/* {!canUseEmailTemplates && (
+              {/* {/* Visa varning för gratisanvändare */}
+              {!canUseEmailTemplates && (
                 <PlanLimitNotice 
                   resourceType="customStatus" 
                   compact={true}

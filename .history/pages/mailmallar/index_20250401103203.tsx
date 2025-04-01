@@ -8,7 +8,7 @@ import {
 } from '@heroui/react';
 import { title } from '@/components/primitives';
 import useSubscription from '@/hooks/useSubscription';
-//import PlanLimitNotice from '@/components/subscription/PlanLimitNotice';
+import PlanLimitNotice from '@/components/subscription/PlanLimitNotice';
 
 // Importera komponenter
 import MailTemplateList from '@/components/email/MailTemplateList';
@@ -57,12 +57,12 @@ export default function MailmallsPage() {
       </div>
       
       {/* Visa varning om planens begränsningar för e-postmallar */}
-      {/* {!canUseEmailTemplates && (
+      {!canUseEmailTemplates && (
         <PlanLimitNotice 
           resourceType="customStatus" // Använder customStatus eftersom det saknas specifik resourceType för e-postmallar
           className="w-full max-w-6xl mb-4"
         />
-      )} */}
+      )}
         
       <div className="w-full max-w-6xl">
         <Tabs 
@@ -104,13 +104,13 @@ export default function MailmallsPage() {
           <Tab key="settings" title="Avsändarinställningar">
             <div className="space-y-6 mt-4">
               {/* Visa varning för gratisanvändare */}
-              {/* {!canUseEmailTemplates && (
+              {!canUseEmailTemplates && (
                 <PlanLimitNotice 
                   resourceType="customStatus" 
                   compact={true}
                   className="mb-4"
                 />
-              )} */}
+              )}
               
               <DefaultSenderAddressManager />
             </div>
