@@ -28,7 +28,7 @@ import {
 import { DeleteIcon, EditIcon, ChevronDownIcon, SearchIcon } from '@/components/icons';
 import MailTemplateTest from '@/components/email/MailTemplateTest';
 import MailTemplateForm from './MailTemplateForm';
-//import PlanLimitNotice from '@/components/subscription/PlanLimitNotice';
+import PlanLimitNotice from '@/components/subscription/PlanLimitNotice';
 import useSubscription from '@/hooks/useSubscription';
 
 interface MailTemplate {
@@ -413,12 +413,12 @@ const EnhancedTemplateList: React.FC<TemplateListProps> = ({
         
         <CardBody>
           {/* Visa planvarning om användaren inte har tillgång till funktionen */}
-          {/* {showPlanLimits && !canUseEmailTemplates && (
+          {showPlanLimits && !canUseEmailTemplates && (
             <PlanLimitNotice 
               resourceType="mailTemplate" 
               className="mb-4" 
             />
-          )} */}
+          )}
           
           {loading ? (
             <div className="flex justify-center items-center py-6">
@@ -540,8 +540,6 @@ const EnhancedTemplateList: React.FC<TemplateListProps> = ({
         onOpenChange={setCreateModalOpen}
         scrollBehavior="inside"
         size="3xl"
-        isDismissable={false}  // Kritisk ändring!
-        closeButton={true}
       >
         <ModalContent>
           <ModalHeader>

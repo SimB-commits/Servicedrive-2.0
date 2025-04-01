@@ -412,8 +412,8 @@ const EnhancedTemplateList: React.FC<TemplateListProps> = ({
         </CardHeader>
         
         <CardBody>
-          {/* Visa planvarning om användaren inte har tillgång till funktionen */}
-          {/* {showPlanLimits && !canUseEmailTemplates && (
+          {/* {/* Visa planvarning om användaren inte har tillgång till funktionen */}
+          {showPlanLimits && !canUseEmailTemplates && (
             <PlanLimitNotice 
               resourceType="mailTemplate" 
               className="mb-4" 
@@ -540,8 +540,6 @@ const EnhancedTemplateList: React.FC<TemplateListProps> = ({
         onOpenChange={setCreateModalOpen}
         scrollBehavior="inside"
         size="3xl"
-        isDismissable={false}  // Kritisk ändring!
-        closeButton={true}
       >
         <ModalContent>
           <ModalHeader>

@@ -22,8 +22,6 @@ import {
   Spinner
 } from '@heroui/react';
 import { useSession } from 'next-auth/react';
-import useSubscription from '@/hooks/useSubscription';
-import PlanFeatureNotice from '@/components/subscription/PlanFeatureNotice';
 
 interface Store {
   id: number;
@@ -44,11 +42,6 @@ export default function StoreManager() {
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
-  
-  // Använd subscription hook för att kontrollera om användaren har tillgång till multiStore-funktionen
-  const subscription = useSubscription();
-  const canUseMultiStore = subscription.canUseFeature('multiStore');
-  const hasReachedStoreLimit = stores.length > 1 && !canUseMultiStore;
 
   // Fetch stores
   useEffect(() => {
@@ -102,11 +95,6 @@ export default function StoreManager() {
     
     if (!formData.address.trim()) {
       newErrors.address = 'Adress krävs';
-    }
-    
-    // Validera om användaren får skapa fler butiker
-    if (hasReachedStoreLimit) {
-      newErrors.general = 'Din nuvarande plan tillåter endast en butik. Uppgradera för att skapa fler.';
     }
     
     setErrors(newErrors);
@@ -205,10 +193,10 @@ export default function StoreManager() {
         // Reload page to reflect new store data
         window.location.reload();
       } else {
-        const errorData = await res.json();
+        const error = await res.json();
         addToast({
           title: 'Fel',
-          description: errorData.error || 'Kunde inte byta butik',
+          description: error.error || 'Kunde inte byta butik',
           color: 'danger',
           variant: 'flat'
         });
@@ -240,26 +228,16 @@ export default function StoreManager() {
         <Button 
           color="primary" 
           onPress={() => setCreateModalOpen(true)}
-          isDisabled={hasReachedStoreLimit}
         >
           Skapa ny butik
         </Button>
       </div>
       
-      {/* Visa PlanFeatureNotice om användaren inte har tillgång till multiStore */}
-      {hasReachedStoreLimit && (
-        <PlanFeatureNotice 
-          feature="multiStore"
-          title="Flerbutiksstöd kräver uppgradering"
-          description={`Din ${subscription.planName} plan tillåter endast en butik. Uppgradera till en högre plan för att kunna hantera flera butiker.`}
-        />
-      )}
-      
       <Card>
         <CardHeader>
           <h3 className="text-lg font-medium">Dina butiker</h3>
           <p className="text-sm text-default-500">
-            Här kan du se och hantera dina butiker. Du kan byta mellan butiker {canUseMultiStore && "och skapa nya"}.
+            Här kan du se och hantera dina butiker. Du kan byta mellan butiker och skapa nya.
           </p>
         </CardHeader>
         <CardBody>
@@ -318,28 +296,15 @@ export default function StoreManager() {
         isOpen={createModalOpen}
         onOpenChange={setCreateModalOpen}
         backdrop="opaque"
+        isDismissable={false}  // Kritisk ändring!
+        closeButton={true}
       >
         <ModalContent>
           <ModalHeader>
             <h2 className="text-xl font-bold">Skapa ny butik</h2>
           </ModalHeader>
           <ModalBody>
-            {/* Visa varning om planbegränsning i modalen också */}
-            {hasReachedStoreLimit && (
-              <PlanFeatureNotice 
-                feature="multiStore"
-                compact={true}
-                className="mb-4"
-              />
-            )}
-            
             <Form onSubmit={handleCreateStore} className="space-y-4">
-              {errors.general && (
-                <div className="p-3 bg-danger-50 text-danger-600 rounded border border-danger-200">
-                  {errors.general}
-                </div>
-              )}
-              
               <Input
                 label="Butiksnamn"
                 placeholder="Ange butikens namn"
@@ -385,7 +350,7 @@ export default function StoreManager() {
               color="primary"
               onPress={handleCreateStore}
               isLoading={submitting}
-              isDisabled={submitting || hasReachedStoreLimit}
+              isDisabled={submitting}
             >
               Skapa butik
             </Button>

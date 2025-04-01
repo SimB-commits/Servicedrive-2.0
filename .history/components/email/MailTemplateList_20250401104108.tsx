@@ -540,8 +540,6 @@ const EnhancedTemplateList: React.FC<TemplateListProps> = ({
         onOpenChange={setCreateModalOpen}
         scrollBehavior="inside"
         size="3xl"
-        isDismissable={false}  // Kritisk ändring!
-        closeButton={true}
       >
         <ModalContent>
           <ModalHeader>
