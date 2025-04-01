@@ -3,7 +3,7 @@ import React from 'react';
 import { Card, CardHeader, CardBody, CardFooter, Button, Chip } from '@heroui/react';
 import UsageIndicator from './UsageIndicator';
 import { useSubscription } from '@/context/SubscriptionContext';
-import SubscriptionSkeleton from './SubcriptionSkeleteon';
+import SubscriptionSkeleton from './SubscriptionSkeleton';
 
 const SubscriptionOverview: React.FC = () => {
   const subscription = useSubscription();

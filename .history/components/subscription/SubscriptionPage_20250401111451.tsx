@@ -5,7 +5,7 @@ import { Tabs, Tab, Card, CardBody } from '@heroui/react';
 import SubscriptionOverview from './SubscriptionOverview';
 import PlanSelector from './PlanSelector';
 import { useSubscription } from '@/context/SubscriptionContext';
-import SubscriptionSkeleton from './SubcriptionSkeleteon';
+import SubscriptionSkeleton from './SubscriptionSkeleton';
 
 const SubscriptionPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<string>('overview');

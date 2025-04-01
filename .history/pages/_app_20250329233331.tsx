@@ -1,4 +1,3 @@
-// pages/_app.tsx
 import type { AppProps } from "next/app";
 import { SessionProvider } from "next-auth/react";
 import { HeroUIProvider } from "@heroui/system";
@@ -8,7 +7,6 @@ import { useRouter } from "next/router";
 import { fontSans, fontMono } from "@/config/fonts";
 import "@/styles/globals.css";
 import DefaultLayout from "@/layouts/default";
-import { SubscriptionProvider } from "@/context/SubscriptionContext";
 
 export default function App({ Component, pageProps: { session, ...pageProps } }: AppProps) {
   const router = useRouter();
@@ -25,14 +23,11 @@ export default function App({ Component, pageProps: { session, ...pageProps } }:
       <NextThemesProvider attribute="class" defaultTheme="light">
         <HeroUIProvider navigate={safeNavigate}>
           <ToastProvider />
-          {/* Lägg till SubscriptionProvider här, inom session men utanför layout */}
-          <SubscriptionProvider>
-            <main className="text-foreground bg-background">
-              <DefaultLayout>
-                <Component {...pageProps} />
-              </DefaultLayout>
-            </main>
-          </SubscriptionProvider>
+          <main className="text-foreground bg-background">
+            <DefaultLayout>
+              <Component {...pageProps} />
+            </DefaultLayout>
+          </main>
         </HeroUIProvider>
       </NextThemesProvider>
     </SessionProvider>
