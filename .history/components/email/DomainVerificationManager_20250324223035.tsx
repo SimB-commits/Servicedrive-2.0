@@ -13,8 +13,6 @@ import {
 } from '@heroui/react';
 import DnsRecord from '@/components/email/DnsRecord';
 import DomainVerificationResult from '@/components/email/DomainVerificationResult';
-import PlanFeatureNotice from '@/components/subscription/PlanFeatureNotice';
-import useSubscription from '@/hooks/useSubscription';
 
 interface DomainVerificationManagerProps {
   onDomainVerified?: () => void;
@@ -35,10 +33,6 @@ const DomainVerificationManager: React.FC<DomainVerificationManagerProps> = ({
   const [verificationResult, setVerificationResult] = useState<any>(null);
   const [showVerificationResult, setShowVerificationResult] = useState(false);
   
-  // Använd subscription hook för att kontrollera planbegränsningar
-  const subscription = useSubscription();
-  const canUseCustomDomains = subscription.canUseFeature('customDomains');
-  
   // Validera domännamnet
   const validateDomain = (domain: string) => {
     return domain.match(/^([a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$/);
@@ -46,16 +40,6 @@ const DomainVerificationManager: React.FC<DomainVerificationManagerProps> = ({
 
   // Starta domänverifieringsprocessen
   const handleSetupDomain = async () => {
-    // Kontrollera om användaren har tillgång till anpassade domäner
-    if (!canUseCustomDomains) {
-      addToast({
-        title: 'Begränsad funktion',
-        description: `Din ${subscription.planName} plan har inte stöd för anpassade domäner.`,
-        color: 'warning'
-      });
-      return;
-    }
-    
     // Validera domännamnet
     if (!validateDomain(domainInput)) {
       addToast({
@@ -187,17 +171,6 @@ const DomainVerificationManager: React.FC<DomainVerificationManagerProps> = ({
           <h2 className="text-lg font-semibold">Domänverifiering</h2>
         </CardHeader>
         <CardBody>
-          {/* Visa PlanFeatureNotice om användaren inte har tillgång till anpassade domäner */}
-          {!canUseCustomDomains && (
-            <PlanFeatureNotice
-              feature="customDomains"
-              title="Anpassade domäner kräver uppgradering"
-              description={`Din ${subscription.planName} plan stödjer inte anpassade domäner. Uppgradera till en högre plan för att skicka mail från dina egna domäner.`}
-              compact={false}
-              className="mb-4"
-            />
-          )}
-        
           {!setupSuccess ? (
             <div className="space-y-4">
               <div className="bg-info-50 border border-info-200 p-4 rounded">
@@ -214,14 +187,14 @@ const DomainVerificationManager: React.FC<DomainVerificationManagerProps> = ({
                   value={domainInput}
                   onValueChange={setDomainInput}
                   description="Ange domännamnet du vill verifiera"
-                  isDisabled={loading || !canUseCustomDomains}
+                  isDisabled={loading}
                 />
                 
                 <Button
                   color="primary"
                   onPress={handleSetupDomain}
                   isLoading={loading}
-                  isDisabled={loading || !domainInput.trim() || !canUseCustomDomains}
+                  isDisabled={loading || !domainInput.trim()}
                 >
                   Starta verifiering
                 </Button>

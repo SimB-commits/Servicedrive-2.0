@@ -7,13 +7,11 @@ import {
   addToast
 } from '@heroui/react';
 
-// Importera komponenter för e-postinställningar
+// Importera komponenter för e-postinställningar - OBSERVERA: Borttagna komponenter relaterade till reply-domäner
 import DefaultSenderAddressManager from '@/components/email/DefaultSenderAddressManager';
 import DomainVerificationManager from '@/components/email/DomainVerificationManager';
 import DomainVerificationStatus from '@/components/email/DomainVerificationStatus';
 import DomainVerificationInfo from '@/components/email/DomainVerificationInfo';
-import PlanFeatureNotice from '@/components/subscription/PlanFeatureNotice';
-import useSubscription from '@/hooks/useSubscription';
 
 // Typ-definition för domäner
 interface Domain {
@@ -37,11 +35,8 @@ const EmailSettings: React.FC = () => {
   const [loadingDomains, setLoadingDomains] = useState(true);
   const [showAddDomain, setShowAddDomain] = useState(false);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
-  
-  // Använd subscription hook för att hantera planbegränsningar
-  const subscription = useSubscription();
-  const canUseCustomDomains = subscription.canUseFeature('customDomains');
 
+  // Hämta domäner när komponenten laddas
   useEffect(() => {
     fetchDomains();
   }, [refreshTrigger]);
@@ -51,7 +46,6 @@ const EmailSettings: React.FC = () => {
     try {
       setLoadingDomains(true);
       const res = await fetch('/api/mail/domains');
-      
       if (res.ok) {
         const data = await res.json();
         setDomains(data);
@@ -149,15 +143,6 @@ const EmailSettings: React.FC = () => {
         {/* Domänhantering */}
         <Tab key="domains" title="Domänverifiering">
           <div className="space-y-6 mt-4">
-            {/* Visa PlanFeatureNotice om användaren inte har tillgång till anpassade domäner */}
-            {!canUseCustomDomains && (
-              <PlanFeatureNotice
-                feature="customDomains"
-                title="Anpassade domäner kräver uppgradering"
-                description={`Din ${subscription.planName} plan har inte stöd för anpassade domäner. Uppgradera för att kunna skicka mail från dina egna domäner.`}
-              />
-            )}
-            
             {showAddDomain ? (
               // Visa domänverifieringshanteraren när man lägger till ny domän
               <DomainVerificationManager
@@ -172,7 +157,6 @@ const EmailSettings: React.FC = () => {
                   <button 
                     className="heroui-button heroui-button-primary heroui-button-md"
                     onClick={() => setShowAddDomain(true)}
-                    disabled={!canUseCustomDomains}
                   >
                     Verifiera ny domän
                   </button>
@@ -189,18 +173,6 @@ const EmailSettings: React.FC = () => {
                     <strong> reply.servicedrive.se</strong> oavsett vilken avsändaradress du använder.
                   </p>
                 </div>
-                
-                {/* Visa användarvänligt meddelande om ingen tillgång till anpassade domäner */}
-                {!canUseCustomDomains && domains.length === 0 && (
-                  <div className="p-4 bg-default-50 rounded-lg text-center">
-                    <p className="text-default-600 mb-3">
-                      Funktionen för anpassade domäner är inte tillgänglig i din nuvarande plan.
-                    </p>
-                    <p className="text-sm text-default-500 mb-4">
-                      Du kan fortfarande skicka mail med standarddomänen servicedrive.se
-                    </p>
-                  </div>
-                )}
                 
                 {loadingDomains ? (
                   <div className="flex justify-center items-center py-8">
