@@ -1,4 +1,3 @@
-// components/email/MailTemplateList.tsx
 import React, { useState, useEffect } from 'react';
 import {
   Button,
@@ -29,8 +28,6 @@ import {
 import { DeleteIcon, EditIcon, ChevronDownIcon, SearchIcon } from '@/components/icons';
 import MailTemplateTest from '@/components/email/MailTemplateTest';
 import MailTemplateForm from './MailTemplateForm';
-import PlanLimitNotice from '@/components/subscription/PlanLimitNotice';
-import useSubscription from '@/hooks/useSubscription';
 
 interface MailTemplate {
   id: number;
@@ -59,47 +56,9 @@ const EnhancedTemplateList: React.FC<TemplateListProps> = ({
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState<MailTemplate | null>(null);
   const [activeUsages, setActiveUsages] = useState<Record<number, string[]>>({});
-  
-  // Använd useSubscription hook för plan-begränsningar
-  const { canUseFeature, hasReachedLimit } = useSubscription();
-  const canCreateTemplates = canUseFeature('emailTemplates');
 
-  // Hämta alla mailmallar
+  // Hämta mallar när komponenten laddas eller när refreshTrigger ändras
   useEffect(() => {
-    const fetchTemplates = async () => {
-      try {
-        setLoading(true);
-        const res = await fetch('/api/mail/templates');
-        if (res.ok) {
-          const data = await res.json();
-          setTemplates(data);
-          setFilteredTemplates(data);
-          
-          // Hämta information om mallars användning (statusar, inställningar)
-          fetchTemplateUsages(data);
-        } else {
-          const error = await res.json();
-          console.error('Kunde inte hämta mailmallar:', error);
-          addToast({
-            title: 'Fel',
-            description: error.message || 'Kunde inte hämta mailmallar',
-            color: 'danger',
-            variant: 'flat'
-          });
-        }
-      } catch (error) {
-        console.error('Fel vid hämtning av mailmallar:', error);
-        addToast({
-          title: 'Fel',
-          description: 'Ett fel inträffade vid hämtning av mailmallar',
-          color: 'danger',
-          variant: 'flat'
-        });
-      } finally {
-        setLoading(false);
-      }
-    };
-
     fetchTemplates();
   }, [refreshTrigger]);
 
@@ -118,6 +77,41 @@ const EnhancedTemplateList: React.FC<TemplateListProps> = ({
     
     setFilteredTemplates(filtered);
   }, [searchQuery, templates]);
+
+  // Hämta mallarna från API
+  const fetchTemplates = async () => {
+    try {
+      setLoading(true);
+      const res = await fetch('/api/mail/templates');
+      if (res.ok) {
+        const data = await res.json();
+        setTemplates(data);
+        setFilteredTemplates(data);
+        
+        // Hämta information om mallars användning (statusar, inställningar)
+        fetchTemplateUsages(data);
+      } else {
+        const error = await res.json();
+        console.error('Kunde inte hämta mailmallar:', error);
+        addToast({
+          title: 'Fel',
+          description: error.message || 'Kunde inte hämta mailmallar',
+          color: 'danger',
+          variant: 'flat'
+        });
+      }
+    } catch (error) {
+      console.error('Fel vid hämtning av mailmallar:', error);
+      addToast({
+        title: 'Fel',
+        description: 'Ett fel inträffade vid hämtning av mailmallar',
+        color: 'danger',
+        variant: 'flat'
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // Hämta information om mallars användning (var de används)
   const fetchTemplateUsages = async (templates: MailTemplate[]) => {
@@ -387,31 +381,17 @@ const EnhancedTemplateList: React.FC<TemplateListProps> = ({
               />
             </div>
             
-            {/* Visa endast skapa-knappen om användaren har rätt prenumerationsplan */}
-            {canCreateTemplates && (
-              <Button 
-                type="button" 
-                onPress={() => setCreateModalOpen(true)} 
-                color="primary"
-              >
-                Skapa ny mailmall
-              </Button>
-            )}
+            <Button 
+              type="button" 
+              onPress={() => setCreateModalOpen(true)} 
+              color="primary"
+            >
+              Skapa ny mailmall
+            </Button>
           </div>
         </CardHeader>
         
         <CardBody>
-          {/* Visa planbegränsningsmeddelande om e-postmallar inte ingår i användarens plan */}
-          {!canCreateTemplates && (
-            <div className="mb-4">
-              <PlanLimitNotice
-                resourceType="customStatus" 
-                showUpgradeButton={true} 
-                className="mb-4"
-              />
-            </div>
-          )}
-        
           {loading ? (
             <div className="flex justify-center items-center py-6">
               <Spinner size="md" />
@@ -435,14 +415,12 @@ const EnhancedTemplateList: React.FC<TemplateListProps> = ({
                 <p className="text-default-600 mb-4">
                   Inga mailmallar skapade ännu. Klicka på "Skapa ny mailmall" för att komma igång.
                 </p>
-                {canCreateTemplates && (
-                  <Button 
-                    color="primary" 
-                    onPress={() => setCreateModalOpen(true)}
-                  >
-                    Skapa ny mailmall
-                  </Button>
-                )}
+                <Button 
+                  color="primary" 
+                  onPress={() => setCreateModalOpen(true)}
+                >
+                  Skapa ny mailmall
+                </Button>
               </div>
             )
           ) : (
@@ -475,7 +453,6 @@ const EnhancedTemplateList: React.FC<TemplateListProps> = ({
                           variant="flat" 
                           isIconOnly
                           onPress={() => handleEditTemplate(template)}
-                          isDisabled={!canCreateTemplates}
                         >
                           <EditIcon />
                         </Button>
@@ -491,20 +468,17 @@ const EnhancedTemplateList: React.FC<TemplateListProps> = ({
                             </Button>
                           </DropdownTrigger>
                           <DropdownMenu aria-label="Template actions">
-                            {canCreateTemplates && (
-                              <DropdownItem 
-                                key="duplicate"
-                                onPress={() => handleDuplicateTemplate(template)}
-                              >
-                                Duplicera
-                              </DropdownItem>
-                            )}
+                            <DropdownItem 
+                              key="duplicate"
+                              onPress={() => handleDuplicateTemplate(template)}
+                            >
+                              Duplicera
+                            </DropdownItem>
                             <DropdownItem 
                               key="delete" 
                               className="text-danger"
                               color="danger"
                               onPress={() => handleDeleteConfirm(template)}
-                              isDisabled={!canCreateTemplates}
                             >
                               Ta bort
                             </DropdownItem>
@@ -526,6 +500,10 @@ const EnhancedTemplateList: React.FC<TemplateListProps> = ({
         onOpenChange={setCreateModalOpen}
         scrollBehavior="inside"
         size="3xl"
+        // Viktig tillägg: Lägg till denna prop för att förhindra stängning vid klick inne i modalen
+        isDismissable={false}
+        // Stängning via escape fortfarande möjlig
+        closeButton={true}
       >
         <ModalContent>
           <ModalHeader>

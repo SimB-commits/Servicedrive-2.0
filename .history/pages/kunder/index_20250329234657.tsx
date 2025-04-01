@@ -819,10 +819,6 @@ export default function KundPage() {
         onOpenChange={setCreateModalOpen}
         scrollBehavior="inside"
         size="3xl"
-        // Viktig tillägg: Lägg till denna prop för att förhindra stängning vid klick inne i modalen
-        isDismissable={false}
-        // Stängning via escape fortfarande möjlig
-        closeButton={true}
       >
         <ModalContent>
           <ModalHeader>

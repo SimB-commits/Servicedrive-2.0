@@ -1,4 +1,3 @@
-// components/email/MailTemplateList.tsx
 import React, { useState, useEffect } from 'react';
 import {
   Button,
@@ -29,8 +28,6 @@ import {
 import { DeleteIcon, EditIcon, ChevronDownIcon, SearchIcon } from '@/components/icons';
 import MailTemplateTest from '@/components/email/MailTemplateTest';
 import MailTemplateForm from './MailTemplateForm';
-import PlanLimitNotice from '@/components/subscription/PlanLimitNotice';
-import useSubscription from '@/hooks/useSubscription';
 
 interface MailTemplate {
   id: number;
@@ -44,11 +41,13 @@ interface MailTemplate {
 interface TemplateListProps {
   refreshTrigger?: number;
   onTemplateChanged?: () => void;
+  readOnly?: boolean;
 }
 
 const EnhancedTemplateList: React.FC<TemplateListProps> = ({ 
   refreshTrigger = 0, 
-  onTemplateChanged 
+  onTemplateChanged,
+  readOnly = false
 }) => {
   const [templates, setTemplates] = useState<MailTemplate[]>([]);
   const [filteredTemplates, setFilteredTemplates] = useState<MailTemplate[]>([]);
@@ -59,47 +58,9 @@ const EnhancedTemplateList: React.FC<TemplateListProps> = ({
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState<MailTemplate | null>(null);
   const [activeUsages, setActiveUsages] = useState<Record<number, string[]>>({});
-  
-  // Använd useSubscription hook för plan-begränsningar
-  const { canUseFeature, hasReachedLimit } = useSubscription();
-  const canCreateTemplates = canUseFeature('emailTemplates');
 
-  // Hämta alla mailmallar
+  // Hämta mallar när komponenten laddas eller när refreshTrigger ändras
   useEffect(() => {
-    const fetchTemplates = async () => {
-      try {
-        setLoading(true);
-        const res = await fetch('/api/mail/templates');
-        if (res.ok) {
-          const data = await res.json();
-          setTemplates(data);
-          setFilteredTemplates(data);
-          
-          // Hämta information om mallars användning (statusar, inställningar)
-          fetchTemplateUsages(data);
-        } else {
-          const error = await res.json();
-          console.error('Kunde inte hämta mailmallar:', error);
-          addToast({
-            title: 'Fel',
-            description: error.message || 'Kunde inte hämta mailmallar',
-            color: 'danger',
-            variant: 'flat'
-          });
-        }
-      } catch (error) {
-        console.error('Fel vid hämtning av mailmallar:', error);
-        addToast({
-          title: 'Fel',
-          description: 'Ett fel inträffade vid hämtning av mailmallar',
-          color: 'danger',
-          variant: 'flat'
-        });
-      } finally {
-        setLoading(false);
-      }
-    };
-
     fetchTemplates();
   }, [refreshTrigger]);
 
@@ -118,6 +79,41 @@ const EnhancedTemplateList: React.FC<TemplateListProps> = ({
     
     setFilteredTemplates(filtered);
   }, [searchQuery, templates]);
+
+  // Hämta mallarna från API
+  const fetchTemplates = async () => {
+    try {
+      setLoading(true);
+      const res = await fetch('/api/mail/templates');
+      if (res.ok) {
+        const data = await res.json();
+        setTemplates(data);
+        setFilteredTemplates(data);
+        
+        // Hämta information om mallars användning (statusar, inställningar)
+        fetchTemplateUsages(data);
+      } else {
+        const error = await res.json();
+        console.error('Kunde inte hämta mailmallar:', error);
+        addToast({
+          title: 'Fel',
+          description: error.message || 'Kunde inte hämta mailmallar',
+          color: 'danger',
+          variant: 'flat'
+        });
+      }
+    } catch (error) {
+      console.error('Fel vid hämtning av mailmallar:', error);
+      addToast({
+        title: 'Fel',
+        description: 'Ett fel inträffade vid hämtning av mailmallar',
+        color: 'danger',
+        variant: 'flat'
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // Hämta information om mallars användning (var de används)
   const fetchTemplateUsages = async (templates: MailTemplate[]) => {
@@ -369,12 +365,12 @@ const EnhancedTemplateList: React.FC<TemplateListProps> = ({
     );
   };
 
-  return (
-    <>
+  // Visa meddelande om läge med begränsad åtkomst
+  if (readOnly) {
+    return (
       <Card>
         <CardHeader className="flex justify-between items-center">
-          <h2 className="text-lg font-semibold">Dina mailmallar</h2>
-          
+          <h2 className="text-lg font-semibold">Tillgängliga mailmallar</h2>
           <div className="flex gap-2">
             <div className="relative">
               <Input
@@ -386,140 +382,211 @@ const EnhancedTemplateList: React.FC<TemplateListProps> = ({
                 className="w-64"
               />
             </div>
-            
-            {/* Visa endast skapa-knappen om användaren har rätt prenumerationsplan */}
-            {canCreateTemplates && (
-              <Button 
-                type="button" 
-                onPress={() => setCreateModalOpen(true)} 
-                color="primary"
-              >
-                Skapa ny mailmall
-              </Button>
-            )}
           </div>
         </CardHeader>
         
         <CardBody>
-          {/* Visa planbegränsningsmeddelande om e-postmallar inte ingår i användarens plan */}
-          {!canCreateTemplates && (
-            <div className="mb-4">
-              <PlanLimitNotice
-                resourceType="customStatus" 
-                showUpgradeButton={true} 
-                className="mb-4"
-              />
-            </div>
-          )}
-        
           {loading ? (
             <div className="flex justify-center items-center py-6">
               <Spinner size="md" />
               <p className="ml-3">Laddar mailmallar...</p>
             </div>
           ) : filteredTemplates.length === 0 ? (
-            searchQuery ? (
-              <div className="text-center p-6 border rounded-md bg-default-50">
-                <p className="text-default-600 mb-4">
-                  Inga mailmallar matchade din sökning "{searchQuery}".
-                </p>
+            <div className="text-center p-6 border rounded-md bg-default-50">
+              <p className="text-default-600 mb-4">
+                {searchQuery ? 
+                  `Inga mailmallar matchade din sökning "${searchQuery}".` :
+                  'Inga mailmallar är för närvarande tillgängliga i ditt system.'
+                }
+              </p>
+              <div className="p-4 bg-info-50 text-info-700 border border-info-200 rounded-md text-sm">
+                <p className="font-medium">Din plan har begränsad åtkomst till mailmallar</p>
+                <p className="mt-1">Med Team-planen eller högre kan du skapa och anpassa egna mailmallar.</p>
                 <Button 
-                  variant="flat" 
-                  onPress={() => setSearchQuery('')}
+                  as="a"
+                  href="/installningar?tab=subscription&upgrade=true"
+                  color="primary"
+                  variant="flat"
+                  className="mt-3"
+                  size="sm"
                 >
-                  Visa alla mallar
+                  Uppgradera för mer funktionalitet
                 </Button>
               </div>
-            ) : (
-              <div className="text-center p-6 border rounded-md bg-default-50">
-                <p className="text-default-600 mb-4">
-                  Inga mailmallar skapade ännu. Klicka på "Skapa ny mailmall" för att komma igång.
-                </p>
-                {canCreateTemplates && (
-                  <Button 
-                    color="primary" 
-                    onPress={() => setCreateModalOpen(true)}
-                  >
-                    Skapa ny mailmall
-                  </Button>
-                )}
-              </div>
-            )
+            </div>
           ) : (
-            <Table aria-label="Mail templates">
-              <TableHeader>
-                <TableColumn>Namn</TableColumn>
-                <TableColumn>Ämne</TableColumn>
-                <TableColumn>Användning</TableColumn>
-                <TableColumn>Skapad</TableColumn>
-                <TableColumn>Åtgärder</TableColumn>
-              </TableHeader>
-              <TableBody>
-                {filteredTemplates.map(template => (
-                  <TableRow key={template.id}>
-                    <TableCell>
-                      <div className="font-medium">{template.name}</div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="truncate max-w-xs">{template.subject}</div>
-                    </TableCell>
-                    <TableCell>
-                      {getUsageBadges(template.id)}
-                    </TableCell>
-                    <TableCell>{formatDate(template.createdAt)}</TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-2">
+            <div>
+              <div className="bg-info-50 border border-info-200 p-3 rounded-md mb-4 text-sm text-info-700">
+                <p className="font-medium">Skrivskyddat läge</p>
+                <p className="mt-1">Din nuvarande plan ger endast läsbehörighet till mailmallar. 
+                   Uppgradera till Team-planen eller högre för att skapa och redigera egna mallar.</p>
+              </div>
+              <Table aria-label="Mail templates">
+                <TableHeader>
+                  <TableColumn>Namn</TableColumn>
+                  <TableColumn>Ämne</TableColumn>
+                  <TableColumn>Användning</TableColumn>
+                  <TableColumn>Skapad</TableColumn>
+                  <TableColumn>Åtgärder</TableColumn>
+                </TableHeader>
+                <TableBody>
+                  {filteredTemplates.map(template => (
+                    <TableRow key={template.id}>
+                      <TableCell>
+                        <div className="font-medium">{template.name}</div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="truncate max-w-xs">{template.subject}</div>
+                      </TableCell>
+                      <TableCell>
+                        {getUsageBadges(template.id)}
+                      </TableCell>
+                      <TableCell>{formatDate(template.createdAt)}</TableCell>
+                      <TableCell>
                         <MailTemplateTest templateId={template.id} />
-                        <Button 
-                          type="button" 
-                          variant="flat" 
-                          isIconOnly
-                          onPress={() => handleEditTemplate(template)}
-                          isDisabled={!canCreateTemplates}
-                        >
-                          <EditIcon />
-                        </Button>
-                        
-                        <Dropdown>
-                          <DropdownTrigger>
-                            <Button 
-                              type="button" 
-                              variant="flat" 
-                              isIconOnly
-                            >
-                              <ChevronDownIcon />
-                            </Button>
-                          </DropdownTrigger>
-                          <DropdownMenu aria-label="Template actions">
-                            {canCreateTemplates && (
-                              <DropdownItem 
-                                key="duplicate"
-                                onPress={() => handleDuplicateTemplate(template)}
-                              >
-                                Duplicera
-                              </DropdownItem>
-                            )}
-                            <DropdownItem 
-                              key="delete" 
-                              className="text-danger"
-                              color="danger"
-                              onPress={() => handleDeleteConfirm(template)}
-                              isDisabled={!canCreateTemplates}
-                            >
-                              Ta bort
-                            </DropdownItem>
-                          </DropdownMenu>
-                        </Dropdown>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
           )}
         </CardBody>
       </Card>
+    );
+  }
 
+  return (
+    <Card>
+      <CardHeader className="flex justify-between items-center">
+        <h2 className="text-lg font-semibold">Dina mailmallar</h2>
+        
+        <div className="flex gap-2">
+          <div className="relative">
+            <Input
+              placeholder="Sök mallar..."
+              value={searchQuery}
+              onValueChange={setSearchQuery}
+              startContent={<SearchIcon className="text-default-400" />}
+              size="sm"
+              className="w-64"
+            />
+          </div>
+          
+          <Button 
+            type="button" 
+            onPress={() => setCreateModalOpen(true)} 
+            color="primary"
+          >
+            Skapa ny mailmall
+          </Button>
+        </div>
+      </CardHeader>
+      
+      <CardBody>
+        {loading ? (
+          <div className="flex justify-center items-center py-6">
+            <Spinner size="md" />
+            <p className="ml-3">Laddar mailmallar...</p>
+          </div>
+        ) : filteredTemplates.length === 0 ? (
+          searchQuery ? (
+            <div className="text-center p-6 border rounded-md bg-default-50">
+              <p className="text-default-600 mb-4">
+                Inga mailmallar matchade din sökning "{searchQuery}".
+              </p>
+              <Button 
+                variant="flat" 
+                onPress={() => setSearchQuery('')}
+              >
+                Visa alla mallar
+              </Button>
+            </div>
+          ) : (
+            <div className="text-center p-6 border rounded-md bg-default-50">
+              <p className="text-default-600 mb-4">
+                Inga mailmallar skapade ännu. Klicka på "Skapa ny mailmall" för att komma igång.
+              </p>
+              <Button 
+                color="primary" 
+                onPress={() => setCreateModalOpen(true)}
+              >
+                Skapa ny mailmall
+              </Button>
+            </div>
+          )
+        ) : (
+          <Table aria-label="Mail templates">
+            <TableHeader>
+              <TableColumn>Namn</TableColumn>
+              <TableColumn>Ämne</TableColumn>
+              <TableColumn>Användning</TableColumn>
+              <TableColumn>Skapad</TableColumn>
+              <TableColumn>Åtgärder</TableColumn>
+            </TableHeader>
+            <TableBody>
+              {filteredTemplates.map(template => (
+                <TableRow key={template.id}>
+                  <TableCell>
+                    <div className="font-medium">{template.name}</div>
+                  </TableCell>
+                  <TableCell>
+                    <div className="truncate max-w-xs">{template.subject}</div>
+                  </TableCell>
+                  <TableCell>
+                    {getUsageBadges(template.id)}
+                  </TableCell>
+                  <TableCell>{formatDate(template.createdAt)}</TableCell>
+                  <TableCell>
+                    <div className="flex items-center gap-2">
+                      <MailTemplateTest templateId={template.id} />
+                      <Button 
+                        type="button" 
+                        variant="flat" 
+                        isIconOnly
+                        onPress={() => handleEditTemplate(template)}
+                      >
+                        <EditIcon />
+                      </Button>
+                      
+                      <Dropdown>
+                        <DropdownTrigger>
+                          <Button 
+                            type="button" 
+                            variant="flat" 
+                            isIconOnly
+                          >
+                            <ChevronDownIcon />
+                          </Button>
+                        </DropdownTrigger>
+                        <DropdownMenu aria-label="Template actions">
+                          <DropdownItem 
+                            key="duplicate"
+                            onPress={() => handleDuplicateTemplate(template)}
+                          >
+                            Duplicera
+                          </DropdownItem>
+                          <DropdownItem 
+                            key="delete" 
+                            className="text-danger"
+                            color="danger"
+                            onPress={() => handleDeleteConfirm(template)}
+                          >
+                            Ta bort
+                          </DropdownItem>
+                        </DropdownMenu>
+                      </Dropdown>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+      </CardBody>
+    </Card>
+
+    <>
       {/* Modal för att skapa ny mall */}
       <Modal
         isOpen={createModalOpen}
@@ -618,4 +685,4 @@ const EnhancedTemplateList: React.FC<TemplateListProps> = ({
   );
 };
 
-export default EnhancedTemplateList;
+export default MailTemplateList;

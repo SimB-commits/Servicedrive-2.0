@@ -490,10 +490,6 @@ export default function Arendetyper() {
         onOpenChange={setCreateModalOpen}
         scrollBehavior="inside"
         size="3xl"
-        // Viktig tillägg: Lägg till denna prop för att förhindra stängning vid klick inne i modalen
-        isDismissable={false}
-        // Stängning via escape fortfarande möjlig
-        closeButton={true}
       >
         <ModalContent>
           <ModalHeader>
@@ -738,39 +734,98 @@ export default function Arendetyper() {
                           </div>
                           
                           <div>
-                            <label htmlFor={`editField-${index}-type`} className="block text-sm mb-1">
-                              Fälttyp
-                            </label>
-                            <Dropdown>
-                              <DropdownTrigger>
-                                <Button 
-                                  variant="flat" 
-                                  className="w-full justify-start"
-                                  isInvalid={!!validationErrors[`editField_${index}_type`]}
-                                >
-                                  {field.fieldType || "Välj fälttyp"}
-                                </Button>
-                              </DropdownTrigger>
-                              <DropdownMenu 
-                                aria-label="Välj fälttyp"
-                                onAction={(key) => {
-                                  const updatedFields = [...editFields];
-                                  updatedFields[index].fieldType = key as string;
-                                  setEditFields(updatedFields);
-                                }}
-                              >
-                                <DropdownItem key="TEXT">Text</DropdownItem>
-                                <DropdownItem key="NUMBER">Nummer</DropdownItem>
-                                <DropdownItem key="DATE">Datum</DropdownItem>
-                                <DropdownItem key="DUE_DATE">Senast klar</DropdownItem>
-                              </DropdownMenu>
-                            </Dropdown>
-                            {validationErrors[`editField_${index}_type`] && (
-                              <p className="text-danger text-xs mt-1">
-                                {validationErrors[`editField_${index}_type`]}
-                              </p>
-                            )}
-                          </div>
+  <label htmlFor={`field-${index}-type`} className="block text-sm font-medium mb-2">
+    Fälttyp
+  </label>
+  <div className="border rounded-md p-3">
+    <div className="grid grid-cols-2 gap-2">
+      <div 
+        className={`p-2 rounded-md cursor-pointer flex items-center gap-2 ${
+          field.fieldType === 'TEXT' ? 'bg-primary-100 border border-primary' : 'bg-default-100 hover:bg-default-200'
+        }`}
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          const updatedFields = [...fields];
+          updatedFields[index].fieldType = 'TEXT';
+          setFields(updatedFields);
+        }}
+      >
+        <div className={`w-4 h-4 rounded-full flex items-center justify-center ${
+          field.fieldType === 'TEXT' ? 'border-2 border-primary' : 'border border-default-400'
+        }`}>
+          {field.fieldType === 'TEXT' && <div className="w-2 h-2 rounded-full bg-primary"></div>}
+        </div>
+        <span>Text</span>
+      </div>
+      
+      <div 
+        className={`p-2 rounded-md cursor-pointer flex items-center gap-2 ${
+          field.fieldType === 'NUMBER' ? 'bg-primary-100 border border-primary' : 'bg-default-100 hover:bg-default-200'
+        }`}
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          const updatedFields = [...fields];
+          updatedFields[index].fieldType = 'NUMBER';
+          setFields(updatedFields);
+        }}
+      >
+        <div className={`w-4 h-4 rounded-full flex items-center justify-center ${
+          field.fieldType === 'NUMBER' ? 'border-2 border-primary' : 'border border-default-400'
+        }`}>
+          {field.fieldType === 'NUMBER' && <div className="w-2 h-2 rounded-full bg-primary"></div>}
+        </div>
+        <span>Nummer</span>
+      </div>
+      
+      <div 
+        className={`p-2 rounded-md cursor-pointer flex items-center gap-2 ${
+          field.fieldType === 'DATE' ? 'bg-primary-100 border border-primary' : 'bg-default-100 hover:bg-default-200'
+        }`}
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          const updatedFields = [...fields];
+          updatedFields[index].fieldType = 'DATE';
+          setFields(updatedFields);
+        }}
+      >
+        <div className={`w-4 h-4 rounded-full flex items-center justify-center ${
+          field.fieldType === 'DATE' ? 'border-2 border-primary' : 'border border-default-400'
+        }`}>
+          {field.fieldType === 'DATE' && <div className="w-2 h-2 rounded-full bg-primary"></div>}
+        </div>
+        <span>Datum</span>
+      </div>
+      
+      <div 
+        className={`p-2 rounded-md cursor-pointer flex items-center gap-2 ${
+          field.fieldType === 'DUE_DATE' ? 'bg-primary-100 border border-primary' : 'bg-default-100 hover:bg-default-200'
+        }`}
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          const updatedFields = [...fields];
+          updatedFields[index].fieldType = 'DUE_DATE';
+          setFields(updatedFields);
+        }}
+      >
+        <div className={`w-4 h-4 rounded-full flex items-center justify-center ${
+          field.fieldType === 'DUE_DATE' ? 'border-2 border-primary' : 'border border-default-400'
+        }`}>
+          {field.fieldType === 'DUE_DATE' && <div className="w-2 h-2 rounded-full bg-primary"></div>}
+        </div>
+        <span>Senast klar</span>
+      </div>
+    </div>
+  </div>
+  {validationErrors[`field_${index}_type`] && (
+    <p className="text-danger text-xs mt-1">
+      {validationErrors[`field_${index}_type`]}
+    </p>
+  )}
+</div>
                           
                           <div className="sm:col-span-2">
                             <Checkbox

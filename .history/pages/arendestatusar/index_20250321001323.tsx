@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
 import {
+  Form,
   Button,
   Table,
   TableHeader,
@@ -19,8 +20,6 @@ import {
 import { title, subtitle } from '@/components/primitives';
 import { DeleteIcon, EditIcon } from '@/components/icons';
 import StatusModal from '@/components/StatusModal';
-import PlanLimitNotice from '@/components/subscription/PlanLimitNotice';
-import useSubscription from '@/hooks/useSubscription';
 
 // Importera centraliserad statushantering
 import ticketStatusService, { 
@@ -39,9 +38,6 @@ export default function Arendestatusar() {
   const [mailTemplates, setMailTemplates] = useState<any[]>([]);
   const [activeTab, setActiveTab] = useState('custom');
   const [loading, setLoading] = useState(true);
-  
-  // Använd useSubscription hook för att kontrollera plangränser
-  const { canCreate, hasReachedLimit } = useSubscription();
 
   // Hämta alla statusar vid sidladdning
   useEffect(() => {
@@ -178,30 +174,16 @@ export default function Arendestatusar() {
       <div className="inline-block max-w-lg text-center">
         <h1 className={title({ size: 'sm' })}>Ärendestatusar</h1>
         <p className={subtitle()}>Skapa och hantera statusar för dina ärenden</p>
-        
-        {/* Endast visa knappen om användaren kan skapa nya anpassade statusar */}
-        {canCreate('customStatus') && (
-          <Button 
-            type="button" 
-            onPress={() => setCreateModalOpen(true)} 
-            color="primary"
-            variant="flat"
-            className="mt-4"
-          >
-            Skapa ny status
-          </Button>
-        )}
+        <Button 
+          type="button" 
+          onPress={() => setCreateModalOpen(true)} 
+          color="primary"
+          variant="flat"
+          className="mt-4"
+        >
+          Skapa ny status
+        </Button>
       </div>
-
-      {/* Visa planbegränsningsmeddelande om användaren har nått gränsen */}
-      {hasReachedLimit.customStatuses && (
-        <div className="w-full max-w-6xl mt-2">
-          <PlanLimitNotice 
-            resourceType="customStatus" 
-            showUpgradeButton={true}
-          />
-        </div>
-      )}
 
       {/* Statusflikar för att skilja mellan grundläggande och anpassade statusar */}
       <div className="w-full max-w-6xl mt-6">
@@ -310,16 +292,14 @@ export default function Arendestatusar() {
               <CardHeader className="flex flex-col">
                 <div className="flex justify-between items-center w-full">
                   <h2 className="text-lg font-semibold">Anpassade statusar</h2>
-                  {canCreate('customStatus') && (
-                    <Button 
-                      type="button" 
-                      onPress={() => setCreateModalOpen(true)} 
-                      color="primary"
-                      size="sm"
-                    >
-                      Skapa ny status
-                    </Button>
-                  )}
+                  <Button 
+                    type="button" 
+                    onPress={() => setCreateModalOpen(true)} 
+                    color="primary"
+                    size="sm"
+                  >
+                    Skapa ny status
+                  </Button>
                 </div>
                 <p className="text-sm text-default-500">
                   Skapa egna statusar för att anpassa ärendehanteringen efter dina behov.

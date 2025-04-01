@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
 import {
+  Form,
   Button,
   Table,
   TableHeader,
@@ -14,10 +15,12 @@ import {
   CardHeader,
   Tabs,
   Tab,
-  Spinner
+  Spinner,
+  Chip,
+  Badge
 } from '@heroui/react';
 import { title, subtitle } from '@/components/primitives';
-import { DeleteIcon, EditIcon } from '@/components/icons';
+import { DeleteIcon, EditIcon, ArrowRightIcon } from '@/components/icons';
 import StatusModal from '@/components/StatusModal';
 import PlanLimitNotice from '@/components/subscription/PlanLimitNotice';
 import useSubscription from '@/hooks/useSubscription';
@@ -39,9 +42,10 @@ export default function Arendestatusar() {
   const [mailTemplates, setMailTemplates] = useState<any[]>([]);
   const [activeTab, setActiveTab] = useState('custom');
   const [loading, setLoading] = useState(true);
-  
-  // Använd useSubscription hook för att kontrollera plangränser
-  const { canCreate, hasReachedLimit } = useSubscription();
+
+  // Hämta prenumerationsinformation
+  const { plan, canCreate, features, limits, planName } = useSubscription();
+  const canUseCustomStatuses = features.customStatuses;
 
   // Hämta alla statusar vid sidladdning
   useEffect(() => {
@@ -173,35 +177,69 @@ export default function Arendestatusar() {
     }
   };
 
+  // Renderar info om planbegränsningar för anpassade statusar
+  const renderCustomStatusLimits = () => {
+    if (!canUseCustomStatuses) {
+      return (
+        <div className="mt-4 mb-6">
+          <PlanLimitNotice 
+            resourceType="customStatus" 
+            showUpgradeButton={true}
+          />
+        </div>
+      );
+    }
+
+    // Om användaren kan använda anpassade statusar, visa bara en notering om begränsningarna
+    const statusLimit = limits.customStatuses === Number.POSITIVE_INFINITY ? 
+      'Obegränsat' : limits.customStatuses;
+    
+    return (
+      <div className="flex justify-between items-center mt-2 mb-4">
+        <Chip color="primary" variant="flat">
+          Din plan: {planName}
+        </Chip>
+        <Chip color="default" variant="flat">
+          Gräns för anpassade statusar: {customStatuses.length} / {statusLimit}
+        </Chip>
+      </div>
+    );
+  };
+
+  // Renderar info om planbegränsningar för grundläggande statusar
+  const renderSystemStatusInfo = () => {
+    return (
+      <div className="mt-2 mb-4">
+        <div className="flex flex-col sm:flex-row justify-between gap-2">
+          <Chip color="primary" variant="flat">
+            Din plan: {planName}
+          </Chip>
+          <div className="text-sm text-default-600">
+            Grundläggande statusar ingår i alla planer
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <section className="flex flex-col items-center justify-center gap-4 py-8 md:py-10">
       <div className="inline-block max-w-lg text-center">
         <h1 className={title({ size: 'sm' })}>Ärendestatusar</h1>
         <p className={subtitle()}>Skapa och hantera statusar för dina ärenden</p>
-        
-        {/* Endast visa knappen om användaren kan skapa nya anpassade statusar */}
-        {canCreate('customStatus') && (
+        {canUseCustomStatuses && (
           <Button 
             type="button" 
             onPress={() => setCreateModalOpen(true)} 
             color="primary"
             variant="flat"
             className="mt-4"
+            isDisabled={!canCreate('customStatus')}
           >
             Skapa ny status
           </Button>
         )}
       </div>
-
-      {/* Visa planbegränsningsmeddelande om användaren har nått gränsen */}
-      {hasReachedLimit.customStatuses && (
-        <div className="w-full max-w-6xl mt-2">
-          <PlanLimitNotice 
-            resourceType="customStatus" 
-            showUpgradeButton={true}
-          />
-        </div>
-      )}
 
       {/* Statusflikar för att skilja mellan grundläggande och anpassade statusar */}
       <div className="w-full max-w-6xl mt-6">
@@ -228,6 +266,7 @@ export default function Arendestatusar() {
                 <p className="text-sm text-default-500">
                   Dessa statusar är inbyggda i systemet och kan inte tas bort. Du kan däremot koppla mailmallar till dem.
                 </p>
+                {renderSystemStatusInfo()}
               </CardHeader>
               <CardBody>
                 {loading ? (
@@ -303,6 +342,11 @@ export default function Arendestatusar() {
                 <span className="bg-default-100 text-default-800 text-xs px-2 py-1 rounded-full">
                   {customStatuses.length}
                 </span>
+                {!canUseCustomStatuses && (
+                  <Badge color="warning" variant="flat" size="sm">
+                    Premium
+                  </Badge>
+                )}
               </div>
             }
           >
@@ -310,7 +354,7 @@ export default function Arendestatusar() {
               <CardHeader className="flex flex-col">
                 <div className="flex justify-between items-center w-full">
                   <h2 className="text-lg font-semibold">Anpassade statusar</h2>
-                  {canCreate('customStatus') && (
+                  {canUseCustomStatuses && canCreate('customStatus') && (
                     <Button 
                       type="button" 
                       onPress={() => setCreateModalOpen(true)} 
@@ -324,6 +368,7 @@ export default function Arendestatusar() {
                 <p className="text-sm text-default-500">
                   Skapa egna statusar för att anpassa ärendehanteringen efter dina behov.
                 </p>
+                {renderCustomStatusLimits()}
               </CardHeader>
               <CardBody>
                 {loading ? (
@@ -332,61 +377,87 @@ export default function Arendestatusar() {
                     <span className="ml-3 text-default-600">Laddar anpassade statusar...</span>
                   </div>
                 ) : (
-                  <Table 
-                    aria-label="Anpassade Statusar"
-                    removeWrapper
-                    selectionMode="none"
-                  >
-                    <TableHeader>
-                      <TableColumn>Status</TableColumn>
-                      <TableColumn>Färg</TableColumn>
-                      <TableColumn>Mailmall</TableColumn>
-                      <TableColumn>Åtgärder</TableColumn>
-                    </TableHeader>
-                    <TableBody emptyContent="Inga anpassade statusar har skapats än.">
-                      {customStatuses.map((s) => (
-                        <TableRow key={s.id}>
-                          <TableCell>{s.name}</TableCell>
-                          <TableCell>
-                            <div
-                              className="w-6 h-6 rounded-full border border-default-200"
-                              style={{ backgroundColor: s.color }}
-                            />
-                          </TableCell>
-                          <TableCell>
-                            {s.mailTemplateId ? (
-                              <div>{mailTemplates.find(mt => mt.id === s.mailTemplateId)?.name || 'Okänd mall'}</div>
-                            ) : (
-                              <span className="text-default-400">Ingen mall kopplad</span>
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex items-center gap-2">
-                              <Button 
-                                type="button" 
-                                variant="flat"
-                                isIconOnly
-                                size="sm"
-                                onPress={() => handleEdit(s)}
-                              >
-                                <EditIcon />
-                              </Button>
-                              <Button 
-                                type="button" 
-                                variant="flat" 
-                                isIconOnly
-                                size="sm"
-                                color="danger"
-                                onPress={() => handleDelete(s.id)}
-                              >
-                                <DeleteIcon />
-                              </Button>
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
+                  <div>
+                    {!canUseCustomStatuses ? (
+                      <div className="py-8 text-center">
+                        <p className="text-default-500 mb-4">
+                          Anpassade statusar är endast tillgängliga i betalda planer.
+                        </p>
+                        <Button 
+                          as="a"
+                          href="/installningar?tab=subscription&upgrade=true"
+                          color="primary"
+                          endContent={<ArrowRightIcon size={16} />}
+                        >
+                          Uppgradera din plan
+                        </Button>
+                      </div>
+                    ) : (
+                      <Table 
+                        aria-label="Anpassade Statusar"
+                        removeWrapper
+                        selectionMode="none"
+                      >
+                        <TableHeader>
+                          <TableColumn>Status</TableColumn>
+                          <TableColumn>Färg</TableColumn>
+                          <TableColumn>Mailmall</TableColumn>
+                          <TableColumn>Åtgärder</TableColumn>
+                        </TableHeader>
+                        <TableBody emptyContent="Inga anpassade statusar har skapats än.">
+                          {customStatuses.map((s) => (
+                            <TableRow key={s.id}>
+                              <TableCell>{s.name}</TableCell>
+                              <TableCell>
+                                <div
+                                  className="w-6 h-6 rounded-full border border-default-200"
+                                  style={{ backgroundColor: s.color }}
+                                />
+                              </TableCell>
+                              <TableCell>
+                                {s.mailTemplateId ? (
+                                  <div>{mailTemplates.find(mt => mt.id === s.mailTemplateId)?.name || 'Okänd mall'}</div>
+                                ) : (
+                                  <span className="text-default-400">Ingen mall kopplad</span>
+                                )}
+                              </TableCell>
+                              <TableCell>
+                                <div className="flex items-center gap-2">
+                                  <Button 
+                                    type="button" 
+                                    variant="flat"
+                                    isIconOnly
+                                    size="sm"
+                                    onPress={() => handleEdit(s)}
+                                  >
+                                    <EditIcon />
+                                  </Button>
+                                  <Button 
+                                    type="button" 
+                                    variant="flat" 
+                                    isIconOnly
+                                    size="sm"
+                                    color="danger"
+                                    onPress={() => handleDelete(s.id)}
+                                  >
+                                    <DeleteIcon />
+                                  </Button>
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    )}
+                    {customStatuses.length > 0 && !canCreate('customStatus') && (
+                      <div className="mt-4">
+                        <PlanLimitNotice 
+                          resourceType="customStatus" 
+                          showUpgradeButton={true}
+                        />
+                      </div>
+                    )}
+                  </div>
                 )}
               </CardBody>
             </Card>

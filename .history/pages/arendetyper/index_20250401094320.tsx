@@ -490,10 +490,6 @@ export default function Arendetyper() {
         onOpenChange={setCreateModalOpen}
         scrollBehavior="inside"
         size="3xl"
-        // Viktig tillägg: Lägg till denna prop för att förhindra stängning vid klick inne i modalen
-        isDismissable={false}
-        // Stängning via escape fortfarande möjlig
-        closeButton={true}
       >
         <ModalContent>
           <ModalHeader>
@@ -738,7 +734,7 @@ export default function Arendetyper() {
                           </div>
                           
                           <div>
-                            <label htmlFor={`editField-${index}-type`} className="block text-sm mb-1">
+                            <label htmlFor={`field-${index}-type`} className="block text-sm mb-1">
                               Fälttyp
                             </label>
                             <Dropdown>
@@ -746,7 +742,7 @@ export default function Arendetyper() {
                                 <Button 
                                   variant="flat" 
                                   className="w-full justify-start"
-                                  isInvalid={!!validationErrors[`editField_${index}_type`]}
+                                  isInvalid={!!validationErrors[`field_${index}_type`]}
                                 >
                                   {field.fieldType || "Välj fälttyp"}
                                 </Button>
@@ -754,20 +750,29 @@ export default function Arendetyper() {
                               <DropdownMenu 
                                 aria-label="Välj fälttyp"
                                 onAction={(key) => {
-                                  const updatedFields = [...editFields];
-                                  updatedFields[index].fieldType = key as string;
-                                  setEditFields(updatedFields);
+                                  // Förhindra event-bubbling
+                                  setTimeout(() => {
+                                    const updatedFields = [...fields];
+                                    updatedFields[index].fieldType = key as string;
+                                    setFields(updatedFields);
+                                  }, 0);
+                                }}
+                                // Lägg till disableAnimation för bättre interaktion
+                                disableAnimation={true}
+                                // Förhindra att dropdown-menyn stänger modalen
+                                onClick={(e) => {
+                                  e.stopPropagation();
                                 }}
                               >
-                                <DropdownItem key="TEXT">Text</DropdownItem>
-                                <DropdownItem key="NUMBER">Nummer</DropdownItem>
-                                <DropdownItem key="DATE">Datum</DropdownItem>
-                                <DropdownItem key="DUE_DATE">Senast klar</DropdownItem>
+                                <DropdownItem key="TEXT" onClick={(e) => e.stopPropagation()}>Text</DropdownItem>
+                                <DropdownItem key="NUMBER" onClick={(e) => e.stopPropagation()}>Nummer</DropdownItem>
+                                <DropdownItem key="DATE" onClick={(e) => e.stopPropagation()}>Datum</DropdownItem>
+                                <DropdownItem key="DUE_DATE" onClick={(e) => e.stopPropagation()}>Senast klar</DropdownItem>
                               </DropdownMenu>
                             </Dropdown>
-                            {validationErrors[`editField_${index}_type`] && (
+                            {validationErrors[`field_${index}_type`] && (
                               <p className="text-danger text-xs mt-1">
-                                {validationErrors[`editField_${index}_type`]}
+                                {validationErrors[`field_${index}_type`]}
                               </p>
                             )}
                           </div>
