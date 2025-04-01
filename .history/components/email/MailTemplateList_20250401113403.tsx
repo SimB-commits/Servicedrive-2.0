@@ -590,8 +590,6 @@ const EnhancedTemplateList: React.FC<TemplateListProps> = ({
         isOpen={deleteModalOpen}
         onOpenChange={setDeleteModalOpen}
         size="sm"
-        isDismissable={false}  // Kritisk ändring!
-        closeButton={true}
       >
         <ModalContent>
           <ModalHeader>

@@ -125,13 +125,7 @@ const StatusModal: React.FC<StatusModalProps> = ({
   };
 
   return (
-    <Modal 
-      isOpen={isOpen} 
-      onOpenChange={onClose} 
-      size="xl"
-      isDismissable={false}  // Kritisk ändring!
-      closeButton={true}
-      >
+    <Modal isOpen={isOpen} onOpenChange={onClose} size="xl">
       <ModalContent>
         <ModalHeader>
           <div className="flex justify-between items-center">

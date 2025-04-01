@@ -142,8 +142,6 @@ const DomainVerificationStatus: React.FC<DomainProps> = ({ domain, onDelete }) =
         isOpen={isDeleteModalOpen} 
         onOpenChange={setIsDeleteModalOpen}
         size="sm"
-        isDismissable={false}  // Kritisk ändring!
-        closeButton={true}
       >
         <ModalContent>
           <ModalHeader>Bekräfta borttagning</ModalHeader>

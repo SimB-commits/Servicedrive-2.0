@@ -19,7 +19,7 @@ import {
 } from '@heroui/react';
 import { useSession } from 'next-auth/react';
 import { TicketType } from '@/types/ticket';
-import { parseAbsoluteToLocal } from "@internationalized/date";
+import { parseZonedDateTime, getLocalTimeZone, ZonedDateTime } from "@internationalized/date";
 import router from 'next/router';
 
 interface Field {
@@ -100,44 +100,13 @@ export default function CreateTicketPage() {
   // Hjälpfunktion för att säkerställa ZonedDateTime
   const getZonedValue = (value: any) => {
     if (!value) return null;
-    
-    try {
-      // If it's already a ZonedDateTime object, return as is
-      if (value && typeof value === "object" && "calendar" in value) {
-        return value;
-      }
-      
-      // If it's a string, parse it
-      if (typeof value === "string") {
-        // Remove the timezone part if present
-        const cleanDateString = value.replace(/\[.*\]$/, '');
-        
-        // Try parsing with Date
-        const date = new Date(cleanDateString);
-        
-        if (!isNaN(date.getTime())) {
-          // Use parseAbsoluteToLocal to create a ZonedDateTime
-          return parseAbsoluteToLocal(date.toISOString());
-        }
-      }
-      
-      // If it's a Date object
-      if (value instanceof Date) {
-        return parseAbsoluteToLocal(value.toISOString());
-      }
-      
-      // If it's an object with year, month, day
-      if (typeof value === "object" && "year" in value && "month" in value && "day" in value) {
-        const { year, month, day } = value;
-        const date = new Date(year, month - 1, day);
-        return parseAbsoluteToLocal(date.toISOString());
-      }
-      
-      return null;
-    } catch (error) {
-      console.error('Error in getZonedValue:', error);
-      return null;
+    if (typeof value === "string") {
+      return parseZonedDateTime(`${value}[Europe/Stockholm]`);
     }
+    if (value && typeof value === "object" && "calendar" in value) {
+      return value;
+    }
+    return null;
   };
 
   // Hämta ärendetyper

@@ -502,8 +502,6 @@ export default function CustomerPage() {
           onOpenChange={(isOpen) => setEditModalOpen(isOpen)}
           scrollBehavior="inside"
           size="3xl"
-          isDismissable={false}  // Kritisk ändring!
-          closeButton={true}
         >
           <ModalContent>
             <ModalHeader>

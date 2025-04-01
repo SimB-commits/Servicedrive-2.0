@@ -47,12 +47,7 @@ const StatusConfirmationDialog: React.FC<StatusConfirmationDialogProps> = ({
   }, [isOpen]);
 
   return (
-    <Modal 
-      isOpen={isOpen} 
-      onOpenChange={onClose}
-      isDismissable={false}  // Kritisk ändring!
-      closeButton={true}
-      >
+    <Modal isOpen={isOpen} onOpenChange={onClose}>
       <ModalContent>
         <ModalHeader>
           <h2 className="text-lg font-semibold">Uppdatera status</h2>

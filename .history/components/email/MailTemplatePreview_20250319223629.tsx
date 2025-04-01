@@ -182,8 +182,6 @@ const MailTemplatePreview: React.FC<MailTemplatePreviewProps> = ({
       onOpenChange={onClose}
       size="3xl"
       scrollBehavior="inside"
-      isDismissable={false}  // Kritisk ändring!
-      closeButton={true}
     >
       <ModalContent>
         <ModalHeader>

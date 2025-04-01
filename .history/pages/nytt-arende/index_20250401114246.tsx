@@ -19,7 +19,7 @@ import {
 } from '@heroui/react';
 import { useSession } from 'next-auth/react';
 import { TicketType } from '@/types/ticket';
-import { parseAbsoluteToLocal } from "@internationalized/date";
+import { parseZonedDateTime, getLocalTimeZone, ZonedDateTime } from "@internationalized/date";
 import router from 'next/router';
 
 interface Field {
@@ -36,44 +36,46 @@ interface CustomerCardTemplate {
 }
 
 // Hjälpfunktion – konverterad till en arrow-funktion för att undvika TS1252
-const formatValue = (value: any): string => {
+const formatValue = (value: any, fieldType?: string): string => {
   if (!value) return "";
   
-  // Handle ZonedDateTime objects directly
-  if (value && typeof value === "object" && "calendar" in value) {
-    try {
-      // Extract the date components and create an ISO string
+  // Specific handling for date-related field types
+  if (fieldType === 'DATE' || fieldType === 'DUE_DATE') {
+    // Handle ZonedDateTime objects
+    if (value && typeof value === "object" && "calendar" in value) {
+      try {
+        const { year, month, day } = value;
+        const date = new Date(year, month - 1, day);
+        return date.toISOString();
+      } catch (e) {
+        console.error("Failed to format ZonedDateTime:", e);
+        return "";
+      }
+    }
+    
+    // Handle Date objects
+    if (value instanceof Date) {
+      return value.toISOString();
+    }
+    
+    // Handle string dates specifically for date fields
+    if (typeof value === "string") {
+      const date = new Date(value);
+      if (!isNaN(date.getTime())) {
+        return date.toISOString();
+      }
+    }
+    
+    // Handle date objects with year, month, day properties
+    if (typeof value === "object" && "year" in value && "month" in value && "day" in value) {
       const { year, month, day } = value;
-      // Create a Date object (month is 0-indexed in JavaScript)
       const date = new Date(year, month - 1, day);
       return date.toISOString();
-    } catch (err) {
-      console.error("Failed to format ZonedDateTime:", err);
-      return "";
     }
   }
   
-  // Handle string dates
-  if (typeof value === "string") {
-    const date = new Date(value);
-    if (!isNaN(date.getTime())) {
-      return date.toISOString();
-    }
-  }
-  
-  // Handle Date objects
-  if (value instanceof Date) {
-    return value.toISOString();
-  }
-  
-  // Handle date objects with year, month, day properties
-  if (typeof value === "object" && "year" in value && "month" in value && "day" in value) {
-    const { year, month, day } = value;
-    const date = new Date(year, month - 1, day);
-    return date.toISOString();
-  }
-  
-  return "";
+  // For non-date fields, return the value as a string
+  return String(value);
 };
 
 export default function CreateTicketPage() {
@@ -100,44 +102,13 @@ export default function CreateTicketPage() {
   // Hjälpfunktion för att säkerställa ZonedDateTime
   const getZonedValue = (value: any) => {
     if (!value) return null;
-    
-    try {
-      // If it's already a ZonedDateTime object, return as is
-      if (value && typeof value === "object" && "calendar" in value) {
-        return value;
-      }
-      
-      // If it's a string, parse it
-      if (typeof value === "string") {
-        // Remove the timezone part if present
-        const cleanDateString = value.replace(/\[.*\]$/, '');
-        
-        // Try parsing with Date
-        const date = new Date(cleanDateString);
-        
-        if (!isNaN(date.getTime())) {
-          // Use parseAbsoluteToLocal to create a ZonedDateTime
-          return parseAbsoluteToLocal(date.toISOString());
-        }
-      }
-      
-      // If it's a Date object
-      if (value instanceof Date) {
-        return parseAbsoluteToLocal(value.toISOString());
-      }
-      
-      // If it's an object with year, month, day
-      if (typeof value === "object" && "year" in value && "month" in value && "day" in value) {
-        const { year, month, day } = value;
-        const date = new Date(year, month - 1, day);
-        return parseAbsoluteToLocal(date.toISOString());
-      }
-      
-      return null;
-    } catch (error) {
-      console.error('Error in getZonedValue:', error);
-      return null;
+    if (typeof value === "string") {
+      return parseZonedDateTime(`${value}[Europe/Stockholm]`);
     }
+    if (value && typeof value === "object" && "calendar" in value) {
+      return value;
+    }
+    return null;
   };
 
   // Hämta ärendetyper
@@ -537,18 +508,10 @@ export default function CreateTicketPage() {
           const value = ticketFormValues[field.name];
           console.log(`Processing field ${field.name} (${field.fieldType}) with value:`, value);
           
-          if (field.fieldType === "DATE") {
-            formattedFields[field.name] = formatValue(value);
-          } else if (field.fieldType === "DUE_DATE") {
-            dueDateValue = formatValue(value);
-            console.log(`DUE_DATE for ${field.name} formatted to:`, dueDateValue);
-          } else {
-            // Endast konvertera till sträng för TEXT/NUMBER-fält
-            formattedFields[field.name] = value !== undefined ? String(value) : "";
-          }
+          formattedFields[field.name] = formatValue(value, field.fieldType);
         });
         
-        return { formattedFields, dueDateValue };
+        return { formattedFields };
       };
       
       const { formattedFields, dueDateValue } = prepareDynamicFields();
