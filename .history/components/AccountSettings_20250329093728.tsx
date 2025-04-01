@@ -1,25 +1,17 @@
-// components/AccountSettings.tsx
 import React, { useState } from 'react';
 import { useSession } from 'next-auth/react';
 import {
   Card,
   CardBody,
-  CardHeader,
   Button,
   Input,
   Form,
-  Divider,
-  Tabs,
-  Tab,
-  addToast
+  addToast,
+  Divider
 } from '@heroui/react';
-import SubscriptionOverview from './subscription/SubscriptionOverview';
-import PlanSelector from './subscription/PlanSelector';
-import useSubscription from '@/hooks/useSubscription';
 
 const AccountSettings = () => {
   const { data: session } = useSession();
-  const subscription = useSubscription();
   
   // State för lösenordsbyte
   const [currentPassword, setCurrentPassword] = useState('');
@@ -27,17 +19,6 @@ const AccountSettings = () => {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
-  
-  // State för aktiv prenumerations-flik
-  const [activeSubscriptionTab, setActiveSubscriptionTab] = useState('overview');
-  
-  // Checka URL för att se om vi ska visa uppgraderingsvyn
-  React.useEffect(() => {
-    const url = new URL(window.location.href);
-    if (url.searchParams.get('upgrade') === 'true') {
-      setActiveSubscriptionTab('change');
-    }
-  }, []);
 
   const handlePasswordChange = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -102,22 +83,13 @@ const AccountSettings = () => {
     }
   };
 
-  // Hantera prenumerationsplanförändring
-  const handlePlanChanged = () => {
-    // Vi behöver inte göra något specifikt här eftersom SubscriptionContext hanterar uppdateringen
-    // Komponenten kommer att återrenderas via context
-  };
-
   return (
-    <div className="space-y-6">
+    <div className="p-4">
       <h2 className="text-xl font-semibold mb-4">Kontoinställningar</h2>
       
-      {/* Profilinformation */}
-      <Card>
-        <CardHeader>
-          <h3 className="text-lg font-medium">Profilinformation</h3>
-        </CardHeader>
+      <Card className="mb-6">
         <CardBody>
+          <h3 className="text-lg font-medium mb-2">Profilinformation</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <p className="text-sm text-default-500">E-post</p>
@@ -127,12 +99,6 @@ const AccountSettings = () => {
               <p className="text-sm text-default-500">Roll</p>
               <p className="font-medium">{session?.user?.role}</p>
             </div>
-            {session?.user?.firstName && (
-              <div>
-                <p className="text-sm text-default-500">Namn</p>
-                <p className="font-medium">{session.user.firstName}</p>
-              </div>
-            )}
             <div>
               <p className="text-sm text-default-500">ButiksID</p>
               <p className="font-medium">{session?.user?.storeId}</p>
@@ -141,46 +107,9 @@ const AccountSettings = () => {
         </CardBody>
       </Card>
       
-      {/* Prenumerationsinformation */}
-      <Card>
-        <CardHeader>
-          <h3 className="text-lg font-medium">Prenumeration</h3>
-        </CardHeader>
+      <Card className="my-6">
         <CardBody>
-          <Tabs 
-            aria-label="Prenumerationsinställningar"
-            selectedKey={activeSubscriptionTab}
-            onSelectionChange={(key) => setActiveSubscriptionTab(key as string)}
-            variant="underlined"
-            className="mb-4"
-          >
-            <Tab key="overview" title="Översikt" />
-            <Tab key="change" title="Ändra prenumeration" />
-            <Tab key="history" title="Faktureringshistorik" />
-          </Tabs>
-          
-          <div className="mt-4">
-            {activeSubscriptionTab === 'overview' && <SubscriptionOverview />}
-            
-            {activeSubscriptionTab === 'change' && (
-              <PlanSelector onPlanChanged={handlePlanChanged} />
-            )}
-            
-            {activeSubscriptionTab === 'history' && (
-              <div className="p-6 bg-default-50 rounded-lg text-center">
-                <p>Faktureringshistorik kommer i nästa version.</p>
-              </div>
-            )}
-          </div>
-        </CardBody>
-      </Card>
-      
-      {/* Lösenordsbyte */}
-      <Card>
-        <CardHeader>
-          <h3 className="text-lg font-medium">Byt lösenord</h3>
-        </CardHeader>
-        <CardBody>
+          <h3 className="text-lg font-medium mb-4">Byt lösenord</h3>
           <Form onSubmit={handlePasswordChange} className="space-y-4">
             <Input
               type="password"
@@ -231,6 +160,40 @@ const AccountSettings = () => {
           </Form>
         </CardBody>
       </Card>
+      
+      {/* Inte implementerat maillogik för detta ännu */}
+      {/* <Card className="my-6">
+        <CardBody>
+          <h3 className="text-lg font-medium mb-2">Notifieringsinställningar</h3>
+          <p className="text-default-500 mb-4">Hantera dina notifieringsinställningar för systemet.</p>
+          
+          <div className="flex items-center justify-between py-2">
+            <div>
+              <p className="font-medium">Email-notifieringar</p>
+              <p className="text-sm text-default-500">Få notifieringar via email vid nya ärenden</p>
+            </div>
+            <div>
+              <Button size="sm" color="primary" variant="flat">
+                Aktivera
+              </Button>
+            </div>
+          </div>
+          
+          <Divider className="my-2" />
+          
+          <div className="flex items-center justify-between py-2">
+            <div>
+              <p className="font-medium">Påminnelser</p>
+              <p className="text-sm text-default-500">Få påminnelser om förfallna ärenden</p>
+            </div>
+            <div>
+              <Button size="sm" color="primary" variant="flat">
+                Aktivera
+              </Button>
+            </div>
+          </div>
+        </CardBody>
+      </Card> */}
     </div>
   );
 };

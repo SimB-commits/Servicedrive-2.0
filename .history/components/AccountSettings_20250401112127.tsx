@@ -30,14 +30,6 @@ const AccountSettings = () => {
   
   // State för aktiv prenumerations-flik
   const [activeSubscriptionTab, setActiveSubscriptionTab] = useState('overview');
-  
-  // Checka URL för att se om vi ska visa uppgraderingsvyn
-  React.useEffect(() => {
-    const url = new URL(window.location.href);
-    if (url.searchParams.get('upgrade') === 'true') {
-      setActiveSubscriptionTab('change');
-    }
-  }, []);
 
   const handlePasswordChange = async (e: React.FormEvent) => {
     e.preventDefault();
